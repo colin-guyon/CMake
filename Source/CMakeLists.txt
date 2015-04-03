@@ -689,6 +689,9 @@ if (WIN32)
       cmGlobalVisualStudio15Generator.cxx
       cmGlobalVisualStudioGenerator.cxx
       cmGlobalVisualStudioGenerator.h
+      cmGlobalFastbuildGenerator.h
+      cmGlobalFastbuildGenerator.cxx
+      cmGlobalGenerator.h
       cmIDEFlagTable.h
       cmIDEOptions.cxx
       cmIDEOptions.h
@@ -696,6 +699,8 @@ if (WIN32)
       cmLocalVisualStudio7Generator.h
       cmLocalVisualStudioGenerator.cxx
       cmLocalVisualStudioGenerator.h
+      cmLocalFastbuildGenerator.cxx
+      cmLocalFastbuildGenerator.h
       cmVisualStudioSlnData.h
       cmVisualStudioSlnData.cxx
       cmVisualStudioSlnParser.h
