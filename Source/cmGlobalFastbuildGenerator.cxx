@@ -447,7 +447,7 @@ public:
 			targetNamesOut.targetOutputCompilePDBDir = target.GetCompilePDBPath(configName);
 			if (targetNamesOut.targetOutputCompilePDBDir.empty())
 			{
-				targetNamesOut.targetOutputCompilePDBDir = target.GetSupportDirectory() + "/";
+				targetNamesOut.targetOutputCompilePDBDir = target.GetSupportDirectory() + "/" + configName + "/";
 			}
 		}
 
