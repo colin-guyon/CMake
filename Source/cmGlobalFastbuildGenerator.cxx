@@ -1876,6 +1876,9 @@ public:
 		if (workingDirectory.empty())
 		{
 			workingDirectory = makefile->GetCurrentBinaryDirectory();
+		}
+		if (workingDirectory.back() != '/')
+		{
 			workingDirectory += "/";
 		}
 
