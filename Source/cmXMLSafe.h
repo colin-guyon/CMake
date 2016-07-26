@@ -12,8 +12,10 @@
 #ifndef cmXMLSafe_h
 #define cmXMLSafe_h
 
-#include <cmsys/stl/string>
-#include <cmsys/ios/iosfwd>
+#include <cmsys/Configure.hxx>
+
+#include <iosfwd>
+#include <string>
 
 /** \class cmXMLSafe
  * \brief Write strings to XML with proper escapes
@@ -33,12 +35,12 @@ public:
 
   /** Get the escaped data as a string.  */
   std::string str();
+
 private:
   char const* Data;
   unsigned long Size;
   bool DoQuotes;
-  friend cmsys_ios::ostream& operator<<(cmsys_ios::ostream&,
-                                        cmXMLSafe const&);
+  friend std::ostream& operator<<(std::ostream&, cmXMLSafe const&);
 };
 
 #endif

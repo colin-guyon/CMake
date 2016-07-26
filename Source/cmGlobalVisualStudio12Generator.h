@@ -14,29 +14,21 @@
 
 #include "cmGlobalVisualStudio11Generator.h"
 
-
 /** \class cmGlobalVisualStudio12Generator  */
-class cmGlobalVisualStudio12Generator:
-  public cmGlobalVisualStudio11Generator
+class cmGlobalVisualStudio12Generator : public cmGlobalVisualStudio11Generator
 {
 public:
-  cmGlobalVisualStudio12Generator(const std::string& name,
-    const std::string& platformName);
+  cmGlobalVisualStudio12Generator(cmake* cm, const std::string& name,
+                                  const std::string& platformName);
   static cmGlobalGeneratorFactory* NewFactory();
 
   virtual bool MatchesGeneratorName(const std::string& name) const;
 
   virtual void WriteSLNHeader(std::ostream& fout);
 
-  ///! create the correct local generator
-  virtual cmLocalGenerator *CreateLocalGenerator();
-
-  /** TODO: VS 12 user macro support. */
-  virtual std::string GetUserMacrosDirectory() { return ""; }
-
-  //in Visual Studio 2013 they detached the MSBuild tools version
-  //from the .Net Framework version and instead made it have it's own
-  //version number
+  // in Visual Studio 2013 they detached the MSBuild tools version
+  // from the .Net Framework version and instead made it have it's own
+  // version number
   virtual const char* GetToolsVersion() { return "12.0"; }
 protected:
   virtual bool InitializeWindowsPhone(cmMakefile* mf);
@@ -44,9 +36,12 @@ protected:
   virtual bool SelectWindowsPhoneToolset(std::string& toolset) const;
   virtual bool SelectWindowsStoreToolset(std::string& toolset) const;
 
+  // Used to verify that the Desktop toolset for the current generator is
+  // installed on the machine.
+  virtual bool IsWindowsDesktopToolsetInstalled() const;
+
   // These aren't virtual because we need to check if the selected version
   // of the toolset is installed
-  bool IsWindowsDesktopToolsetInstalled() const;
   bool IsWindowsPhoneToolsetInstalled() const;
   bool IsWindowsStoreToolsetInstalled() const;
   virtual const char* GetIDEVersion() { return "12.0"; }

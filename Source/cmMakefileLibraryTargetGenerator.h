@@ -14,8 +14,7 @@
 
 #include "cmMakefileTargetGenerator.h"
 
-class cmMakefileLibraryTargetGenerator:
-  public cmMakefileTargetGenerator
+class cmMakefileLibraryTargetGenerator : public cmMakefileTargetGenerator
 {
 public:
   cmMakefileLibraryTargetGenerator(cmGeneratorTarget* target);
@@ -31,16 +30,12 @@ protected:
   void WriteSharedLibraryRules(bool relink);
   void WriteModuleLibraryRules(bool relink);
   void WriteLibraryRules(const std::string& linkRule,
-                         const std::string& extraFlags,
-                         bool relink);
+                         const std::string& extraFlags, bool relink);
   // MacOSX Framework support methods
   void WriteFrameworkRules(bool relink);
 
   // Store the computd framework version for OS X Frameworks.
   std::string FrameworkVersion;
-
-  void AppendOSXVerFlag(std::string& flags, const std::string& lang,
-                        const char* name, bool so);
 };
 
 #endif

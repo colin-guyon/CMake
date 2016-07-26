@@ -14,7 +14,6 @@
 
 #include "cmGlobalVisualStudio7Generator.h"
 
-
 /** \class cmGlobalVisualStudio71Generator
  * \brief Write a Unix makefiles.
  *
@@ -23,21 +22,23 @@
 class cmGlobalVisualStudio71Generator : public cmGlobalVisualStudio7Generator
 {
 public:
-  cmGlobalVisualStudio71Generator(const std::string& platformName = "");
-  static cmGlobalGeneratorFactory* NewFactory() {
-    return new cmGlobalGeneratorSimpleFactory
-      <cmGlobalVisualStudio71Generator>(); }
+  cmGlobalVisualStudio71Generator(cmake* cm,
+                                  const std::string& platformName = "");
+  static cmGlobalGeneratorFactory* NewFactory()
+  {
+    return new cmGlobalGeneratorSimpleFactory<
+      cmGlobalVisualStudio71Generator>();
+  }
 
   ///! Get the name for the generator.
-  virtual std::string GetName() const {
-    return cmGlobalVisualStudio71Generator::GetActualName();}
-  static std::string GetActualName() {return "Visual Studio 7 .NET 2003";}
+  virtual std::string GetName() const
+  {
+    return cmGlobalVisualStudio71Generator::GetActualName();
+  }
+  static std::string GetActualName() { return "Visual Studio 7 .NET 2003"; }
 
   /** Get the documentation entry for this generator.  */
   static void GetDocumentation(cmDocumentationEntry& entry);
-
-  ///! Create a local generator appropriate to this Global Generator
-  virtual cmLocalGenerator *CreateLocalGenerator();
 
   /**
    * Where does this version of Visual Studio look for macros for the
@@ -54,26 +55,28 @@ public:
 
 protected:
   virtual const char* GetIDEVersion() { return "7.1"; }
-  virtual void WriteSLNFile(std::ostream& fout,
-                            cmLocalGenerator* root,
+  virtual void WriteSLNFile(std::ostream& fout, cmLocalGenerator* root,
                             std::vector<cmLocalGenerator*>& generators);
-  virtual void WriteSolutionConfigurations(std::ostream& fout);
-  virtual void WriteProject(std::ostream& fout,
-                            const std::string& name, const char* path,
-                            cmTarget const& t);
-  virtual void WriteProjectDepends(std::ostream& fout,
-                           const std::string& name, const char* path,
-                           cmTarget const& t);
+  virtual void WriteSolutionConfigurations(
+    std::ostream& fout, std::vector<std::string> const& configs);
+  virtual void WriteProject(std::ostream& fout, const std::string& name,
+                            const char* path, const cmGeneratorTarget* t);
+  virtual void WriteProjectDepends(std::ostream& fout, const std::string& name,
+                                   const char* path,
+                                   cmGeneratorTarget const* t);
   virtual void WriteProjectConfigurations(
-    std::ostream& fout, const std::string& name, cmTarget::TargetType type,
+    std::ostream& fout, const std::string& name, cmState::TargetType type,
+    std::vector<std::string> const& configs,
     const std::set<std::string>& configsPartOfDefaultBuild,
     const std::string& platformMapping = "");
   virtual void WriteExternalProject(std::ostream& fout,
-                                    const std::string& name,
-                                    const char* path,
+                                    const std::string& name, const char* path,
                                     const char* typeGuid,
                                     const std::set<std::string>& depends);
   virtual void WriteSLNHeader(std::ostream& fout);
+
+  // Folders are not supported by VS 7.1.
+  virtual bool UseFolderProperty() { return false; }
 
   std::string ProjectConfigurationSectionName;
 };

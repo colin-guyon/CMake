@@ -13,7 +13,6 @@
 // that CMake knows about at compile time.
 // This is sort of a boot strapping approach since you would
 // like to have CMake to build CMake.
-#include "cmCommands.h"
 #include "cmAddCustomCommandCommand.cxx"
 #include "cmAddCustomTargetCommand.cxx"
 #include "cmAddDefinitionsCommand.cxx"
@@ -27,6 +26,7 @@
 #include "cmCMakeMinimumRequired.cxx"
 #include "cmCMakePolicyCommand.cxx"
 #include "cmCommandArgumentsHelper.cxx"
+#include "cmCommands.h"
 #include "cmConfigureFileCommand.cxx"
 #include "cmContinueCommand.cxx"
 #include "cmCoreTryCompile.cxx"
@@ -42,10 +42,9 @@
 #include "cmEndWhileCommand.cxx"
 #include "cmExecProgramCommand.cxx"
 #include "cmExecuteProcessCommand.cxx"
-#include "cmExternalMakefileProjectGenerator.cxx"
+#include "cmFileCommand.cxx"
 #include "cmFindBase.cxx"
 #include "cmFindCommon.cxx"
-#include "cmFileCommand.cxx"
 #include "cmFindFileCommand.cxx"
 #include "cmFindLibraryCommand.cxx"
 #include "cmFindPackageCommand.cxx"
@@ -53,10 +52,11 @@
 #include "cmFindProgramCommand.cxx"
 #include "cmForEachCommand.cxx"
 #include "cmFunctionCommand.cxx"
+#include "cmParseArgumentsCommand.cxx"
 #include "cmPathLabel.cxx"
 #include "cmSearchPath.cxx"
 
-void GetBootstrapCommands1(std::list<cmCommand*>& commands)
+void GetBootstrapCommands1(std::vector<cmCommand*>& commands)
 {
   commands.push_back(new cmAddCustomCommandCommand);
   commands.push_back(new cmAddCustomTargetCommand);
@@ -92,4 +92,5 @@ void GetBootstrapCommands1(std::list<cmCommand*>& commands)
   commands.push_back(new cmFindProgramCommand);
   commands.push_back(new cmForEachCommand);
   commands.push_back(new cmFunctionCommand);
+  commands.push_back(new cmParseArgumentsCommand);
 }

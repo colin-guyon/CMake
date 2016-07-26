@@ -16,14 +16,16 @@
 
 #include <vector>
 
-//----------------------------------------------------------------------------
 struct cmGeneratorExpressionToken
 {
-  cmGeneratorExpressionToken(unsigned type, const char *c, size_t l)
-    : TokenType(type), Content(c), Length(l)
+  cmGeneratorExpressionToken(unsigned type, const char* c, size_t l)
+    : TokenType(type)
+    , Content(c)
+    , Length(l)
   {
   }
-  enum {
+  enum
+  {
     Text,
     BeginExpression,
     EndExpression,
@@ -31,7 +33,7 @@ struct cmGeneratorExpressionToken
     CommaSeparator
   };
   unsigned TokenType;
-  const char *Content;
+  const char* Content;
   size_t Length;
 };
 

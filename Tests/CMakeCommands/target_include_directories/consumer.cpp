@@ -1,11 +1,11 @@
 
-#include "common.h"
-#include "publicinclude.h"
-#include "interfaceinclude.h"
-#include "relative_dir.h"
 #include "consumer.h"
+#include "common.h"
+#include "interfaceinclude.h"
+#include "publicinclude.h"
+#include "relative_dir.h"
 #ifdef TEST_LANG_DEFINES
-  #include "cxx_only.h"
+#include "cxx_only.h"
 #endif
 
 #ifdef PRIVATEINCLUDE_DEFINE
@@ -33,9 +33,12 @@
 #endif
 
 #ifdef TEST_LANG_DEFINES
-  #ifndef CXX_ONLY_DEFINE
-  #error Expected CXX_ONLY_DEFINE
-  #endif
+#ifndef CXX_ONLY_DEFINE
+#error Expected CXX_ONLY_DEFINE
+#endif
 #endif
 
-int main() { return 0; }
+int main()
+{
+  return 0;
+}

@@ -13,7 +13,8 @@
 #define cmOutputRequiredFilesCommand_h
 
 #include "cmCommand.h"
-#include "cmMakeDepend.h"
+
+class cmDependInformation;
 
 class cmOutputRequiredFilesCommand : public cmCommand
 {
@@ -21,18 +22,15 @@ public:
   cmTypeMacro(cmOutputRequiredFilesCommand, cmCommand);
   virtual cmCommand* Clone() { return new cmOutputRequiredFilesCommand; }
   virtual bool InitialPass(std::vector<std::string> const& args,
-                           cmExecutionStatus &status);
-  virtual std::string GetName() const { return "output_required_files";}
-  virtual bool IsDiscouraged() const { return true; }
+                           cmExecutionStatus& status);
+  virtual std::string GetName() const { return "output_required_files"; }
 
-  void ListDependencies(cmDependInformation const *info,
-                        FILE *fout,
-                        std::set<cmDependInformation const*> *visited);
+  void ListDependencies(cmDependInformation const* info, FILE* fout,
+                        std::set<cmDependInformation const*>* visited);
+
 private:
   std::string File;
   std::string OutputFile;
 };
-
-
 
 #endif

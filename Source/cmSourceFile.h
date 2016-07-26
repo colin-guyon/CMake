@@ -13,6 +13,7 @@
 #define cmSourceFile_h
 
 #include "cmSourceFileLocation.h"
+
 #include "cmCustomCommand.h"
 #include "cmPropertyMap.h"
 
@@ -40,13 +41,13 @@ public:
    */
   cmCustomCommand* GetCustomCommand();
   cmCustomCommand const* GetCustomCommand() const;
-  void SetCustomCommand(cmCustomCommand *cc);
+  void SetCustomCommand(cmCustomCommand* cc);
 
   ///! Set/Get a property of this source file
-  void SetProperty(const std::string& prop, const char *value);
-  void AppendProperty(const std::string& prop,
-                      const char* value,bool asString=false);
-  const char *GetProperty(const std::string& prop) const;
+  void SetProperty(const std::string& prop, const char* value);
+  void AppendProperty(const std::string& prop, const char* value,
+                      bool asString = false);
+  const char* GetProperty(const std::string& prop) const;
   bool GetPropertyAsBool(const std::string& prop) const;
 
   /** Implement getting a property when called from a CMake language
@@ -85,11 +86,11 @@ public:
   /**
    * Return the vector that holds the list of dependencies
    */
-  const std::vector<std::string> &GetDepends() const {return this->Depends;}
+  const std::vector<std::string>& GetDepends() const { return this->Depends; }
   void AddDepend(const std::string& d) { this->Depends.push_back(d); }
 
   // Get the properties
-  cmPropertyMap &GetProperties() { return this->Properties; }
+  cmPropertyMap& GetProperties() { return this->Properties; }
 
   /**
    * Check whether the given source file location could refer to this
@@ -107,16 +108,15 @@ private:
   std::string Extension;
   std::string Language;
   std::string FullPath;
-  bool FindFullPathFailed;
   std::string ObjectLibrary;
+  std::vector<std::string> Depends;
+  bool FindFullPathFailed;
   bool IsUiFile;
 
   bool FindFullPath(std::string* error);
   bool TryFullPath(const std::string& path, const std::string& ext);
   void CheckExtension();
   void CheckLanguage(std::string const& ext);
-
-  std::vector<std::string> Depends;
 
   static const std::string propLANGUAGE;
 };

@@ -230,7 +230,11 @@ macro(_test_compiler_hidden_visibility)
 endmacro()
 
 macro(_test_compiler_has_deprecated)
+  # NOTE:  Some Embarcadero compilers silently compile __declspec(deprecated)
+  # without error, but this is not a documented feature and the attribute does
+  # not actually generate any warnings.
   if(CMAKE_CXX_COMPILER_ID MATCHES Borland
+      OR CMAKE_CXX_COMPILER_ID MATCHES Embarcadero
       OR CMAKE_CXX_COMPILER_ID MATCHES HP
       OR GCC_TOO_OLD
       OR CMAKE_CXX_COMPILER_ID MATCHES PGI
@@ -268,7 +272,7 @@ macro(_DO_SET_MACRO_VALUES TARGET_LIBRARY)
   get_property(type TARGET ${TARGET_LIBRARY} PROPERTY TYPE)
 
   if(NOT ${type} STREQUAL "STATIC_LIBRARY")
-    if(WIN32)
+    if(WIN32 OR CYGWIN)
       set(DEFINE_EXPORT "__declspec(dllexport)")
       set(DEFINE_IMPORT "__declspec(dllimport)")
     elseif(COMPILER_HAS_HIDDEN_VISIBILITY AND USE_COMPILER_HIDDEN_VISIBILITY)
@@ -337,7 +341,9 @@ macro(_DO_GENERATE_EXPORT_HEADER TARGET_LIBRARY)
   string(MAKE_C_IDENTIFIER ${STATIC_DEFINE} STATIC_DEFINE)
 
   if(_GEH_DEFINE_NO_DEPRECATED)
-    set(DEFINE_NO_DEPRECATED TRUE)
+    set(DEFINE_NO_DEPRECATED 1)
+  else()
+    set(DEFINE_NO_DEPRECATED 0)
   endif()
 
   if(_GEH_NO_DEPRECATED_MACRO_NAME)

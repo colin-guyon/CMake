@@ -13,17 +13,24 @@
 #define cmExportSet_h
 
 #include "cmSystemTools.h"
+
 class cmTargetExport;
 class cmInstallExportGenerator;
+class cmLocalGenerator;
 
 /// A set of targets that were installed with the same EXPORT parameter.
 class cmExportSet
 {
 public:
   /// Construct an empty export set named \a name
-  cmExportSet(const std::string &name) : Name(name) {}
+  cmExportSet(const std::string& name)
+    : Name(name)
+  {
+  }
   /// Destructor
   ~cmExportSet();
+
+  void Compute(cmLocalGenerator* lg);
 
   void AddTargetExport(cmTargetExport* tgt);
 
@@ -32,10 +39,14 @@ public:
   std::string const& GetName() const { return this->Name; }
 
   std::vector<cmTargetExport*> const* GetTargetExports() const
-     { return &this->TargetExports; }
+  {
+    return &this->TargetExports;
+  }
 
   std::vector<cmInstallExportGenerator const*> const* GetInstallations() const
-     { return &this->Installations; }
+  {
+    return &this->Installations;
+  }
 
 private:
   std::vector<cmTargetExport*> TargetExports;

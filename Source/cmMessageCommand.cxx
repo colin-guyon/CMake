@@ -12,84 +12,68 @@
 #include "cmMessageCommand.h"
 
 // cmLibraryCommand
-bool cmMessageCommand
-::InitialPass(std::vector<std::string> const& args, cmExecutionStatus &)
+bool cmMessageCommand::InitialPass(std::vector<std::string> const& args,
+                                   cmExecutionStatus&)
 {
-  if(args.size() < 1 )
-    {
+  if (args.size() < 1) {
     this->SetError("called with incorrect number of arguments");
     return false;
-    }
+  }
   std::vector<std::string>::const_iterator i = args.begin();
 
   cmake::MessageType type = cmake::MESSAGE;
   bool status = false;
   bool fatal = false;
-  if (*i == "SEND_ERROR")
-    {
+  cmake* cm = this->Makefile->GetCMakeInstance();
+  if (*i == "SEND_ERROR") {
     type = cmake::FATAL_ERROR;
     ++i;
-    }
-  else if (*i == "FATAL_ERROR")
-    {
+  } else if (*i == "FATAL_ERROR") {
     fatal = true;
     type = cmake::FATAL_ERROR;
     ++i;
-    }
-  else if (*i == "WARNING")
-    {
+  } else if (*i == "WARNING") {
     type = cmake::WARNING;
     ++i;
+  } else if (*i == "AUTHOR_WARNING") {
+    if (cm->GetDevWarningsAsErrors(this->Makefile)) {
+      fatal = true;
+      type = cmake::AUTHOR_ERROR;
+    } else if (!cm->GetSuppressDevWarnings(this->Makefile)) {
+      type = cmake::AUTHOR_WARNING;
+    } else {
+      return true;
     }
-  else if (*i == "AUTHOR_WARNING")
-    {
-    type = cmake::AUTHOR_WARNING;
     ++i;
-    }
-  else if (*i == "STATUS")
-    {
+  } else if (*i == "STATUS") {
     status = true;
     ++i;
-    }
-  else if (*i == "DEPRECATION")
-    {
-    if (this->Makefile->IsOn("CMAKE_ERROR_DEPRECATED"))
-      {
+  } else if (*i == "DEPRECATION") {
+    if (cm->GetDeprecatedWarningsAsErrors(this->Makefile)) {
       fatal = true;
       type = cmake::DEPRECATION_ERROR;
-      }
-    else if (this->Makefile->IsOn("CMAKE_WARN_DEPRECATED"))
-      {
+    } else if (!cm->GetSuppressDeprecatedWarnings(this->Makefile)) {
       type = cmake::DEPRECATION_WARNING;
-      }
-    else
-      {
+    } else {
       return true;
-      }
+    }
     ++i;
-    }
+  }
 
-  std::string message = cmJoin(cmRange(i, args.end()), std::string());
+  std::string message = cmJoin(cmMakeRange(i, args.end()), std::string());
 
-  if (type != cmake::MESSAGE)
-    {
-    this->Makefile->IssueMessage(type, message);
-    }
-  else
-    {
-    if (status)
-      {
+  if (type != cmake::MESSAGE) {
+    // we've overriden the message type, above, so force IssueMessage to use it
+    this->Makefile->IssueMessage(type, message, true);
+  } else {
+    if (status) {
       this->Makefile->DisplayStatus(message.c_str(), -1);
-      }
-    else
-      {
+    } else {
       cmSystemTools::Message(message.c_str());
-      }
     }
-  if(fatal)
-    {
+  }
+  if (fatal) {
     cmSystemTools::SetFatalErrorOccured();
-    }
+  }
   return true;
 }
-

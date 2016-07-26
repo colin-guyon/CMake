@@ -164,3 +164,33 @@ add_custom_command(
   DEPENDS multi1-out2.txt
   )
 add_custom_target(multi1 ALL DEPENDS multi1-out2-copy.txt)
+
+# Test having the first output never created.
+add_custom_command(
+  OUTPUT multi2-dummy.txt multi2-real.txt
+  COMMAND ${CMAKE_COMMAND} -E touch multi2-real.txt
+  )
+set_property(SOURCE multi2-real.txt multi2-dummy.txt PROPERTY SYMBOLIC 1)
+add_custom_target(multi2 ALL DEPENDS multi2-real.txt)
+
+if(TEST_MULTI3)
+  # Test having the second output never created.  Does not work with msbuild.
+  add_custom_command(
+    OUTPUT multi3-real.txt multi3-dummy.txt
+    COMMAND ${CMAKE_COMMAND} -E touch multi3-real.txt
+    )
+  set_property(SOURCE multi3-real.txt multi3-dummy.txt PROPERTY SYMBOLIC 1)
+  add_custom_target(multi3 ALL DEPENDS multi3-real.txt)
+endif()
+
+add_executable(object_depends object_depends.cxx)
+set_property(SOURCE object_depends.cxx PROPERTY OBJECT_DEPENDS
+  ${CMAKE_CURRENT_BINARY_DIR}/object_depends.txt)
+add_custom_target(object_depends_check ALL
+  COMMAND ${CMAKE_COMMAND}
+   -Dexe=$<TARGET_FILE:object_depends>
+   -Dout=${CMAKE_CURRENT_BINARY_DIR}/object_depends_check.txt
+   -Dtxt=${CMAKE_CURRENT_BINARY_DIR}/object_depends.txt
+   -P ${CMAKE_CURRENT_SOURCE_DIR}/object_depends_check.cmake
+  )
+add_dependencies(object_depends_check object_depends)

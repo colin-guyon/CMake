@@ -16,6 +16,7 @@
 # Copyright 2006-2014 Kitware, Inc.
 # Copyright 2014      Christoph Grüninger <foss@grueninger.de>
 # Copyright 2006      Enrico Scholz <enrico.scholz@informatik.tu-chemnitz.de>
+# Copyright 2016      Rolf Eike Beer <eike@sf-mail.de>
 #
 # Distributed under the OSI-approved BSD License (the "License");
 # see accompanying file Copyright.txt for details.
@@ -70,14 +71,14 @@ macro(_pkgconfig_invoke _pkglist _prefix _varname _regexp)
   execute_process(
     COMMAND ${PKG_CONFIG_EXECUTABLE} ${ARGN} ${_pkglist}
     OUTPUT_VARIABLE _pkgconfig_invoke_result
-    RESULT_VARIABLE _pkgconfig_failed)
+    RESULT_VARIABLE _pkgconfig_failed
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
 
   if (_pkgconfig_failed)
     set(_pkgconfig_${_varname} "")
     _pkgconfig_unset(${_prefix}_${_varname})
   else()
     string(REGEX REPLACE "[\r\n]"                  " " _pkgconfig_invoke_result "${_pkgconfig_invoke_result}")
-    string(REGEX REPLACE " +$"                     ""  _pkgconfig_invoke_result "${_pkgconfig_invoke_result}")
 
     if (NOT ${_regexp} STREQUAL "")
       string(REGEX REPLACE "${_regexp}" " " _pkgconfig_invoke_result "${_pkgconfig_invoke_result}")
@@ -91,6 +92,26 @@ macro(_pkgconfig_invoke _pkglist _prefix _varname _regexp)
   endif()
 endmacro()
 
+#[========================================[.rst:
+.. command:: pkg_get_variable
+
+  Retrieves the value of a variable from a package::
+
+    pkg_get_variable(<RESULT> <MODULE> <VARIABLE>)
+
+  For example:
+
+  .. code-block:: cmake
+
+    pkg_get_variable(GI_GIRDIR gobject-introspection-1.0 girdir)
+#]========================================]
+function (pkg_get_variable result pkg variable)
+  _pkgconfig_invoke("${pkg}" "prefix" "result" "" "--variable=${variable}")
+  set("${result}"
+    "${prefix_result}"
+    PARENT_SCOPE)
+endfunction ()
+
 # Invokes pkgconfig two times; once without '--static' and once with
 # '--static'
 macro(_pkgconfig_invoke_dyn _pkglist _prefix _varname cleanup_regexp)
@@ -99,17 +120,18 @@ macro(_pkgconfig_invoke_dyn _pkglist _prefix _varname cleanup_regexp)
 endmacro()
 
 # Splits given arguments into options and a package list
-macro(_pkgconfig_parse_options _result _is_req _is_silent _no_cmake_path _no_cmake_environment_path)
+macro(_pkgconfig_parse_options _result _is_req _is_silent _no_cmake_path _no_cmake_environment_path _imp_target)
   set(${_is_req} 0)
   set(${_is_silent} 0)
   set(${_no_cmake_path} 0)
   set(${_no_cmake_environment_path} 0)
+  set(${_imp_target} 0)
   if(DEFINED PKG_CONFIG_USE_CMAKE_PREFIX_PATH)
     if(NOT PKG_CONFIG_USE_CMAKE_PREFIX_PATH)
       set(${_no_cmake_path} 1)
       set(${_no_cmake_environment_path} 1)
     endif()
-  elseif(${CMAKE_MINIMUM_REQUIRED_VERSION} VERSION_LESS 3.1)
+  elseif(CMAKE_MINIMUM_REQUIRED_VERSION VERSION_LESS 3.1)
     set(${_no_cmake_path} 1)
     set(${_no_cmake_environment_path} 1)
   endif()
@@ -127,6 +149,9 @@ macro(_pkgconfig_parse_options _result _is_req _is_silent _no_cmake_path _no_cma
     if (_pkg STREQUAL "NO_CMAKE_ENVIRONMENT_PATH")
       set(${_no_cmake_environment_path} 1)
     endif()
+    if (_pkg STREQUAL "IMPORTED_TARGET")
+      set(${_imp_target} 1)
+    endif()
   endforeach()
 
   set(${_result} ${ARGN})
@@ -134,6 +159,7 @@ macro(_pkgconfig_parse_options _result _is_req _is_silent _no_cmake_path _no_cma
   list(REMOVE_ITEM ${_result} "QUIET")
   list(REMOVE_ITEM ${_result} "NO_CMAKE_PATH")
   list(REMOVE_ITEM ${_result} "NO_CMAKE_ENVIRONMENT_PATH")
+  list(REMOVE_ITEM ${_result} "IMPORTED_TARGET")
 endmacro()
 
 # Add the content of a variable or an environment variable to a list of
@@ -149,7 +175,7 @@ function(_pkgconfig_add_extra_path _extra_paths_var _var)
   endif()
   if(NOT _is_env)
     if(NOT "${${_var}}" STREQUAL "")
-      list(APPEND ${_extra_paths_var} ${CMAKE_PREFIX_PATH})
+      list(APPEND ${_extra_paths_var} ${${_var}})
     endif()
   else()
     if(NOT "$ENV{${_var}}" STREQUAL "")
@@ -161,8 +187,63 @@ function(_pkgconfig_add_extra_path _extra_paths_var _var)
   set(${_extra_paths_var} ${${_extra_paths_var}} PARENT_SCOPE)
 endfunction()
 
+# scan the LDFLAGS returned by pkg-config for library directories and
+# libraries, figure out the absolute paths of that libraries in the
+# given directories, and create an imported target from them
+function(_pkg_create_imp_target _prefix _no_cmake_path _no_cmake_environment_path)
+  unset(_libs)
+  unset(_find_opts)
+
+  # set the options that are used as long as the .pc file does not provide a library
+  # path to look into
+  if(_no_cmake_path)
+    set(_find_opts "NO_CMAKE_PATH")
+  endif()
+  if(_no_cmake_environment_path)
+    set(_find_opts "${_find_opts} NO_CMAKE_ENVIRONMENT_PATH")
+  endif()
+
+  foreach (flag IN LISTS ${_prefix}_LDFLAGS)
+    if (flag MATCHES "^-L(.*)")
+      # only look into the given paths from now on
+      set(_find_opts "HINTS ${${CMAKE_MATCH_1}} NO_DEFAULT_PATH")
+      continue()
+    endif()
+    if (flag MATCHES "^-l(.*)")
+      set(_pkg_search "${CMAKE_MATCH_1}")
+    else()
+      continue()
+    endif()
+
+    find_library(pkgcfg_lib_${_prefix}_${_pkg_search}
+                 NAMES ${_pkg_search}
+                 ${_find_opts})
+    list(APPEND _libs "${pkgcfg_lib_${_prefix}_${_pkg_search}}")
+  endforeach()
+
+  # only create the target if it is linkable, i.e. no executables
+  if (NOT TARGET PkgConfig::${_prefix}
+      AND ( ${_prefix}_INCLUDE_DIRS OR _libs OR ${_prefix}_CFLAGS_OTHER ))
+    add_library(PkgConfig::${_prefix} INTERFACE IMPORTED)
+
+    unset(_props)
+    if(${_prefix}_INCLUDE_DIRS)
+      set_property(TARGET PkgConfig::${_prefix} PROPERTY
+                   INTERFACE_INCLUDE_DIRECTORIES "${${_prefix}_INCLUDE_DIRS}")
+    endif()
+    if(_libs)
+      set_property(TARGET PkgConfig::${_prefix} PROPERTY
+                   INTERFACE_LINK_LIBRARIES "${_libs}")
+    endif()
+    if(${_prefix}_CFLAGS_OTHER)
+      set_property(TARGET PkgConfig::${_prefix} PROPERTY
+                   INTERFACE_COMPILE_OPTIONS "${${_prefix}_CFLAGS_OTHER}")
+    endif()
+  endif()
+endfunction()
+
 ###
-macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cmake_environment_path _prefix)
+macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cmake_environment_path _imp_target _prefix)
   _pkgconfig_unset(${_prefix}_FOUND)
   _pkgconfig_unset(${_prefix}_VERSION)
   _pkgconfig_unset(${_prefix}_PREFIX)
@@ -192,9 +273,9 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
     # give out status message telling checked module
     if (NOT ${_is_silent})
       if (_pkg_check_modules_cnt EQUAL 1)
-        message(STATUS "checking for module '${_pkg_check_modules_list}'")
+        message(STATUS "Checking for module '${_pkg_check_modules_list}'")
       else()
-        message(STATUS "checking for modules '${_pkg_check_modules_list}'")
+        message(STATUS "Checking for modules '${_pkg_check_modules_list}'")
       endif()
     endif()
 
@@ -218,8 +299,8 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
     if(NOT "${_extra_paths}" STREQUAL "")
       # Save the PKG_CONFIG_PATH environment variable, and add paths
       # from the CMAKE_PREFIX_PATH variables
-      set(_pkgconfig_path_old $ENV{PKG_CONFIG_PATH})
-      set(_pkgconfig_path ${_pkgconfig_path_old})
+      set(_pkgconfig_path_old "$ENV{PKG_CONFIG_PATH}")
+      set(_pkgconfig_path "${_pkgconfig_path_old}")
       if(NOT "${_pkgconfig_path}" STREQUAL "")
         file(TO_CMAKE_PATH "${_pkgconfig_path}" _pkgconfig_path)
       endif()
@@ -243,6 +324,7 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
         endif()
       endif()
       list(APPEND _lib_dirs "lib/pkgconfig")
+      list(APPEND _lib_dirs "share/pkgconfig")
 
       # Check if directories exist and eventually append them to the
       # pkgconfig path list
@@ -264,7 +346,7 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
           string(REPLACE ";" ":" _pkgconfig_path "${_pkgconfig_path}")
           string(REPLACE "\\ " " " _pkgconfig_path "${_pkgconfig_path}")
         endif()
-        set(ENV{PKG_CONFIG_PATH} ${_pkgconfig_path})
+        set(ENV{PKG_CONFIG_PATH} "${_pkgconfig_path}")
       endif()
 
       # Unset variables
@@ -308,7 +390,7 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
       if (_pkg_check_modules_pkg_op)
         list(APPEND _pkg_check_modules_exist_query "${_pkg_check_modules_pkg_ver}")
       else()
-        list(APPEND _pkg_check_modules_exist_query --exists)
+        list(APPEND _pkg_check_modules_exist_query --exists --print-errors --short-errors)
       endif()
 
       _pkgconfig_unset(${_prefix}_${_pkg_check_modules_pkg_name}_VERSION)
@@ -322,12 +404,14 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
       # execute the query
       execute_process(
         COMMAND ${PKG_CONFIG_EXECUTABLE} ${_pkg_check_modules_exist_query}
-        RESULT_VARIABLE _pkgconfig_retval)
+        RESULT_VARIABLE _pkgconfig_retval
+        ERROR_VARIABLE _pkgconfig_error
+        ERROR_STRIP_TRAILING_WHITESPACE)
 
       # evaluate result and tell failures
       if (_pkgconfig_retval)
         if(NOT ${_is_silent})
-          message(STATUS "  package '${_pkg_check_modules_pkg}' not found")
+          message(STATUS "  ${_pkgconfig_error}")
         endif()
 
         set(_pkg_check_modules_failed 1)
@@ -356,12 +440,15 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
         endif()
 
         _pkgconfig_invoke(${_pkg_check_modules_pkg} "${_pkg_check_prefix}" VERSION    ""   --modversion )
-        _pkgconfig_invoke(${_pkg_check_modules_pkg} "${_pkg_check_prefix}" PREFIX     ""   --variable=prefix )
-        _pkgconfig_invoke(${_pkg_check_modules_pkg} "${_pkg_check_prefix}" INCLUDEDIR ""   --variable=includedir )
-        _pkgconfig_invoke(${_pkg_check_modules_pkg} "${_pkg_check_prefix}" LIBDIR     ""   --variable=libdir )
+        pkg_get_variable("${_pkg_check_prefix}_PREFIX" ${_pkg_check_modules_pkg} "prefix")
+        pkg_get_variable("${_pkg_check_prefix}_INCLUDEDIR" ${_pkg_check_modules_pkg} "includedir")
+        pkg_get_variable("${_pkg_check_prefix}_LIBDIR" ${_pkg_check_modules_pkg} "libdir")
+        foreach (variable IN ITEMS PREFIX INCLUDEDIR LIBDIR)
+          _pkgconfig_set("${_pkg_check_prefix}_${variable}" "${${_pkg_check_prefix}_${variable}}")
+        endforeach ()
 
         if (NOT ${_is_silent})
-          message(STATUS "  found ${_pkg_check_modules_pkg}, version ${_pkgconfig_VERSION}")
+          message(STATUS "  Found ${_pkg_check_modules_pkg}, version ${_pkgconfig_VERSION}")
         endif ()
       endforeach()
 
@@ -374,11 +461,15 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
       _pkgconfig_invoke_dyn("${_pkg_check_modules_packages}" "${_prefix}" INCLUDE_DIRS        "(^| )-I" --cflags-only-I )
       _pkgconfig_invoke_dyn("${_pkg_check_modules_packages}" "${_prefix}" CFLAGS              ""        --cflags )
       _pkgconfig_invoke_dyn("${_pkg_check_modules_packages}" "${_prefix}" CFLAGS_OTHER        ""        --cflags-only-other )
+
+      if (_imp_target)
+        _pkg_create_imp_target("${_prefix}" _no_cmake_path _no_cmake_environment_path)
+      endif()
     endif()
 
     if(NOT "${_extra_paths}" STREQUAL "")
       # Restore the environment variable
-      set(ENV{PKG_CONFIG_PATH} ${_pkgconfig_path})
+      set(ENV{PKG_CONFIG_PATH} "${_pkgconfig_path_old}")
     endif()
 
     unset(_extra_paths)
@@ -401,6 +492,7 @@ endmacro()
 
     pkg_check_modules(<PREFIX> [REQUIRED] [QUIET]
                       [NO_CMAKE_PATH] [NO_CMAKE_ENVIRONMENT_PATH]
+                      [IMPORTED_TARGET]
                       <MODULE> [<MODULE>]*)
 
 
@@ -417,6 +509,9 @@ endmacro()
  The ``NO_CMAKE_PATH`` and ``NO_CMAKE_ENVIRONMENT_PATH`` arguments
  disable this behavior for the cache variables and the environment
  variables, respectively.
+ The ``IMPORTED_TARGET`` argument will create an imported target named
+ PkgConfig::<PREFIX>> that can be passed directly as an argument to
+ :command:`target_link_libraries`.
 
  It sets the following variables: ::
 
@@ -496,12 +591,14 @@ endmacro()
    XRENDER_STATIC_LIBRARIES=Xrender;X11;pthread;Xau;Xdmcp
 #]========================================]
 macro(pkg_check_modules _prefix _module0)
+  _pkgconfig_parse_options(_pkg_modules _pkg_is_required _pkg_is_silent _no_cmake_path _no_cmake_environment_path _imp_target "${_module0}" ${ARGN})
   # check cached value
   if (NOT DEFINED __pkg_config_checked_${_prefix} OR __pkg_config_checked_${_prefix} LESS ${PKG_CONFIG_VERSION} OR NOT ${_prefix}_FOUND)
-    _pkgconfig_parse_options   (_pkg_modules _pkg_is_required _pkg_is_silent _no_cmake_path _no_cmake_environment_path "${_module0}" ${ARGN})
-    _pkg_check_modules_internal("${_pkg_is_required}" "${_pkg_is_silent}" ${_no_cmake_path} ${_no_cmake_environment_path} "${_prefix}" ${_pkg_modules})
+    _pkg_check_modules_internal("${_pkg_is_required}" "${_pkg_is_silent}" ${_no_cmake_path} ${_no_cmake_environment_path} ${_imp_target} "${_prefix}" ${_pkg_modules})
 
     _pkgconfig_set(__pkg_config_checked_${_prefix} ${PKG_CONFIG_VERSION})
+  elseif (${_prefix}_FOUND AND ${_imp_target})
+    _pkg_create_imp_target("${_prefix}" _no_cmake_path _no_cmake_environment_path)
   endif()
 endmacro()
 
@@ -514,6 +611,7 @@ endmacro()
 
     pkg_search_module(<PREFIX> [REQUIRED] [QUIET]
                       [NO_CMAKE_PATH] [NO_CMAKE_ENVIRONMENT_PATH]
+                      [IMPORTED_TARGET]
                       <MODULE> [<MODULE>]*)
 
  Examples
@@ -523,19 +621,19 @@ endmacro()
     pkg_search_module (BAR     libxml-2.0 libxml2 libxml>=2)
 #]========================================]
 macro(pkg_search_module _prefix _module0)
+  _pkgconfig_parse_options(_pkg_modules_alt _pkg_is_required _pkg_is_silent _no_cmake_path _no_cmake_environment_path _imp_target "${_module0}" ${ARGN})
   # check cached value
   if (NOT DEFINED __pkg_config_checked_${_prefix} OR __pkg_config_checked_${_prefix} LESS ${PKG_CONFIG_VERSION} OR NOT ${_prefix}_FOUND)
     set(_pkg_modules_found 0)
-    _pkgconfig_parse_options(_pkg_modules_alt _pkg_is_required _pkg_is_silent _no_cmake_path _no_cmake_environment_path "${_module0}" ${ARGN})
 
     if (NOT ${_pkg_is_silent})
-      message(STATUS "checking for one of the modules '${_pkg_modules_alt}'")
+      message(STATUS "Checking for one of the modules '${_pkg_modules_alt}'")
     endif ()
 
     # iterate through all modules and stop at the first working one.
     foreach(_pkg_alt ${_pkg_modules_alt})
       if(NOT _pkg_modules_found)
-        _pkg_check_modules_internal(0 1 ${_no_cmake_path} ${_no_cmake_environment_path} "${_prefix}" "${_pkg_alt}")
+        _pkg_check_modules_internal(0 1 ${_no_cmake_path} ${_no_cmake_environment_path} ${_imp_target} "${_prefix}" "${_pkg_alt}")
       endif()
 
       if (${_prefix}_FOUND)
@@ -550,6 +648,8 @@ macro(pkg_search_module _prefix _module0)
     endif()
 
     _pkgconfig_set(__pkg_config_checked_${_prefix} ${PKG_CONFIG_VERSION})
+  elseif (${_prefix}_FOUND AND ${_imp_target})
+    _pkg_create_imp_target("${_prefix}" _no_cmake_path _no_cmake_environment_path)
   endif()
 endmacro()
 

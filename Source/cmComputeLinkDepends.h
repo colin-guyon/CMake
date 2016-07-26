@@ -13,17 +13,16 @@
 #define cmComputeLinkDepends_h
 
 #include "cmStandardIncludes.h"
-#include "cmTarget.h"
 
 #include "cmGraphAdjacencyList.h"
+#include "cmLinkItem.h"
 
 #include <queue>
 
 class cmComputeComponentGraph;
 class cmGlobalGenerator;
-class cmLocalGenerator;
 class cmMakefile;
-class cmTarget;
+class cmGeneratorTarget;
 class cmake;
 
 /** \class cmComputeLinkDepends
@@ -32,58 +31,60 @@ class cmake;
 class cmComputeLinkDepends
 {
 public:
-  cmComputeLinkDepends(cmTarget const* target, const std::string& config);
+  cmComputeLinkDepends(cmGeneratorTarget const* target,
+                       const std::string& config);
   ~cmComputeLinkDepends();
 
   // Basic information about each link item.
   struct LinkEntry
   {
     std::string Item;
-    cmTarget const* Target;
+    cmGeneratorTarget const* Target;
     bool IsSharedDep;
     bool IsFlag;
-    LinkEntry(): Item(), Target(0), IsSharedDep(false), IsFlag(false) {}
-    LinkEntry(LinkEntry const& r):
-      Item(r.Item), Target(r.Target), IsSharedDep(r.IsSharedDep),
-      IsFlag(r.IsFlag) {}
+    LinkEntry()
+      : Item()
+      , Target(0)
+      , IsSharedDep(false)
+      , IsFlag(false)
+    {
+    }
+    LinkEntry(LinkEntry const& r)
+      : Item(r.Item)
+      , Target(r.Target)
+      , IsSharedDep(r.IsSharedDep)
+      , IsFlag(r.IsFlag)
+    {
+    }
   };
 
   typedef std::vector<LinkEntry> EntryVector;
   EntryVector const& Compute();
 
   void SetOldLinkDirMode(bool b);
-  std::set<cmTarget const*> const& GetOldWrongConfigItems() const
-    { return this->OldWrongConfigItems; }
+  std::set<cmGeneratorTarget const*> const& GetOldWrongConfigItems() const
+  {
+    return this->OldWrongConfigItems;
+  }
 
 private:
-
   // Context information.
-  cmTarget const* Target;
+  cmGeneratorTarget const* Target;
   cmMakefile* Makefile;
-  cmLocalGenerator* LocalGenerator;
   cmGlobalGenerator const* GlobalGenerator;
   cmake* CMakeInstance;
-  bool DebugMode;
-
-  // Configuration information.
-  bool HasConfig;
   std::string Config;
-  cmTarget::LinkLibraryType LinkType;
-
-  // Output information.
   EntryVector FinalLinkEntries;
 
-  typedef cmTarget::LinkLibraryVectorType LinkLibraryVectorType;
-
-  std::map<std::string, int>::iterator
-  AllocateLinkEntry(std::string const& item);
+  std::map<std::string, int>::iterator AllocateLinkEntry(
+    std::string const& item);
   int AddLinkEntry(cmLinkItem const& item);
   void AddVarLinkEntries(int depender_index, const char* value);
   void AddDirectLinkEntries();
   template <typename T>
-    void AddLinkEntries(int depender_index, std::vector<T> const& libs);
-  cmTarget const* FindTargetToLink(int depender_index,
-                                   const std::string& name);
+  void AddLinkEntries(int depender_index, std::vector<T> const& libs);
+  cmGeneratorTarget const* FindTargetToLink(int depender_index,
+                                            const std::string& name);
 
   // One entry for each unique item.
   std::vector<LinkEntry> EntryList;
@@ -108,16 +109,19 @@ private:
   };
   std::queue<SharedDepEntry> SharedDepQueue;
   std::set<int> SharedDepFollowed;
-  void FollowSharedDeps(int depender_index,
-                        cmTarget::LinkInterface const* iface,
+  void FollowSharedDeps(int depender_index, cmLinkInterface const* iface,
                         bool follow_interface = false);
   void QueueSharedDependencies(int depender_index,
                                std::vector<cmLinkItem> const& deps);
   void HandleSharedDependency(SharedDepEntry const& dep);
 
   // Dependency inferral for each link item.
-  struct DependSet: public std::set<int> {};
-  struct DependSetList: public std::vector<DependSet> {};
+  struct DependSet : public std::set<int>
+  {
+  };
+  struct DependSetList : public std::vector<DependSet>
+  {
+  };
   std::vector<DependSetList*> InferredDependSets;
   void InferDependencies();
 
@@ -133,7 +137,7 @@ private:
   void OrderLinkEntires();
   std::vector<char> ComponentVisited;
   std::vector<int> ComponentOrder;
-  int ComponentOrderId;
+
   struct PendingComponent
   {
     // The real component id.  Needed because the map is indexed by
@@ -160,11 +164,14 @@ private:
 
   // Record of the original link line.
   std::vector<int> OriginalEntries;
-
-  // Compatibility help.
-  bool OldLinkDirMode;
+  std::set<cmGeneratorTarget const*> OldWrongConfigItems;
   void CheckWrongConfigItem(cmLinkItem const& item);
-  std::set<cmTarget const*> OldWrongConfigItems;
+
+  int ComponentOrderId;
+  cmTargetLinkLibraryType LinkType;
+  bool HasConfig;
+  bool DebugMode;
+  bool OldLinkDirMode;
 };
 
 #endif

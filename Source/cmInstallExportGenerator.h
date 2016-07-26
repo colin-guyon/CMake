@@ -23,26 +23,26 @@ class cmMakefile;
 /** \class cmInstallExportGenerator
  * \brief Generate rules for creating an export files.
  */
-class cmInstallExportGenerator: public cmInstallGenerator
+class cmInstallExportGenerator : public cmInstallGenerator
 {
 public:
-  cmInstallExportGenerator(cmExportSet* exportSet,
-                           const char* dest, const char* file_permissions,
+  cmInstallExportGenerator(cmExportSet* exportSet, const char* dest,
+                           const char* file_permissions,
                            const std::vector<std::string>& configurations,
-                           const char* component,
-                           MessageLevel message,
-                           const char* filename, const char* name_space,
-                           bool exportOld, cmMakefile* mf);
+                           const char* component, MessageLevel message,
+                           bool exclude_from_all, const char* filename,
+                           const char* name_space, bool exportOld);
   ~cmInstallExportGenerator();
 
-  cmExportSet* GetExportSet() {return this->ExportSet;}
+  cmExportSet* GetExportSet() { return this->ExportSet; }
 
-  cmMakefile* GetMakefile() const { return this->Makefile; }
+  void Compute(cmLocalGenerator* lg);
+
+  cmLocalGenerator* GetLocalGenerator() const { return this->LocalGenerator; }
 
   const std::string& GetNamespace() const { return this->Namespace; }
 
-  std::string const& GetDestination() const
-    { return this->Destination; }
+  std::string const& GetDestination() const { return this->Destination; }
 
 protected:
   virtual void GenerateScript(std::ostream& os);
@@ -57,7 +57,7 @@ protected:
   std::string FileName;
   std::string Namespace;
   bool ExportOld;
-  cmMakefile* Makefile;
+  cmLocalGenerator* LocalGenerator;
 
   std::string TempDir;
   std::string MainImportFile;

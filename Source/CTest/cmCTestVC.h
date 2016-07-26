@@ -15,12 +15,13 @@
 #include "cmProcessTools.h"
 
 class cmCTest;
+class cmXMLWriter;
 
 /** \class cmCTestVC
  * \brief Base class for version control system handlers
  *
  */
-class cmCTestVC: public cmProcessTools
+class cmCTestVC : public cmProcessTools
 {
 public:
   /** Construct with a CTest instance and update log stream.  */
@@ -48,13 +49,20 @@ public:
 
   /** Get the command line used by the Update method.  */
   std::string const& GetUpdateCommandLine() const
-    { return this->UpdateCommandLine; }
+  {
+    return this->UpdateCommandLine;
+  }
 
   /** Write Update.xml entries for the updates found.  */
-  bool WriteXML(std::ostream& xml);
+  bool WriteXML(cmXMLWriter& xml);
 
   /** Enumerate non-trivial working tree states during update.  */
-  enum PathStatus { PathUpdated, PathModified, PathConflicting };
+  enum PathStatus
+  {
+    PathUpdated,
+    PathModified,
+    PathConflicting
+  };
 
   /** Get the number of working tree paths in each state after update.  */
   int GetPathCount(PathStatus s) const { return this->PathCount[s]; }
@@ -65,10 +73,11 @@ protected:
   virtual void NoteOldRevision();
   virtual bool UpdateImpl();
   virtual void NoteNewRevision();
-  virtual bool WriteXMLUpdates(std::ostream& xml);
+  virtual bool WriteXMLUpdates(cmXMLWriter& xml);
 
 #if defined(__SUNPRO_CC) && __SUNPRO_CC <= 0x510
-public: // Sun CC 5.1 needs help to allow cmCTestSVN::Revision to see this
+  // Sun CC 5.1 needs help to allow cmCTestSVN::Revision to see this
+public:
 #endif
   /** Basic information about one revision of a tree or file.  */
   struct Revision
@@ -93,24 +102,33 @@ protected:
     PathStatus Status;
     Revision const* Rev;
     Revision const* PriorRev;
-    File(): Status(PathUpdated), Rev(0), PriorRev(0) {}
-    File(PathStatus status, Revision const* rev, Revision const* priorRev):
-      Status(status), Rev(rev), PriorRev(priorRev) {}
+    File()
+      : Status(PathUpdated)
+      , Rev(0)
+      , PriorRev(0)
+    {
+    }
+    File(PathStatus status, Revision const* rev, Revision const* priorRev)
+      : Status(status)
+      , Rev(rev)
+      , PriorRev(priorRev)
+    {
+    }
   };
 
   /** Convert a list of arguments to a human-readable command line.  */
   static std::string ComputeCommandLine(char const* const* cmd);
 
   /** Run a command line and send output to given parsers.  */
-  bool RunChild(char const* const* cmd, OutputParser* out,
-                OutputParser* err, const char* workDir = 0);
+  bool RunChild(char const* const* cmd, OutputParser* out, OutputParser* err,
+                const char* workDir = 0);
 
   /** Run VC update command line and send output to given parsers.  */
-  bool RunUpdateCommand(char const* const* cmd,
-                        OutputParser* out, OutputParser* err = 0);
+  bool RunUpdateCommand(char const* const* cmd, OutputParser* out,
+                        OutputParser* err = 0);
 
   /** Write xml element for one file.  */
-  void WriteXMLEntry(std::ostream& xml, std::string const& path,
+  void WriteXMLEntry(cmXMLWriter& xml, std::string const& path,
                      std::string const& name, std::string const& full,
                      File const& f);
 

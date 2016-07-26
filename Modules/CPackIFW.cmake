@@ -2,10 +2,10 @@
 # CPackIFW
 # --------
 #
-# .. _QtIFW: http://qt-project.org/doc/qtinstallerframework/index.html
+# .. _QtIFW: http://doc.qt.io/qtinstallerframework/index.html
 #
-# This module looks for the location of the command line utilities supplied with
-# the Qt Installer Framework (QtIFW_).
+# This module looks for the location of the command line utilities supplied
+# with the Qt Installer Framework (QtIFW_).
 #
 # The module also defines several commands to control the behavior of the
 # CPack ``IFW`` generator.
@@ -31,7 +31,16 @@
 # Variables
 # ^^^^^^^^^
 #
-# You can use the following variables to change behavior of CPack ``IFW`` generator.
+# You can use the following variables to change behavior of CPack ``IFW``
+# generator.
+#
+# Debug
+# """"""
+#
+# .. variable:: CPACK_IFW_VERBOSE
+#
+#  Set to ``ON`` to enable addition debug output.
+#  By default is ``OFF``.
 #
 # Package
 # """""""
@@ -39,12 +48,12 @@
 # .. variable:: CPACK_IFW_PACKAGE_TITLE
 #
 #  Name of the installer as displayed on the title bar.
-#  By default used :variable:`CPACK_PACKAGE_DESCRIPTION_SUMMARY`
+#  By default used :variable:`CPACK_PACKAGE_DESCRIPTION_SUMMARY`.
 #
 # .. variable:: CPACK_IFW_PACKAGE_PUBLISHER
 #
 #  Publisher of the software (as shown in the Windows Control Panel).
-#  By default used :variable:`CPACK_PACKAGE_VENDOR`
+#  By default used :variable:`CPACK_PACKAGE_VENDOR`.
 #
 # .. variable:: CPACK_IFW_PRODUCT_URL
 #
@@ -57,16 +66,24 @@
 #
 # .. variable:: CPACK_IFW_PACKAGE_WINDOW_ICON
 #
-#  Filename for a custom window icon in PNG format for the Installer application.
+#  Filename for a custom window icon in PNG format for the Installer
+#  application.
 #
 # .. variable:: CPACK_IFW_PACKAGE_LOGO
 #
 #  Filename for a logo is used as QWizard::LogoPixmap.
 #
+# .. variable:: CPACK_IFW_PACKAGE_START_MENU_DIRECTORY
+#
+#  Name of the default program group for the product in the Windows Start menu.
+#
+#  By default used :variable:`CPACK_IFW_PACKAGE_NAME`.
+#
 # .. variable:: CPACK_IFW_TARGET_DIRECTORY
 #
 #  Default target directory for installation.
-#  By default used "@ApplicationsDir@/:variable:`CPACK_PACKAGE_INSTALL_DIRECTORY`"
+#  By default used
+#  "@ApplicationsDir@/:variable:`CPACK_PACKAGE_INSTALL_DIRECTORY`"
 #
 #  You can use predefined variables.
 #
@@ -85,12 +102,42 @@
 #  The root package name, which will be used if configuration group is not
 #  specified
 #
+# .. variable:: CPACK_IFW_PACKAGE_MAINTENANCE_TOOL_NAME
+#
+#  Filename of the generated maintenance tool.
+#  The platform-specific executable file extension is appended.
+#
+#  By default used QtIFW_ defaults (``maintenancetool``).
+#
+# .. variable:: CPACK_IFW_PACKAGE_MAINTENANCE_TOOL_INI_FILE
+#
+#  Filename for the configuration of the generated maintenance tool.
+#
+#  By default used QtIFW_ defaults (``maintenancetool.ini``).
+#
+# .. variable:: CPACK_IFW_PACKAGE_ALLOW_NON_ASCII_CHARACTERS
+#
+#  Set to ``ON`` if the installation path can contain non-ASCII characters.
+#
+#  Is ``ON`` for QtIFW_ less 2.0 tools.
+#
+# .. variable:: CPACK_IFW_PACKAGE_ALLOW_SPACE_IN_PATH
+#
+#  Set to ``OFF`` if the installation path cannot contain space characters.
+#
+#  Is ``ON`` for QtIFW_ less 2.0 tools.
+#
+# .. variable:: CPACK_IFW_PACKAGE_CONTROL_SCRIPT
+#
+#  Filename for a custom installer control script.
+#
 # .. variable:: CPACK_IFW_REPOSITORIES_ALL
 #
 #  The list of remote repositories.
 #
 #  The default value of this variable is computed by CPack and contains
 #  all repositories added with command :command:`cpack_ifw_add_repository`
+#  or updated with command :command:`cpack_ifw_update_repository`.
 #
 # .. variable:: CPACK_IFW_DOWNLOAD_ALL
 #
@@ -112,6 +159,10 @@
 #
 # Tools
 # """"""""
+#
+# .. variable:: CPACK_IFW_FRAMEWORK_VERSION
+#
+#  The version of used QtIFW_ tools.
 #
 # .. variable:: CPACK_IFW_BINARYCREATOR_EXECUTABLE
 #
@@ -138,7 +189,7 @@
 #
 # ::
 #
-#   cpack_ifw_configure_component(<compname> [COMMON]
+#   cpack_ifw_configure_component(<compname> [COMMON] [ESSENTIAL]
 #                       [NAME <name>]
 #                       [VERSION <version>]
 #                       [SCRIPT <script>]
@@ -146,19 +197,22 @@
 #                       [DEPENDS <com_id> ...]
 #                       [LICENSES <display_name> <file_path> ...])
 #
-# This command should be called after cpack_add_component command.
+# This command should be called after :command:`cpack_add_component` command.
 #
 # ``COMMON`` if set, then the component will be packaged and installed as part
 # of a group to which it belongs.
+#
+# ``ESSENTIAL`` if set, then the package manager stays disabled until that
+# component is updated.
+#
+# ``NAME`` is used to create domain-like identification for this component.
+# By default used origin component name.
 #
 # ``VERSION`` is version of component.
 # By default used :variable:`CPACK_PACKAGE_VERSION`.
 #
 # ``SCRIPT`` is a relative or absolute path to operations script
 # for this component.
-#
-# ``NAME`` is used to create domain-like identification for this component.
-# By default used origin component name.
 #
 # ``PRIORITY`` is priority of the component in the tree.
 #
@@ -175,20 +229,22 @@
 #
 # ::
 #
-#   cpack_ifw_configure_component_group(<grpname>
-#                       [VERSION <version>]
+#   cpack_ifw_configure_component_group(<groupname>
 #                       [NAME <name>]
+#                       [VERSION <version>]
 #                       [SCRIPT <script>]
 #                       [PRIORITY <priority>]
 #                       [LICENSES <display_name> <file_path> ...])
 #
-# This command should be called after cpack_add_component_group command.
+# This command should be called after :command:`cpack_add_component_group`
+# command.
+#
+# ``NAME`` is used to create domain-like identification for this component
+# group.
+# By default used origin component group name.
 #
 # ``VERSION`` is version of component group.
 # By default used :variable:`CPACK_PACKAGE_VERSION`.
-#
-# ``NAME`` is used to create domain-like identification for this component group.
-# By default used origin component group name.
 #
 # ``SCRIPT`` is a relative or absolute path to operations script
 # for this component group.
@@ -202,7 +258,7 @@
 #
 # .. command:: cpack_ifw_add_repository
 #
-# Add QtIFW_ specific remote repository.
+# Add QtIFW_ specific remote repository to binary installer.
 #
 # ::
 #
@@ -212,12 +268,43 @@
 #                       [PASSWORD <password>]
 #                       [DISPLAY_NAME <display_name>])
 #
-# This macro will also add the <reponame> repository
-# to a variable :variable:`CPACK_IFW_REPOSITORIES_ALL`
+# This command will also add the <reponame> repository
+# to a variable :variable:`CPACK_IFW_REPOSITORIES_ALL`.
 #
 # ``DISABLED`` if set, then the repository will be disabled by default.
 #
 # ``URL`` is points to a list of available components.
+#
+# ``USERNAME`` is used as user on a protected repository.
+#
+# ``PASSWORD`` is password to use on a protected repository.
+#
+# ``DISPLAY_NAME`` is string to display instead of the URL.
+#
+#
+# --------------------------------------------------------------------------
+#
+# .. command:: cpack_ifw_update_repository
+#
+# Update QtIFW_ specific repository from remote repository.
+#
+# ::
+#
+#   cpack_ifw_update_repository(<reponame>
+#                       [[ADD|REMOVE] URL <url>]|
+#                        [REPLACE OLD_URL <old_url> NEW_URL <new_url>]]
+#                       [USERNAME <username>]
+#                       [PASSWORD <password>]
+#                       [DISPLAY_NAME <display_name>])
+#
+# This command will also add the <reponame> repository
+# to a variable :variable:`CPACK_IFW_REPOSITORIES_ALL`.
+#
+# ``URL`` is points to a list of available components.
+#
+# ``OLD_URL`` is points to a list that will replaced.
+#
+# ``NEW_URL`` is points to a list that will replace to.
 #
 # ``USERNAME`` is used as user on a protected repository.
 #
@@ -276,16 +363,19 @@
 # Qt Installer Framework Manual:
 #
 #  Index page
-#   http://qt-project.org/doc/qtinstallerframework/index.html
+#   http://doc.qt.io/qtinstallerframework/index.html
 #
 #  Component Scripting
-#   http://qt-project.org/doc/qtinstallerframework/scripting.html
+#   http://doc.qt.io/qtinstallerframework/scripting.html
 #
 #  Predefined Variables
-#   http://qt-project.org/doc/qtinstallerframework/scripting.html#predefined-variables
+#   http://doc.qt.io/qtinstallerframework/scripting.html#predefined-variables
 #
-# Download Qt Installer Framework for you platform from Qt Project site:
-#  http://download.qt-project.org/official_releases/qt-installer-framework/
+#  Promoting Updates
+#   http://doc.qt.io/qtinstallerframework/ifw-updates.html
+#
+# Download Qt Installer Framework for you platform from Qt site:
+#  http://download.qt.io/official_releases/qt-installer-framework
 #
 
 #=============================================================================
@@ -324,8 +414,16 @@ else()
 endif()
 
 set(_CPACK_IFW_SUFFIXES
+# Common
   "bin"
-  "QtIFW-1.7.0/bin"
+# Second branch
+  "QtIFW2.3.0/bin"
+  "QtIFW2.2.0/bin"
+  "QtIFW2.1.0/bin"
+  "QtIFW2.0.3/bin"
+  "QtIFW2.0.1/bin"
+  "QtIFW2.0.0/bin"
+# First branch
   "QtIFW-1.6.0/bin"
   "QtIFW-1.5.0/bin"
   "QtIFW-1.4.0/bin"
@@ -351,12 +449,53 @@ find_program(CPACK_IFW_REPOGEN_EXECUTABLE
   )
 mark_as_advanced(CPACK_IFW_REPOGEN_EXECUTABLE)
 
+# Look for 'installerbase'
+
+find_program(CPACK_IFW_INSTALLERBASE_EXECUTABLE
+  NAMES installerbase
+  PATHS ${_CPACK_IFW_PATHS}
+  PATH_SUFFIXES ${_CPACK_IFW_SUFFIXES}
+  DOC "QtIFW installer executable base"
+  )
+mark_as_advanced(CPACK_IFW_INSTALLERBASE_EXECUTABLE)
+
+# Look for 'devtool' (appeared in the second branch)
+
+find_program(CPACK_IFW_DEVTOOL_EXECUTABLE
+  NAMES devtool
+  PATHS ${_CPACK_IFW_PATHS}
+  PATH_SUFFIXES ${_CPACK_IFW_SUFFIXES}
+  DOC "QtIFW devtool command line client"
+  )
+mark_as_advanced(CPACK_IFW_DEVTOOL_EXECUTABLE)
+
 #
 ## Next code is included only once
 #
 
 if(NOT CPackIFW_CMake_INCLUDED)
 set(CPackIFW_CMake_INCLUDED 1)
+
+#=============================================================================
+# Framework version
+#=============================================================================
+
+if(CPACK_IFW_INSTALLERBASE_EXECUTABLE AND CPACK_IFW_DEVTOOL_EXECUTABLE)
+  execute_process(COMMAND
+    "${CPACK_IFW_INSTALLERBASE_EXECUTABLE}" --framework-version
+    OUTPUT_VARIABLE CPACK_IFW_FRAMEWORK_VERSION)
+  if(CPACK_IFW_FRAMEWORK_VERSION)
+    string(REPLACE " " ""
+      CPACK_IFW_FRAMEWORK_VERSION "${CPACK_IFW_FRAMEWORK_VERSION}")
+    string(REPLACE "\t" ""
+      CPACK_IFW_FRAMEWORK_VERSION "${CPACK_IFW_FRAMEWORK_VERSION}")
+    string(REPLACE "\n" ""
+      CPACK_IFW_FRAMEWORK_VERSION "${CPACK_IFW_FRAMEWORK_VERSION}")
+    if(CPACK_IFW_VERBOSE)
+      message(STATUS "Found QtIFW ${CPACK_IFW_FRAMEWORK_VERSION} version")
+    endif()
+  endif()
+endif()
 
 #=============================================================================
 # Macro definition
@@ -409,8 +548,8 @@ macro(cpack_ifw_configure_component compname)
 
   string(TOUPPER ${compname} _CPACK_IFWCOMP_UNAME)
 
-  set(_IFW_OPT COMMON)
-  set(_IFW_ARGS VERSION SCRIPT NAME PRIORITY)
+  set(_IFW_OPT COMMON ESSENTIAL)
+  set(_IFW_ARGS NAME VERSION SCRIPT PRIORITY)
   set(_IFW_MULTI_ARGS DEPENDS LICENSES)
   cmake_parse_arguments(CPACK_IFW_COMPONENT_${_CPACK_IFWCOMP_UNAME} "${_IFW_OPT}" "${_IFW_ARGS}" "${_IFW_MULTI_ARGS}" ${ARGN})
 
@@ -513,5 +652,53 @@ macro(cpack_ifw_add_repository reponame)
   endif()
 
 endmacro()
+
+# Macro for updating repository
+macro(cpack_ifw_update_repository reponame)
+
+  string(TOUPPER ${reponame} _CPACK_IFWREPO_UNAME)
+
+  set(_IFW_OPT ADD REMOVE REPLACE DISABLED)
+  set(_IFW_ARGS URL OLD_URL NEW_URL USERNAME PASSWORD DISPLAY_NAME)
+  set(_IFW_MULTI_ARGS)
+  cmake_parse_arguments(CPACK_IFW_REPOSITORY_${_CPACK_IFWREPO_UNAME} "${_IFW_OPT}" "${_IFW_ARGS}" "${_IFW_MULTI_ARGS}" ${ARGN})
+
+  set(_CPACK_IFWREPO_STR "\n# Configuration for IFW repository \"${reponame}\" update\n")
+
+  foreach(_IFW_ARG_NAME ${_IFW_OPT})
+  cpack_append_option_set_command(
+    CPACK_IFW_REPOSITORY_${_CPACK_IFWREPO_UNAME}_${_IFW_ARG_NAME}
+    _CPACK_IFWREPO_STR)
+  endforeach()
+
+  foreach(_IFW_ARG_NAME ${_IFW_ARGS})
+  cpack_append_string_variable_set_command(
+    CPACK_IFW_REPOSITORY_${_CPACK_IFWREPO_UNAME}_${_IFW_ARG_NAME}
+    _CPACK_IFWREPO_STR)
+  endforeach()
+
+  foreach(_IFW_ARG_NAME ${_IFW_MULTI_ARGS})
+  cpack_append_variable_set_command(
+    CPACK_IFW_REPOSITORY_${_CPACK_IFWREPO_UNAME}_${_IFW_ARG_NAME}
+    _CPACK_IFWREPO_STR)
+  endforeach()
+
+  if(CPACK_IFW_REPOSITORY_${_CPACK_IFWREPO_UNAME}_ADD
+    OR CPACK_IFW_REPOSITORY_${_CPACK_IFWREPO_UNAME}_REMOVE
+    OR CPACK_IFW_REPOSITORY_${_CPACK_IFWREPO_UNAME}_REPLACE)
+    list(APPEND CPACK_IFW_REPOSITORIES_ALL ${reponame})
+    set(_CPACK_IFWREPO_STR "${_CPACK_IFWREPO_STR}list(APPEND CPACK_IFW_REPOSITORIES_ALL ${reponame})\n")
+  else()
+    set(_CPACK_IFWREPO_STR)
+  endif()
+
+  if(CPack_CMake_INCLUDED AND _CPACK_IFWREPO_STR)
+    file(APPEND "${CPACK_OUTPUT_CONFIG_FILE}" "${_CPACK_IFWREPO_STR}")
+  endif()
+
+endmacro()
+
+# Resolve package control script
+_cpack_ifw_resolve_script(CPACK_IFW_PACKAGE_CONTROL_SCRIPT)
 
 endif() # NOT CPackIFW_CMake_INCLUDED

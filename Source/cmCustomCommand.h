@@ -13,6 +13,7 @@
 #define cmCustomCommand_h
 
 #include "cmStandardIncludes.h"
+
 #include "cmListFileCache.h"
 class cmMakefile;
 
@@ -26,8 +27,6 @@ class cmCustomCommand
 public:
   /** Default and copy constructors for STL containers.  */
   cmCustomCommand();
-  cmCustomCommand(const cmCustomCommand& r);
-  cmCustomCommand& operator=(cmCustomCommand const& r);
 
   /** Main constructor specifies all information for the command.  */
   cmCustomCommand(cmMakefile const* mf,
@@ -35,10 +34,7 @@ public:
                   const std::vector<std::string>& byproducts,
                   const std::vector<std::string>& depends,
                   const cmCustomCommandLines& commandLines,
-                  const char* comment,
-                  const char* workingDirectory);
-
-  ~cmCustomCommand();
+                  const char* comment, const char* workingDirectory);
 
   /** Get the output file produced by the command.  */
   const std::vector<std::string>& GetOutputs() const;
@@ -51,7 +47,9 @@ public:
 
   /** Get the working directory.  */
   std::string const& GetWorkingDirectory() const
-    { return this->WorkingDirectory; }
+  {
+    return this->WorkingDirectory;
+  }
 
   /** Get the list of command lines.  */
   const cmCustomCommandLines& GetCommandLines() const;
@@ -78,7 +76,9 @@ public:
   cmListFileBacktrace const& GetBacktrace() const;
 
   typedef std::pair<std::string, std::string> ImplicitDependsPair;
-  class ImplicitDependsList: public std::vector<ImplicitDependsPair> {};
+  class ImplicitDependsList : public std::vector<ImplicitDependsPair>
+  {
+  };
   void SetImplicitDepends(ImplicitDependsList const&);
   void AppendImplicitDepends(ImplicitDependsList const&);
   ImplicitDependsList const& GetImplicitDepends() const;
@@ -93,13 +93,13 @@ private:
   std::vector<std::string> Byproducts;
   std::vector<std::string> Depends;
   cmCustomCommandLines CommandLines;
-  bool HaveComment;
-  std::string Comment;
-  std::string WorkingDirectory;
-  bool EscapeAllowMakeVars;
-  bool EscapeOldStyle;
   cmListFileBacktrace Backtrace;
   ImplicitDependsList ImplicitDepends;
+  std::string Comment;
+  std::string WorkingDirectory;
+  bool HaveComment;
+  bool EscapeAllowMakeVars;
+  bool EscapeOldStyle;
   bool UsesTerminal;
 };
 

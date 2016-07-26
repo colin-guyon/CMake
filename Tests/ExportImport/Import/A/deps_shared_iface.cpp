@@ -21,8 +21,8 @@
 #endif
 
 #ifdef TEST_SUBDIR_LIB
-#include "subdir.h"
 #include "renamed.h"
+#include "subdir.h"
 #endif
 
 #ifdef DO_GNU_TESTS
@@ -31,7 +31,7 @@
 #endif
 #endif
 
-int main(int,char **)
+int main(int, char**)
 {
   TestSharedLibDepends dep;
   TestSharedLibRequired req;
@@ -43,7 +43,7 @@ int main(int,char **)
 
   return dep.foo() + req.foo()
 #ifdef TEST_SUBDIR_LIB
-                   + sdo.foo() + ren.foo()
+    + sdo.foo() + ren.foo()
 #endif
-                              ;
+    ;
 }

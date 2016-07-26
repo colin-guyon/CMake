@@ -12,26 +12,28 @@
 #ifndef cmCPackPropertiesGenerator_h
 #define cmCPackPropertiesGenerator_h
 
-#include "cmScriptGenerator.h"
 #include "cmInstalledFile.h"
+#include "cmScriptGenerator.h"
+
+class cmLocalGenerator;
 
 /** \class cmCPackPropertiesGenerator
  * \brief Support class for generating CPackProperties.cmake.
  *
  */
-class cmCPackPropertiesGenerator: public cmScriptGenerator
+class cmCPackPropertiesGenerator : public cmScriptGenerator
 {
 public:
-  cmCPackPropertiesGenerator(
-     cmMakefile* mf,
-     cmInstalledFile const& installedFile,
-     std::vector<std::string> const& configurations);
+  cmCPackPropertiesGenerator(cmLocalGenerator* lg,
+                             cmInstalledFile const& installedFile,
+                             std::vector<std::string> const& configurations);
 
 protected:
   virtual void GenerateScriptForConfig(std::ostream& os,
-    const std::string& config, Indent const& indent);
+                                       const std::string& config,
+                                       Indent const& indent);
 
-  cmMakefile* Makefile;
+  cmLocalGenerator* LG;
   cmInstalledFile const& InstalledFile;
 };
 

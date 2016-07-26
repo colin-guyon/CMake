@@ -13,7 +13,6 @@
 #define cmInstalledFile_h
 
 #include "cmGeneratorExpression.h"
-#include "cmAlgorithms.h"
 
 /** \class cmInstalledFile
  * \brief Represents a file intended for installation.
@@ -23,24 +22,15 @@
 class cmInstalledFile
 {
 public:
-
   typedef cmsys::auto_ptr<cmCompiledGeneratorExpression>
     CompiledGeneratorExpressionPtrType;
 
-  typedef std::vector<cmCompiledGeneratorExpression*>
-    ExpressionVectorType;
+  typedef std::vector<cmCompiledGeneratorExpression*> ExpressionVectorType;
 
   struct Property
   {
-    Property()
-    {
-
-    }
-
-    ~Property()
-    {
-      cmDeleteAll(this->ValueExpressions);
-    }
+    Property();
+    ~Property();
 
     ExpressionVectorType ValueExpressions;
   };
@@ -53,11 +43,11 @@ public:
 
   void RemoveProperty(const std::string& prop);
 
-  void SetProperty(cmMakefile const* mf,
-    const std::string& prop, const char *value);
+  void SetProperty(cmMakefile const* mf, const std::string& prop,
+                   const char* value);
 
-  void AppendProperty(cmMakefile const* mf,
-    const std::string& prop, const char* value,bool asString=false);
+  void AppendProperty(cmMakefile const* mf, const std::string& prop,
+                      const char* value, bool asString = false);
 
   bool HasProperty(const std::string& prop) const;
 
@@ -66,7 +56,7 @@ public:
   bool GetPropertyAsBool(const std::string& prop) const;
 
   void GetPropertyAsList(const std::string& prop,
-    std::vector<std::string>& list) const;
+                         std::vector<std::string>& list) const;
 
   void SetName(cmMakefile* mf, const std::string& name);
 

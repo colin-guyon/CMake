@@ -18,7 +18,7 @@
  * \brief Interaction with cvs command-line tool
  *
  */
-class cmCTestCVS: public cmCTestVC
+class cmCTestCVS : public cmCTestVC
 {
 public:
   /** Construct with a CTest instance and update log stream.  */
@@ -29,16 +29,18 @@ public:
 private:
   // Implement cmCTestVC internal API.
   virtual bool UpdateImpl();
-  virtual bool WriteXMLUpdates(std::ostream& xml);
+  virtual bool WriteXMLUpdates(cmXMLWriter& xml);
 
   // Update status for files in each directory.
-  class Directory: public std::map<std::string, PathStatus> {};
+  class Directory : public std::map<std::string, PathStatus>
+  {
+  };
   std::map<std::string, Directory> Dirs;
 
   std::string ComputeBranchFlag(std::string const& dir);
   void LoadRevisions(std::string const& file, const char* branchFlag,
                      std::vector<Revision>& revisions);
-  void WriteXMLDirectory(std::ostream& xml, std::string const& path,
+  void WriteXMLDirectory(cmXMLWriter& xml, std::string const& path,
                          Directory const& dir);
 
   // Parsing helper classes.

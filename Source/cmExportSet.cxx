@@ -11,12 +11,22 @@
 ============================================================================*/
 
 #include "cmExportSet.h"
-#include "cmTargetExport.h"
+
 #include "cmAlgorithms.h"
+#include "cmLocalGenerator.h"
+#include "cmTargetExport.h"
 
 cmExportSet::~cmExportSet()
 {
   cmDeleteAll(this->TargetExports);
+}
+
+void cmExportSet::Compute(cmLocalGenerator* lg)
+{
+  for (std::vector<cmTargetExport*>::iterator it = this->TargetExports.begin();
+       it != this->TargetExports.end(); ++it) {
+    (*it)->Target = lg->FindGeneratorTargetToUse((*it)->TargetName);
+  }
 }
 
 void cmExportSet::AddTargetExport(cmTargetExport* te)

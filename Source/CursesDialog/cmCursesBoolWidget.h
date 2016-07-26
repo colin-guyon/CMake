@@ -13,6 +13,7 @@
 #define cmCursesBoolWidget_h
 
 #include "cmCursesWidget.h"
+
 class cmCursesMainForm;
 
 class cmCursesBoolWidget : public cmCursesWidget
@@ -34,7 +35,6 @@ public:
 protected:
   cmCursesBoolWidget(const cmCursesBoolWidget& from);
   void operator=(const cmCursesBoolWidget&);
-
 };
 
 #endif // cmCursesBoolWidget_h

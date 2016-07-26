@@ -16,47 +16,42 @@
 #include "cmLocalUnixMakefileGenerator3.h"
 #include "cmMakefile.h"
 #include "cmSourceFile.h"
-#include "cmTarget.h"
 
-//----------------------------------------------------------------------------
-cmMakefileUtilityTargetGenerator
-::cmMakefileUtilityTargetGenerator(cmGeneratorTarget* target):
-  cmMakefileTargetGenerator(target->Target)
+cmMakefileUtilityTargetGenerator::cmMakefileUtilityTargetGenerator(
+  cmGeneratorTarget* target)
+  : cmMakefileTargetGenerator(target)
 {
   this->CustomCommandDriver = OnUtility;
-  this->OSXBundleGenerator = new cmOSXBundleGenerator(target,
-                                                      this->ConfigName);
+  this->OSXBundleGenerator =
+    new cmOSXBundleGenerator(target, this->ConfigName);
   this->OSXBundleGenerator->SetMacContentFolders(&this->MacContentFolders);
 }
 
-//----------------------------------------------------------------------------
-cmMakefileUtilityTargetGenerator
-::~cmMakefileUtilityTargetGenerator()
+cmMakefileUtilityTargetGenerator::~cmMakefileUtilityTargetGenerator()
 {
   delete this->OSXBundleGenerator;
 }
 
-//----------------------------------------------------------------------------
 void cmMakefileUtilityTargetGenerator::WriteRuleFiles()
 {
   this->CreateRuleFile();
 
-  *this->BuildFileStream
-    << "# Utility rule file for " << this->Target->GetName() << ".\n\n";
+  *this->BuildFileStream << "# Utility rule file for "
+                         << this->GeneratorTarget->GetName() << ".\n\n";
 
-  if(!this->NoRuleMessages)
-    {
-    const char* root = (this->Makefile->IsOn("CMAKE_MAKE_INCLUDE_FROM_ROOT")?
-                      "$(CMAKE_BINARY_DIR)/" : "");
+  if (!this->NoRuleMessages) {
+    const char* root = (this->Makefile->IsOn("CMAKE_MAKE_INCLUDE_FROM_ROOT")
+                          ? "$(CMAKE_BINARY_DIR)/"
+                          : "");
     // Include the progress variables for the target.
     *this->BuildFileStream
       << "# Include the progress variables for this target.\n"
-      << this->LocalGenerator->IncludeDirective << " " << root
+      << this->GlobalGenerator->IncludeDirective << " " << root
       << this->Convert(this->ProgressFileNameFull,
-                       cmLocalGenerator::HOME_OUTPUT,
-                       cmLocalGenerator::MAKERULE)
+                       cmOutputConverter::HOME_OUTPUT,
+                       cmOutputConverter::MAKERULE)
       << "\n\n";
-    }
+  }
 
   // write the custom commands for this target
   this->WriteTargetBuildRules();
@@ -66,20 +61,22 @@ void cmMakefileUtilityTargetGenerator::WriteRuleFiles()
   std::vector<std::string> depends;
 
   // Utility targets store their rules in pre- and post-build commands.
-  this->LocalGenerator->AppendCustomDepends
-    (depends, this->Target->GetPreBuildCommands());
+  this->LocalGenerator->AppendCustomDepends(
+    depends, this->GeneratorTarget->GetPreBuildCommands());
 
-  this->LocalGenerator->AppendCustomDepends
-    (depends, this->Target->GetPostBuildCommands());
+  this->LocalGenerator->AppendCustomDepends(
+    depends, this->GeneratorTarget->GetPostBuildCommands());
 
-  this->LocalGenerator->AppendCustomCommands
-    (commands, this->Target->GetPreBuildCommands(), this->Target);
+  this->LocalGenerator->AppendCustomCommands(
+    commands, this->GeneratorTarget->GetPreBuildCommands(),
+    this->GeneratorTarget);
 
   // Depend on all custom command outputs for sources
   this->DriveCustomCommands(depends);
 
-  this->LocalGenerator->AppendCustomCommands
-    (commands, this->Target->GetPostBuildCommands(), this->Target);
+  this->LocalGenerator->AppendCustomCommands(
+    commands, this->GeneratorTarget->GetPostBuildCommands(),
+    this->GeneratorTarget);
 
   // Add dependencies on targets that must be built first.
   this->AppendTargetDepends(depends);
@@ -90,22 +87,20 @@ void cmMakefileUtilityTargetGenerator::WriteRuleFiles()
 
   // If the rule is empty add the special empty rule dependency needed
   // by some make tools.
-  if(depends.empty() && commands.empty())
-    {
+  if (depends.empty() && commands.empty()) {
     std::string hack = this->GlobalGenerator->GetEmptyRuleHackDepends();
-    if(!hack.empty())
-      {
+    if (!hack.empty()) {
       depends.push_back(hack);
-      }
     }
+  }
 
   // Write the rule.
   this->LocalGenerator->WriteMakeRule(*this->BuildFileStream, 0,
-                                      this->Target->GetName(),
+                                      this->GeneratorTarget->GetName(),
                                       depends, commands, true);
 
   // Write the main driver rule to build everything in this target.
-  this->WriteTargetDriverRule(this->Target->GetName(), false);
+  this->WriteTargetDriverRule(this->GeneratorTarget->GetName(), false);
 
   // Write clean target
   this->WriteTargetCleanRules();
@@ -117,4 +112,3 @@ void cmMakefileUtilityTargetGenerator::WriteRuleFiles()
   // close the streams
   this->CloseFileStreams();
 }
-

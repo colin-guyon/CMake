@@ -16,6 +16,14 @@ run_cmake(BadSources2)
 run_cmake(NonSourceCopyFile)
 run_cmake(NonSourceCompileDefinitions)
 
+set(RunCMake_TEST_OPTIONS --debug-trycompile)
+run_cmake(PlatformVariables)
+unset(RunCMake_TEST_OPTIONS)
+
+run_cmake(TargetTypeExe)
+run_cmake(TargetTypeInvalid)
+run_cmake(TargetTypeStatic)
+
 run_cmake(CMP0056)
 
 if(RunCMake_GENERATOR MATCHES "Make|Ninja")

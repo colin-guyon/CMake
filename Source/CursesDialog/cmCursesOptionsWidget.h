@@ -13,6 +13,7 @@
 #define cmCursesOptionsWidget_h
 
 #include "cmCursesWidget.h"
+
 class cmCursesMainForm;
 
 class cmCursesOptionsWidget : public cmCursesWidget
@@ -26,9 +27,10 @@ public:
   // handled.
   virtual bool HandleInput(int& key, cmCursesMainForm* fm, WINDOW* w);
   void SetOption(const std::string&);
-  void AddOption(std::string const &);
+  void AddOption(std::string const&);
   void NextOption();
   void PreviousOption();
+
 protected:
   cmCursesOptionsWidget(const cmCursesOptionsWidget& from);
   void operator=(const cmCursesOptionsWidget&);

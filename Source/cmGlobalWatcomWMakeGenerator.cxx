@@ -10,10 +10,12 @@
   See the License for more information.
 ============================================================================*/
 #include "cmGlobalWatcomWMakeGenerator.h"
+
 #include "cmLocalUnixMakefileGenerator3.h"
 #include "cmMakefile.h"
 
-cmGlobalWatcomWMakeGenerator::cmGlobalWatcomWMakeGenerator()
+cmGlobalWatcomWMakeGenerator::cmGlobalWatcomWMakeGenerator(cmake* cm)
+  : cmGlobalUnixMakefileGenerator3(cm)
 {
   this->FindMakeProgramFile = "CMakeFindWMake.cmake";
 #ifdef _WIN32
@@ -22,12 +24,18 @@ cmGlobalWatcomWMakeGenerator::cmGlobalWatcomWMakeGenerator()
   this->ToolSupportsColor = true;
   this->NeedSymbolicMark = true;
   this->EmptyRuleHackCommand = "@cd .";
+#ifdef _WIN32
+  cm->GetState()->SetWindowsShell(true);
+#endif
+  cm->GetState()->SetWatcomWMake(true);
+  this->IncludeDirective = "!include";
+  this->DefineWindowsNULL = true;
+  this->UnixCD = false;
+  this->MakeSilentFlag = "-h";
 }
 
-void cmGlobalWatcomWMakeGenerator
-::EnableLanguage(std::vector<std::string>const& l,
-                 cmMakefile *mf,
-                 bool optional)
+void cmGlobalWatcomWMakeGenerator::EnableLanguage(
+  std::vector<std::string> const& l, cmMakefile* mf, bool optional)
 {
   // pick a default
   mf->AddDefinition("WATCOM", "1");
@@ -40,27 +48,8 @@ void cmGlobalWatcomWMakeGenerator
   this->cmGlobalUnixMakefileGenerator3::EnableLanguage(l, mf, optional);
 }
 
-///! Create a local generator appropriate to this Global Generator
-cmLocalGenerator *cmGlobalWatcomWMakeGenerator::CreateLocalGenerator()
-{
-  cmLocalUnixMakefileGenerator3* lg = new cmLocalUnixMakefileGenerator3;
-  lg->SetDefineWindowsNULL(true);
-#ifdef _WIN32
-  lg->SetWindowsShell(true);
-#endif
-  lg->SetWatcomWMake(true);
-  lg->SetMakeSilentFlag("-h");
-  lg->SetGlobalGenerator(this);
-  lg->SetIgnoreLibPrefix(true);
-  lg->SetPassMakeflags(false);
-  lg->SetUnixCD(false);
-  lg->SetIncludeDirective("!include");
-  return lg;
-}
-
-//----------------------------------------------------------------------------
-void cmGlobalWatcomWMakeGenerator
-::GetDocumentation(cmDocumentationEntry& entry)
+void cmGlobalWatcomWMakeGenerator::GetDocumentation(
+  cmDocumentationEntry& entry)
 {
   entry.Name = cmGlobalWatcomWMakeGenerator::GetActualName();
   entry.Brief = "Generates Watcom WMake makefiles.";

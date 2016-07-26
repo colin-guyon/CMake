@@ -76,9 +76,15 @@ The options are:
   The optional ``ARGS`` argument is for backward compatibility and
   will be ignored.
 
-  If ``COMMAND`` specifies an executable target (created by the
+  If ``COMMAND`` specifies an executable target name (created by the
   :command:`add_executable` command) it will automatically be replaced
-  by the location of the executable created at build time.
+  by the location of the executable created at build time. If set, the
+  :prop_tgt:`CROSSCOMPILING_EMULATOR` executable target property will
+  also be prepended to the command to allow the executable to run on
+  the host.
+  (Use the ``TARGET_FILE``
+  :manual:`generator expression <cmake-generator-expressions(7)>` to
+  reference an executable later in the command line.)
   Additionally a target-level dependency will be added so that the
   executable target will be built before any target using this custom
   command.  However this does NOT add a file-level dependency that
@@ -175,7 +181,7 @@ target is already built, the command will not execute.
 
 ::
 
-  add_custom_command(TARGET target
+  add_custom_command(TARGET <target>
                      PRE_BUILD | PRE_LINK | POST_BUILD
                      COMMAND command1 [ARGS] [args1...]
                      [COMMAND command2 [ARGS] [args2...] ...]
@@ -185,7 +191,10 @@ target is already built, the command will not execute.
                      [VERBATIM] [USES_TERMINAL])
 
 This defines a new command that will be associated with building the
-specified target.  When the command will happen is determined by which
+specified ``<target>``.  The ``<target>`` must be defined in the current
+directory; targets defined in other directories may not be specified.
+
+When the command will happen is determined by which
 of the following is specified:
 
 ``PRE_BUILD``

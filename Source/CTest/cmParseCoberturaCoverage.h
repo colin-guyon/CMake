@@ -13,7 +13,6 @@
 #ifndef cmParseCoberturaCoverage_h
 #define cmParseCoberturaCoverage_h
 
-#include "cmStandardIncludes.h"
 #include "cmCTestCoverageHandler.h"
 
 /** \class cmParsePythonCoverage
@@ -28,11 +27,10 @@
 class cmParseCoberturaCoverage
 {
 public:
-
   //! Create the coverage parser by passing in the coverage handler
   //! container and the cmCTest object
   cmParseCoberturaCoverage(cmCTestCoverageHandlerContainer& cont,
-    cmCTest* ctest);
+                           cmCTest* ctest);
 
   bool inSources;
   bool inSource;
@@ -41,7 +39,6 @@ public:
   bool ReadCoverageXML(const char* xmlFile);
 
 private:
-
   class XMLParser;
   cmCTestCoverageHandlerContainer& Coverage;
   cmCTest* CTest;

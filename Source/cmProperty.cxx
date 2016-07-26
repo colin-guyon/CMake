@@ -10,32 +10,28 @@
   See the License for more information.
 ============================================================================*/
 #include "cmProperty.h"
+
 #include "cmSystemTools.h"
 
-void cmProperty::Set(const std::string& name, const char *value)
+void cmProperty::Set(const char* value)
 {
-  this->Name = name;
   this->Value = value;
   this->ValueHasBeenSet = true;
 }
 
-void cmProperty::Append(const std::string& name, const char *value,
-                        bool asString)
+void cmProperty::Append(const char* value, bool asString)
 {
-  this->Name = name;
-  if(!this->Value.empty() && *value && !asString)
-    {
+  if (!this->Value.empty() && *value && !asString) {
     this->Value += ";";
-    }
+  }
   this->Value += value;
   this->ValueHasBeenSet = true;
 }
 
-const char *cmProperty::GetValue() const
+const char* cmProperty::GetValue() const
 {
-  if (this->ValueHasBeenSet)
-    {
+  if (this->ValueHasBeenSet) {
     return this->Value.c_str();
-    }
+  }
   return 0;
 }

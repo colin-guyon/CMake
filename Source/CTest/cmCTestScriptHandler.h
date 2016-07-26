@@ -13,12 +13,11 @@
 #ifndef cmCTestScriptHandler_h
 #define cmCTestScriptHandler_h
 
-
 #include "cmCTestGenericHandler.h"
+
 #include "cmListFileCache.h"
 
 class cmMakefile;
-class cmLocalGenerator;
 class cmGlobalGenerator;
 class cmake;
 class cmCTestCommand;
@@ -67,7 +66,7 @@ public:
   /**
    * Add a script to run, and if is should run in the current process
    */
-  void AddConfigurationScript(const char *, bool pscope);
+  void AddConfigurationScript(const char*, bool pscope);
 
   /**
    * Run a dashboard using a specified confiuration script
@@ -77,14 +76,14 @@ public:
   /*
    * Run a script
    */
-  static bool RunScript(cmCTest* ctest, const char *script, bool InProcess,
-    int* returnValue);
+  static bool RunScript(cmCTest* ctest, const char* script, bool InProcess,
+                        int* returnValue);
   int RunCurrentScript();
 
   /*
    * Empty Binary Directory
    */
-  static bool EmptyBinaryDirectory(const char *dir);
+  static bool EmptyBinaryDirectory(const char* dir);
 
   /*
    * Write an initial CMakeCache.txt from the given contents.
@@ -110,7 +109,7 @@ public:
   void Initialize();
 
   void CreateCMake();
-  cmake* GetCMake() { return this->CMake;}
+  cmake* GetCMake() { return this->CMake; }
 private:
   // reads in a script
   int ReadInScript(const std::string& total_script_arg);
@@ -165,10 +164,9 @@ private:
   // what time in seconds did this script start running
   double ScriptStartTime;
 
-  cmMakefile *Makefile;
-  cmLocalGenerator *LocalGenerator;
-  cmGlobalGenerator *GlobalGenerator;
-  cmake *CMake;
+  cmMakefile* Makefile;
+  cmGlobalGenerator* GlobalGenerator;
+  cmake* CMake;
 };
 
 #endif

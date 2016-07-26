@@ -13,9 +13,9 @@
 #ifndef cmCPackArchiveGenerator_h
 #define cmCPackArchiveGenerator_h
 
-#include "cmArchiveWrite.h"
 #include "cmCPackGenerator.h"
 
+#include "cmArchiveWrite.h"
 
 /** \class cmCPackArchiveGenerator
  * \brief A generator base for libarchive generation.
@@ -24,19 +24,20 @@
  *
  */
 class cmCPackArchiveGenerator : public cmCPackGenerator
-  {
+{
 public:
   cmTypeMacro(cmCPackArchiveGenerator, cmCPackGenerator);
 
   /**
    * Construct generator
    */
-  cmCPackArchiveGenerator(cmArchiveWrite::Compress, cmArchiveWrite::Type);
+  cmCPackArchiveGenerator(cmArchiveWrite::Compress, std::string const& format);
   virtual ~cmCPackArchiveGenerator();
   // Used to add a header to the archive
   virtual int GenerateHeader(std::ostream* os);
   // component support
   virtual bool SupportsComponentInstallation() const;
+
 protected:
   virtual int InitializeInternal();
   /**
@@ -68,7 +69,7 @@ protected:
   int PackageComponentsAllInOne();
   virtual const char* GetOutputExtension() = 0;
   cmArchiveWrite::Compress Compress;
-  cmArchiveWrite::Type Archive;
-  };
+  std::string ArchiveFormat;
+};
 
 #endif

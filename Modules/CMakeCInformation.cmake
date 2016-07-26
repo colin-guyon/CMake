@@ -18,6 +18,8 @@
 # It also loads a system - compiler - processor (or target hardware)
 # specific file, which is mainly useful for crosscompiling and embedded systems.
 
+include(CMakeLanguageInformation)
+
 # some compilers use different extensions (e.g. sdcc uses .rel)
 # so set the extension here first so it can be overridden by the compiler specific file
 if(UNIX)
@@ -60,6 +62,12 @@ if (NOT _INCLUDED_FILE)
   include(Platform/${CMAKE_SYSTEM_NAME}-${CMAKE_BASE_NAME}
     OPTIONAL RESULT_VARIABLE _INCLUDED_FILE)
 endif ()
+
+# load any compiler-wrapper specific information
+if (CMAKE_C_COMPILER_WRAPPER)
+  __cmake_include_compiler_wrapper(C)
+endif ()
+
 # We specify the compiler information in the system file for some
 # platforms, but this language may not have been enabled when the file
 # was first included.  Include it again to get the language info.
@@ -175,7 +183,7 @@ endif()
 # Create a static archive incrementally for large object file counts.
 # If CMAKE_C_CREATE_STATIC_LIBRARY is set it will override these.
 if(NOT DEFINED CMAKE_C_ARCHIVE_CREATE)
-  set(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> cq <TARGET> <LINK_FLAGS> <OBJECTS>")
+  set(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> qc <TARGET> <LINK_FLAGS> <OBJECTS>")
 endif()
 if(NOT DEFINED CMAKE_C_ARCHIVE_APPEND)
   set(CMAKE_C_ARCHIVE_APPEND "<CMAKE_AR> q  <TARGET> <LINK_FLAGS> <OBJECTS>")
@@ -187,7 +195,7 @@ endif()
 # compile a C file into an object file
 if(NOT CMAKE_C_COMPILE_OBJECT)
   set(CMAKE_C_COMPILE_OBJECT
-    "<CMAKE_C_COMPILER> <DEFINES> <FLAGS> -o <OBJECT>   -c <SOURCE>")
+    "<CMAKE_C_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT>   -c <SOURCE>")
 endif()
 
 if(NOT CMAKE_C_LINK_EXECUTABLE)

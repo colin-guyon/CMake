@@ -11,9 +11,10 @@
 ============================================================================*/
 #ifndef cmCommands_h
 #define cmCommands_h
+
 #include "cmStandardIncludes.h"
 
-#include <list>
+#include <vector>
 
 class cmCommand;
 /**
@@ -23,9 +24,8 @@ class cmCommand;
  * It is up to the caller to delete the commands created by this
  * call.
  */
-void GetBootstrapCommands1(std::list<cmCommand*>& commands);
-void GetBootstrapCommands2(std::list<cmCommand*>& commands);
-void GetPredefinedCommands(std::list<cmCommand*>& commands);
-
+void GetBootstrapCommands1(std::vector<cmCommand*>& commands);
+void GetBootstrapCommands2(std::vector<cmCommand*>& commands);
+void GetPredefinedCommands(std::vector<cmCommand*>& commands);
 
 #endif

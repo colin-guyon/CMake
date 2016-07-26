@@ -12,14 +12,11 @@
 
 #include "cmCPackTXZGenerator.h"
 
-//----------------------------------------------------------------------
 cmCPackTXZGenerator::cmCPackTXZGenerator()
-  :cmCPackArchiveGenerator(cmArchiveWrite::CompressXZ,
-                           cmArchiveWrite::TypeTAR)
+  : cmCPackArchiveGenerator(cmArchiveWrite::CompressXZ, "paxr")
 {
 }
 
-//----------------------------------------------------------------------
 cmCPackTXZGenerator::~cmCPackTXZGenerator()
 {
 }

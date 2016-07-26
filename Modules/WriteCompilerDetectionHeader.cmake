@@ -36,7 +36,7 @@
 #      PREFIX ClimbingStats
 #      OUTPUT_FILES_VAR support_files
 #      OUTPUT_DIR compilers
-#      COMPILERS GNU Clang MSVC
+#      COMPILERS GNU Clang MSVC Intel
 #      FEATURES cxx_variadic_templates
 #    )
 #    install(FILES
@@ -100,7 +100,7 @@
 #    write_compiler_detection_header(
 #      FILE climbingstats_compiler_detection.h
 #      PREFIX ClimbingStats
-#      COMPILERS GNU Clang AppleClang MSVC
+#      COMPILERS GNU Clang AppleClang MSVC Intel
 #      FEATURES cxx_variadic_templates
 #    )
 #
@@ -246,10 +246,10 @@ function(write_compiler_detection_header
     file_keyword file_arg
     prefix_keyword prefix_arg
     )
-  if (NOT file_keyword STREQUAL FILE)
+  if (NOT "x${file_keyword}" STREQUAL "xFILE")
     message(FATAL_ERROR "write_compiler_detection_header: FILE parameter missing.")
   endif()
-  if (NOT prefix_keyword STREQUAL PREFIX)
+  if (NOT "x${prefix_keyword}" STREQUAL "xPREFIX")
     message(FATAL_ERROR "write_compiler_detection_header: PREFIX parameter missing.")
   endif()
   set(options)
@@ -323,6 +323,7 @@ function(write_compiler_detection_header
     AppleClang
     MSVC
     SunPro
+    Intel
   )
 
   set(_hex_compilers ADSP Borland Embarcadero SunPro)
@@ -586,7 +587,7 @@ function(write_compiler_detection_header
 #  if ${def_name}
 #    define ${def_value} nullptr
 #  else
-#    define ${def_value} static_cast<void*>(0)
+#    define ${def_value} 0
 #  endif
 \n")
       endif()

@@ -229,9 +229,14 @@ function(is_file_executable file result_var)
 
     if(file_cmd)
       execute_process(COMMAND "${file_cmd}" "${file_full}"
+        RESULT_VARIABLE file_rv
         OUTPUT_VARIABLE file_ov
+        ERROR_VARIABLE file_ev
         OUTPUT_STRIP_TRAILING_WHITESPACE
         )
+      if(NOT file_rv STREQUAL "0")
+        message(FATAL_ERROR "${file_cmd} failed: ${file_rv}\n${file_ev}")
+      endif()
 
       # Replace the name of the file in the output with a placeholder token
       # (the string " _file_full_ ") so that just in case the path name of
@@ -495,6 +500,7 @@ function(gp_resolved_file_type original_file file exepath dirs type_var)
   if(NOT IS_ABSOLUTE "${original_file}")
     message(STATUS "warning: gp_resolved_file_type expects absolute full path for first arg original_file")
   endif()
+  get_filename_component(original_file "${original_file}" ABSOLUTE) # canonicalize path
 
   set(is_embedded 0)
   set(is_local 0)
@@ -510,6 +516,7 @@ function(gp_resolved_file_type original_file file exepath dirs type_var)
     if(NOT IS_ABSOLUTE "${file}")
       gp_resolve_item("${original_file}" "${file}" "${exepath}" "${dirs}" resolved_file "${rpaths}")
     endif()
+    get_filename_component(resolved_file "${resolved_file}" ABSOLUTE) # canonicalize path
 
     string(TOLOWER "${original_file}" original_lower)
     string(TOLOWER "${resolved_file}" lower)
@@ -533,7 +540,7 @@ function(gp_resolved_file_type original_file file exepath dirs type_var)
       string(TOLOWER "$ENV{windir}" windir)
       file(TO_CMAKE_PATH "${windir}" windir)
 
-      if(lower MATCHES "^(${sysroot}/sys(tem|wow)|${windir}/sys(tem|wow)|(.*/)*msvc[^/]+dll)")
+      if(lower MATCHES "^(api-ms-win-|${sysroot}/sys(tem|wow)|${windir}/sys(tem|wow)|(.*/)*msvc[^/]+dll)")
         set(is_system 1)
       endif()
 
@@ -543,15 +550,25 @@ function(gp_resolved_file_type original_file file exepath dirs type_var)
 
         if(CYGPATH_EXECUTABLE)
           execute_process(COMMAND ${CYGPATH_EXECUTABLE} -W
+                          RESULT_VARIABLE env_rv
                           OUTPUT_VARIABLE env_windir
+                          ERROR_VARIABLE env_ev
                           OUTPUT_STRIP_TRAILING_WHITESPACE)
+          if(NOT env_rv STREQUAL "0")
+            message(FATAL_ERROR "${CYGPATH_EXECUTABLE} -W failed: ${env_rv}\n${env_ev}")
+          endif()
           execute_process(COMMAND ${CYGPATH_EXECUTABLE} -S
+                          RESULT_VARIABLE env_rv
                           OUTPUT_VARIABLE env_sysdir
+                          ERROR_VARIABLE env_ev
                           OUTPUT_STRIP_TRAILING_WHITESPACE)
+          if(NOT env_rv STREQUAL "0")
+            message(FATAL_ERROR "${CYGPATH_EXECUTABLE} -S failed: ${env_rv}\n${env_ev}")
+          endif()
           string(TOLOWER "${env_windir}" windir)
           string(TOLOWER "${env_sysdir}" sysroot)
 
-          if(lower MATCHES "^(${sysroot}/sys(tem|wow)|${windir}/sys(tem|wow)|(.*/)*msvc[^/]+dll)")
+          if(lower MATCHES "^(api-ms-win-|${sysroot}/sys(tem|wow)|${windir}/sys(tem|wow)|(.*/)*msvc[^/]+dll)")
             set(is_system 1)
           endif()
         endif()
@@ -646,10 +663,28 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
   endif()
 
   set(gp_cmd_paths ${gp_cmd_paths}
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\14.0;InstallDir]/../../VC/bin"
+    "$ENV{VS140COMNTOOLS}/../../VC/bin"
+    "C:/Program Files (x86)/Microsoft Visual Studio 14.0/VC/bin"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\12.0;InstallDir]/../../VC/bin"
+    "$ENV{VS120COMNTOOLS}/../../VC/bin"
+    "C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/bin"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\11.0;InstallDir]/../../VC/bin"
+    "$ENV{VS110COMNTOOLS}/../../VC/bin"
+    "C:/Program Files (x86)/Microsoft Visual Studio 11.0/VC/bin"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\10.0;InstallDir]/../../VC/bin"
+    "$ENV{VS100COMNTOOLS}/../../VC/bin"
+    "C:/Program Files (x86)/Microsoft Visual Studio 10.0/VC/bin"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\9.0;InstallDir]/../../VC/bin"
+    "$ENV{VS90COMNTOOLS}/../../VC/bin"
     "C:/Program Files/Microsoft Visual Studio 9.0/VC/bin"
     "C:/Program Files (x86)/Microsoft Visual Studio 9.0/VC/bin"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\8.0;InstallDir]/../../VC/bin"
+    "$ENV{VS80COMNTOOLS}/../../VC/bin"
     "C:/Program Files/Microsoft Visual Studio 8/VC/BIN"
     "C:/Program Files (x86)/Microsoft Visual Studio 8/VC/BIN"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\7.1;InstallDir]/../../VC7/bin"
+    "$ENV{VS71COMNTOOLS}/../../VC7/bin"
     "C:/Program Files/Microsoft Visual Studio .NET 2003/VC7/BIN"
     "C:/Program Files (x86)/Microsoft Visual Studio .NET 2003/VC7/BIN"
     "/usr/local/bin"
@@ -685,6 +720,8 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
     return()
   endif()
 
+  set(gp_cmd_maybe_filter)      # optional command to pre-filter gp_tool results
+
   if(gp_tool STREQUAL "ldd")
     set(gp_cmd_args "")
     set(gp_regex "^[\t ]*[^\t ]+ => ([^\t\(]+) .*${eol_char}$")
@@ -709,6 +746,11 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
     set(gp_regex_error "")
     set(gp_regex_fallback "")
     set(gp_regex_cmp_count 1)
+    # objdump generates copious output so we create a grep filter to pre-filter results
+    find_program(gp_grep_cmd grep)
+    if(gp_grep_cmd)
+      set(gp_cmd_maybe_filter COMMAND ${gp_grep_cmd} "^[[:blank:]]*DLL Name: ")
+    endif()
   else()
     message(STATUS "warning: gp_tool='${gp_tool}' is an unknown tool...")
     message(STATUS "CMake function get_prerequisites needs more code to handle '${gp_tool}'")
@@ -765,8 +807,19 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
   #
   execute_process(
     COMMAND ${gp_cmd} ${gp_cmd_args} ${target}
+    ${gp_cmd_maybe_filter}
+    RESULT_VARIABLE gp_rv
     OUTPUT_VARIABLE gp_cmd_ov
+    ERROR_VARIABLE gp_ev
     )
+  if(NOT gp_rv STREQUAL "0")
+    if(gp_tool STREQUAL "dumpbin")
+      # dumpbin error messages seem to go to stdout
+      message(FATAL_ERROR "${gp_cmd} failed: ${gp_rv}\n${gp_ev}\n${gp_cmd_ov}")
+    else()
+      message(FATAL_ERROR "${gp_cmd} failed: ${gp_rv}\n${gp_ev}")
+    endif()
+  endif()
 
   if(gp_tool STREQUAL "ldd")
     set(ENV{LD_LIBRARY_PATH} "${old_ld_env}")
@@ -791,8 +844,13 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
   if(gp_tool STREQUAL "otool")
     execute_process(
       COMMAND otool -D ${target}
+      RESULT_VARIABLE otool_rv
       OUTPUT_VARIABLE gp_install_id_ov
+      ERROR_VARIABLE otool_ev
       )
+    if(NOT otool_rv STREQUAL "0")
+      message(FATAL_ERROR "otool -D failed: ${otool_rv}\n${otool_ev}")
+    endif()
     # second line is install name
     string(REGEX REPLACE ".*:\n" "" gp_install_id "${gp_install_id_ov}")
     if(gp_install_id)

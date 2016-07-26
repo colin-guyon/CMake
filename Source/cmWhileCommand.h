@@ -13,22 +13,24 @@
 #define cmWhileCommand_h
 
 #include "cmCommand.h"
+
 #include "cmFunctionBlocker.h"
 #include "cmListFileCache.h"
 
 class cmWhileFunctionBlocker : public cmFunctionBlocker
 {
 public:
-  cmWhileFunctionBlocker() {this->Depth=0;}
-  virtual ~cmWhileFunctionBlocker() {}
-  virtual bool IsFunctionBlocked(const cmListFileFunction& lff,
-                                 cmMakefile &mf,
-                                 cmExecutionStatus &);
-  virtual bool ShouldRemove(const cmListFileFunction& lff, cmMakefile &mf);
+  cmWhileFunctionBlocker(cmMakefile* mf);
+  ~cmWhileFunctionBlocker();
+  virtual bool IsFunctionBlocked(const cmListFileFunction& lff, cmMakefile& mf,
+                                 cmExecutionStatus&);
+  virtual bool ShouldRemove(const cmListFileFunction& lff, cmMakefile& mf);
 
   std::vector<cmListFileArgument> Args;
   std::vector<cmListFileFunction> Functions;
+
 private:
+  cmMakefile* Makefile;
   int Depth;
 };
 
@@ -39,24 +41,23 @@ public:
   /**
    * This is a virtual constructor for the command.
    */
-  virtual cmCommand* Clone()
-    {
-    return new cmWhileCommand;
-    }
+  virtual cmCommand* Clone() { return new cmWhileCommand; }
 
   /**
    * This overrides the default InvokeInitialPass implementation.
    * It records the arguments before expansion.
    */
   virtual bool InvokeInitialPass(const std::vector<cmListFileArgument>& args,
-                                 cmExecutionStatus &);
+                                 cmExecutionStatus&);
 
   /**
    * This is called when the command is first encountered in
    * the CMakeLists.txt file.
    */
-  virtual bool InitialPass(std::vector<std::string> const&,
-                           cmExecutionStatus &) { return false; }
+  virtual bool InitialPass(std::vector<std::string> const&, cmExecutionStatus&)
+  {
+    return false;
+  }
 
   /**
    * This determines if the command is invoked when in script mode.
@@ -66,10 +67,9 @@ public:
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual std::string GetName() const { return "while";}
+  virtual std::string GetName() const { return "while"; }
 
   cmTypeMacro(cmWhileCommand, cmCommand);
 };
-
 
 #endif

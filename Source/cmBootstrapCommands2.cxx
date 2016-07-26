@@ -16,21 +16,21 @@
 #include "cmCommands.h"
 #include "cmConditionEvaluator.cxx"
 #include "cmExpandedCommandArgument.cxx"
-#include "cmGeneratorExpressionEvaluationFile.cxx"
 #include "cmGetCMakePropertyCommand.cxx"
 #include "cmGetDirectoryPropertyCommand.cxx"
 #include "cmGetFilenameComponentCommand.cxx"
 #include "cmGetPropertyCommand.cxx"
 #include "cmGetSourceFilePropertyCommand.cxx"
 #include "cmGetTargetPropertyCommand.cxx"
+#include "cmGetTestPropertyCommand.cxx"
 #include "cmHexFileConverter.cxx"
 #include "cmIfCommand.cxx"
 #include "cmIncludeCommand.cxx"
 #include "cmIncludeDirectoryCommand.cxx"
 #include "cmIncludeRegularExpressionCommand.cxx"
-#include "cmInstallFilesCommand.cxx"
-#include "cmInstallCommandArguments.cxx"
 #include "cmInstallCommand.cxx"
+#include "cmInstallCommandArguments.cxx"
+#include "cmInstallFilesCommand.cxx"
 #include "cmInstallTargetsCommand.cxx"
 #include "cmLinkDirectoriesCommand.cxx"
 #include "cmListCommand.cxx"
@@ -49,7 +49,6 @@
 #include "cmSetSourceFilesPropertiesCommand.cxx"
 #include "cmSetTargetPropertiesCommand.cxx"
 #include "cmSetTestsPropertiesCommand.cxx"
-#include "cmGetTestPropertyCommand.cxx"
 #include "cmSiteNameCommand.cxx"
 #include "cmStringCommand.cxx"
 #include "cmSubdirCommand.cxx"
@@ -60,7 +59,7 @@
 #include "cmUnsetCommand.cxx"
 #include "cmWhileCommand.cxx"
 
-void GetBootstrapCommands2(std::list<cmCommand*>& commands)
+void GetBootstrapCommands2(std::vector<cmCommand*>& commands)
 {
   commands.push_back(new cmGetCMakePropertyCommand);
   commands.push_back(new cmGetDirectoryPropertyCommand);

@@ -17,8 +17,8 @@
 
 class cmLocalGenerator;
 class cmMakefile;
-class cmTarget;
-class cmGeneratedFileStream;
+class cmGeneratorTarget;
+class cmXMLWriter;
 
 /** \class cmExtraCodeBlocksGenerator
  * \brief Write CodeBlocks project files for Makefile based projects
@@ -29,38 +29,42 @@ public:
   cmExtraCodeBlocksGenerator();
 
   virtual std::string GetName() const
-                         { return cmExtraCodeBlocksGenerator::GetActualName();}
-  static std::string GetActualName()                    { return "CodeBlocks";}
+  {
+    return cmExtraCodeBlocksGenerator::GetActualName();
+  }
+  static std::string GetActualName() { return "CodeBlocks"; }
   static cmExternalMakefileProjectGenerator* New()
-                                     { return new cmExtraCodeBlocksGenerator; }
+  {
+    return new cmExtraCodeBlocksGenerator;
+  }
   /** Get the documentation entry for this generator.  */
   virtual void GetDocumentation(cmDocumentationEntry& entry,
                                 const std::string& fullName) const;
 
   virtual void Generate();
+
 private:
   struct CbpUnit
   {
-    std::vector<const cmTarget*> Targets;
+    std::vector<const cmGeneratorTarget*> Targets;
   };
 
   void CreateProjectFile(const std::vector<cmLocalGenerator*>& lgs);
 
   void CreateNewProjectFile(const std::vector<cmLocalGenerator*>& lgs,
-                                const std::string& filename);
-  std::string CreateDummyTargetFile(cmMakefile* mf, cmTarget* target) const;
+                            const std::string& filename);
+  std::string CreateDummyTargetFile(cmLocalGenerator* lg,
+                                    cmGeneratorTarget* target) const;
 
   std::string GetCBCompilerId(const cmMakefile* mf);
-  int GetCBTargetType(cmTarget* target);
+  int GetCBTargetType(cmGeneratorTarget* target);
   std::string BuildMakeCommand(const std::string& make, const char* makefile,
-                               const std::string& target);
-  void AppendTarget(cmGeneratedFileStream& fout,
-                    const std::string& targetName,
-                    cmTarget* target,
-                    const char* make,
-                    const cmMakefile* makefile,
-                    const char* compiler);
-
+                               const std::string& target,
+                               const std::string& makeFlags);
+  void AppendTarget(cmXMLWriter& xml, const std::string& targetName,
+                    cmGeneratorTarget* target, const char* make,
+                    const cmLocalGenerator* lg, const char* compiler,
+                    const std::string& makeFlags);
 };
 
 #endif

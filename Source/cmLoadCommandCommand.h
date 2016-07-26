@@ -19,12 +19,9 @@ class cmLoadCommandCommand : public cmCommand
 public:
   virtual cmCommand* Clone() { return new cmLoadCommandCommand; }
   virtual bool InitialPass(std::vector<std::string> const& args,
-                           cmExecutionStatus &status);
-  virtual std::string GetName() const {return "load_command";}
-  virtual bool IsDiscouraged() const { return true; }
+                           cmExecutionStatus& status);
+  virtual std::string GetName() const { return "load_command"; }
   cmTypeMacro(cmLoadCommandCommand, cmCommand);
 };
-
-
 
 #endif

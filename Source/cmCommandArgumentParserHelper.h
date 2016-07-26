@@ -17,8 +17,8 @@
 #define YYSTYPE cmCommandArgumentParserHelper::ParserType
 #define YYSTYPE_IS_DECLARED
 #define YY_EXTRA_TYPE cmCommandArgumentParserHelper*
-#define YY_DECL int cmCommandArgument_yylex(YYSTYPE* yylvalp,\
-  yyscan_t yyscanner)
+#define YY_DECL                                                               \
+  int cmCommandArgument_yylex(YYSTYPE* yylvalp, yyscan_t yyscanner)
 
 /** \class cmCommandArgumentParserHelper
  * \brief Helper class for parsing java source files
@@ -31,7 +31,8 @@ class cmMakefile;
 class cmCommandArgumentParserHelper
 {
 public:
-  typedef struct {
+  typedef struct
+  {
     char* str;
   } ParserType;
 
@@ -42,9 +43,9 @@ public:
 
   // For the lexer:
   void AllocateParserType(cmCommandArgumentParserHelper::ParserType* pt,
-    const char* str, int len = 0);
+                          const char* str, int len = 0);
   bool HandleEscapeSymbol(cmCommandArgumentParserHelper::ParserType* pt,
-    char symbol);
+                          char symbol);
 
   int LexInput(char* buf, int maxlen);
   void Error(const char* str);
@@ -80,8 +81,6 @@ private:
   std::string::size_type InputBufferPos;
   std::string InputBuffer;
   std::vector<char> OutputBuffer;
-  int CurrentLine;
-  int Verbose;
 
   void Print(const char* place, const char* str);
   void SafePrintMissing(const char* str, int line, int cnt);
@@ -94,17 +93,17 @@ private:
   std::vector<char*> Variables;
   const cmMakefile* Makefile;
   std::string Result;
+  std::string ErrorString;
   const char* FileName;
+  long FileLine;
+  int CurrentLine;
+  int Verbose;
   bool WarnUninitialized;
   bool CheckSystemVars;
-  long FileLine;
   bool EscapeQuotes;
-  std::string ErrorString;
   bool NoEscapeMode;
   bool ReplaceAtSyntax;
   bool RemoveEmpty;
 };
 
 #endif
-
-

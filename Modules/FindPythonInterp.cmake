@@ -28,9 +28,10 @@
 # for Python.  You need to set this variable before calling
 # find_package(PythonInterp).
 #
-# If also calling find_package(PythonLibs), call find_package(PythonInterp)
-# first to get the currently active Python version by default with a consistent
-# version of PYTHON_LIBRARIES.
+# If calling both ``find_package(PythonInterp)`` and
+# ``find_package(PythonLibs)``, call ``find_package(PythonInterp)`` first to
+# get the currently active Python version by default with a consistent version
+# of PYTHON_LIBRARIES.
 
 #=============================================================================
 # Copyright 2005-2010 Kitware, Inc.
@@ -51,7 +52,7 @@ unset(_Python_NAMES)
 
 set(_PYTHON1_VERSIONS 1.6 1.5)
 set(_PYTHON2_VERSIONS 2.7 2.6 2.5 2.4 2.3 2.2 2.1 2.0)
-set(_PYTHON3_VERSIONS 3.4 3.3 3.2 3.1 3.0)
+set(_PYTHON3_VERSIONS 3.6 3.5 3.4 3.3 3.2 3.1 3.0)
 
 if(PythonInterp_FIND_VERSION)
     if(PythonInterp_FIND_VERSION_COUNT GREATER 1)

@@ -14,6 +14,7 @@
 #define cmWIXFeaturesSourceWriter_h
 
 #include "cmWIXSourceWriter.h"
+
 #include <CPack/cmCPackGenerator.h>
 
 /** \class cmWIXFeaturesSourceWriter
@@ -22,12 +23,10 @@
 class cmWIXFeaturesSourceWriter : public cmWIXSourceWriter
 {
 public:
-  cmWIXFeaturesSourceWriter(cmCPackLog* logger,
-    std::string const& filename);
+  cmWIXFeaturesSourceWriter(cmCPackLog* logger, std::string const& filename);
 
-  void CreateCMakePackageRegistryEntry(
-    std::string const& package,
-    std::string const& upgradeGuid);
+  void CreateCMakePackageRegistryEntry(std::string const& package,
+                                       std::string const& upgradeGuid);
 
   void EmitFeatureForComponentGroup(const cmCPackComponentGroup& group);
 

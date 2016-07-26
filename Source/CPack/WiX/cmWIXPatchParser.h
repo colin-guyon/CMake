@@ -13,18 +13,40 @@
 #ifndef cmCPackWIXPatchParser_h
 #define cmCPackWIXPatchParser_h
 
-#include <cmXMLParser.h>
-
 #include <CPack/cmCPackLog.h>
 
-#include <map>
-#include <list>
+#include <cmXMLParser.h>
 
-struct cmWIXPatchElement
+#include <list>
+#include <map>
+
+struct cmWIXPatchNode
 {
+  enum Type
+  {
+    TEXT,
+    ELEMENT
+  };
+
+  virtual ~cmWIXPatchNode();
+
+  virtual Type type() = 0;
+};
+
+struct cmWIXPatchText : public cmWIXPatchNode
+{
+  virtual Type type();
+
+  std::string text;
+};
+
+struct cmWIXPatchElement : cmWIXPatchNode
+{
+  virtual Type type();
+
   ~cmWIXPatchElement();
 
-  typedef std::list<cmWIXPatchElement*> child_list_t;
+  typedef std::list<cmWIXPatchNode*> child_list_t;
   typedef std::map<std::string, std::string> attributes_t;
 
   std::string name;
@@ -43,11 +65,14 @@ public:
   cmWIXPatchParser(fragment_map_t& Fragments, cmCPackLog* logger);
 
 private:
-  virtual void StartElement(const std::string& name, const char **atts);
+  virtual void StartElement(const std::string& name, const char** atts);
 
-  void StartFragment(const char **attributes);
+  void StartFragment(const char** attributes);
 
   virtual void EndElement(const std::string& name);
+
+  virtual void CharacterDataHandler(const char* data, int length);
+
   virtual void ReportError(int line, int column, const char* msg);
 
   void ReportValidationError(std::string const& message);

@@ -21,7 +21,8 @@
 #
 # This command creates a <target_name>.jar.  It compiles the given
 # source files (source) and adds the given resource files (resource) to
-# the jar file.  If only resource files are given then just a jar file
+# the jar file.  Source files can be java files or listing files
+# (prefixed by '@').  If only resource files are given then just a jar file
 # is created.  The list of include jars are added to the classpath when
 # compiling the java sources and also to the dependencies of the target.
 # INCLUDE_JARS also accepts other target names created by add_jar.  For
@@ -168,7 +169,7 @@
 #
 # ::
 #
-#    The add_jar() functions sets some target properties. You can get these
+#    The add_jar() function sets some target properties. You can get these
 #    properties with the
 #       get_property(TARGET <target_name> PROPERTY <propery_name>)
 #    command.
@@ -183,7 +184,7 @@
 #                       This is used by install_jni_symlink().
 #    JAR_FILE           The location of the jar file so that you can include
 #                       it.
-#    CLASS_DIR          The directory where the class files can be found. For
+#    CLASSDIR           The directory where the class files can be found. For
 #                       example to use them with javah.
 #
 # ::
@@ -210,14 +211,16 @@
 #
 # ::
 #
-#  install_jar(TARGET_NAME DESTINATION)
+#  install_jar(target_name destination)
+#  install_jar(target_name DESTINATION destination [COMPONENT component])
 #
 # This command installs the TARGET_NAME files to the given DESTINATION.
 # It should be called in the same scope as add_jar() or it will fail.
 #
 # ::
 #
-#  install_jni_symlink(TARGET_NAME DESTINATION)
+#  install_jni_symlink(target_name destination)
+#  install_jni_symlink(target_name DESTINATION destination [COMPONENT component])
 #
 # This command installs the TARGET_NAME JNI symlinks to the given
 # DESTINATION.  It should be called in the same scope as add_jar() or it
@@ -306,6 +309,65 @@
 #
 #
 # if you don't set the INSTALLPATH.
+#
+# ::
+#
+#  create_javah(TARGET <target>
+#               GENERATED_FILES <VAR>
+#               CLASSES <class>...
+#               [CLASSPATH <classpath>...]
+#               [DEPENDS <depend>...]
+#               [OUTPUT_NAME <path>|OUTPUT_DIR <path>]
+#               )
+#
+# Create C header files from java classes. These files provide the connective glue
+# that allow your Java and C code to interact.
+#
+# There are two main signatures for create_javah.  The first signature
+# returns generated files through variable specified by GENERATED_FILES option:
+#
+# ::
+#
+#    Example:
+#    Create_javah(GENERATED_FILES files_headers
+#      CLASSES org.cmake.HelloWorld
+#      CLASSPATH hello.jar
+#    )
+#
+#
+#
+# The second signature for create_javah creates a target which encapsulates
+# header files generation.
+#
+# ::
+#
+#    Example:
+#    Create_javah(TARGET target_headers
+#      CLASSES org.cmake.HelloWorld
+#      CLASSPATH hello.jar
+#    )
+#
+#
+#
+# Both signatures share same options.
+#
+#  ``CLASSES <class>...``
+#    Specifies Java classes used to generate headers.
+#
+#  ``CLASSPATH <classpath>...``
+#    Specifies various paths to look up classes. Here .class files, jar files or targets
+#    created by command add_jar can be used.
+#
+#  ``DEPENDS <depend>...``
+#    Targets on which the javah target depends
+#
+#  ``OUTPUT_NAME <path>``
+#    Concatenates the resulting header files for all the classes listed by option CLASSES
+#    into <path>. Same behavior as option '-o' of javah tool.
+#
+#  ``OUTPUT_DIR <path>``
+#    Sets the directory where the header files will be generated. Same behavior as option
+#    '-d' of javah tool. If not specified, ${CMAKE_CURRENT_BINARY_DIR} is used as output directory.
 
 #=============================================================================
 # Copyright 2013 OpenGamma Ltd. <graham@opengamma.com>
@@ -327,7 +389,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/CMakeParseArguments.cmake)
 function (__java_copy_file src dest comment)
     add_custom_command(
         OUTPUT  ${dest}
-        COMMAND cmake -E copy_if_different
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ARGS    ${src}
                 ${dest}
         DEPENDS ${src}
@@ -340,6 +402,13 @@ set(_JAVA_SYMLINK_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/UseJavaSymlinks.cmake)
 
 function(add_jar _TARGET_NAME)
 
+    cmake_parse_arguments(_add_jar
+      ""
+      "VERSION;OUTPUT_DIR;OUTPUT_NAME;ENTRY_POINT;MANIFEST"
+      "SOURCES;INCLUDE_JARS"
+      ${ARGN}
+    )
+
     # In CMake < 2.8.12, add_jar used variables which were set prior to calling
     # add_jar for customizing the behavior of add_jar. In order to be backwards
     # compatible, check if any of those variables are set, and use them to
@@ -347,27 +416,20 @@ function(add_jar _TARGET_NAME)
     # argument will override the value set here.)
     #
     # New features should use named arguments only.
-    if(DEFINED CMAKE_JAVA_TARGET_VERSION)
+    if(NOT DEFINED _add_jar_VERSION AND DEFINED CMAKE_JAVA_TARGET_VERSION)
         set(_add_jar_VERSION "${CMAKE_JAVA_TARGET_VERSION}")
     endif()
-    if(DEFINED CMAKE_JAVA_TARGET_OUTPUT_DIR)
+    if(NOT DEFINED _add_jar_OUTPUT_DIR AND DEFINED CMAKE_JAVA_TARGET_OUTPUT_DIR)
         set(_add_jar_OUTPUT_DIR "${CMAKE_JAVA_TARGET_OUTPUT_DIR}")
     endif()
-    if(DEFINED CMAKE_JAVA_TARGET_OUTPUT_NAME)
+    if(NOT DEFINED _add_jar_OUTPUT_NAME AND DEFINED CMAKE_JAVA_TARGET_OUTPUT_NAME)
         set(_add_jar_OUTPUT_NAME "${CMAKE_JAVA_TARGET_OUTPUT_NAME}")
         # reset
         set(CMAKE_JAVA_TARGET_OUTPUT_NAME)
     endif()
-    if(DEFINED CMAKE_JAVA_JAR_ENTRY_POINT)
+    if(NOT DEFINED _add_jar_ENTRY_POINT AND DEFINED CMAKE_JAVA_JAR_ENTRY_POINT)
         set(_add_jar_ENTRY_POINT "${CMAKE_JAVA_JAR_ENTRY_POINT}")
     endif()
-
-    cmake_parse_arguments(_add_jar
-      ""
-      "VERSION;OUTPUT_DIR;OUTPUT_NAME;ENTRY_POINT;MANIFEST"
-      "SOURCES;INCLUDE_JARS"
-      ${ARGN}
-    )
 
     set(_JAVA_SOURCE_FILES ${_add_jar_SOURCES} ${_add_jar_UNPARSED_ARGUMENTS})
 
@@ -382,7 +444,7 @@ function(add_jar _TARGET_NAME)
 
     if (_add_jar_MANIFEST)
         set(_MANIFEST_OPTION m)
-        set(_MANIFEST_VALUE ${_add_jar_MANIFEST})
+        get_filename_component (_MANIFEST_VALUE "${_add_jar_MANIFEST}" ABSOLUTE)
     endif ()
 
     if (LIBRARY_OUTPUT_PATH)
@@ -423,6 +485,7 @@ function(add_jar _TARGET_NAME)
 
     set(_JAVA_CLASS_FILES)
     set(_JAVA_COMPILE_FILES)
+    set(_JAVA_COMPILE_FILELISTS)
     set(_JAVA_DEPENDS)
     set(_JAVA_COMPILE_DEPENDS)
     set(_JAVA_RESOURCE_FILES)
@@ -433,7 +496,11 @@ function(add_jar _TARGET_NAME)
         get_filename_component(_JAVA_PATH ${_JAVA_SOURCE_FILE} PATH)
         get_filename_component(_JAVA_FULL ${_JAVA_SOURCE_FILE} ABSOLUTE)
 
-        if (_JAVA_EXT MATCHES ".java")
+        if (_JAVA_SOURCE_FILE MATCHES "^@(.+)$")
+            get_filename_component(_JAVA_FULL ${CMAKE_MATCH_1} ABSOLUTE)
+            list(APPEND _JAVA_COMPILE_FILELISTS ${_JAVA_FULL})
+
+        elseif (_JAVA_EXT MATCHES ".java")
             file(RELATIVE_PATH _JAVA_REL_BINARY_PATH ${_add_jar_OUTPUT_DIR} ${_JAVA_FULL})
             file(RELATIVE_PATH _JAVA_REL_SOURCE_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${_JAVA_FULL})
             string(LENGTH ${_JAVA_REL_BINARY_PATH} _BIN_LEN)
@@ -492,11 +559,21 @@ function(add_jar _TARGET_NAME)
         file(WRITE ${CMAKE_JAVA_CLASS_OUTPUT_PATH}/java_class_filelist "")
     endif()
 
-    if (_JAVA_COMPILE_FILES)
-        # Create the list of files to compile.
-        set(_JAVA_SOURCES_FILE ${CMAKE_JAVA_CLASS_OUTPUT_PATH}/java_sources)
-        string(REPLACE ";" "\"\n\"" _JAVA_COMPILE_STRING "\"${_JAVA_COMPILE_FILES}\"")
-        file(WRITE ${_JAVA_SOURCES_FILE} ${_JAVA_COMPILE_STRING})
+    if (_JAVA_COMPILE_FILES OR _JAVA_COMPILE_FILELISTS)
+        set (_JAVA_SOURCES_FILELISTS)
+
+        if (_JAVA_COMPILE_FILES)
+            # Create the list of files to compile.
+            set(_JAVA_SOURCES_FILE ${CMAKE_JAVA_CLASS_OUTPUT_PATH}/java_sources)
+            string(REPLACE ";" "\"\n\"" _JAVA_COMPILE_STRING "\"${_JAVA_COMPILE_FILES}\"")
+            file(WRITE ${_JAVA_SOURCES_FILE} ${_JAVA_COMPILE_STRING})
+            list (APPEND _JAVA_SOURCES_FILELISTS "@${_JAVA_SOURCES_FILE}")
+        endif()
+        if (_JAVA_COMPILE_FILELISTS)
+            foreach (_JAVA_FILELIST IN LISTS _JAVA_COMPILE_FILELISTS)
+                list (APPEND _JAVA_SOURCES_FILELISTS "@${_JAVA_FILELIST}")
+            endforeach()
+        endif()
 
         # Compile the java files and create a list of class files
         add_custom_command(
@@ -506,9 +583,9 @@ function(add_jar _TARGET_NAME)
                 ${CMAKE_JAVA_COMPILE_FLAGS}
                 -classpath "${CMAKE_JAVA_INCLUDE_PATH_FINAL}"
                 -d ${CMAKE_JAVA_CLASS_OUTPUT_PATH}
-                @${_JAVA_SOURCES_FILE}
+                ${_JAVA_SOURCES_FILELISTS}
             COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_JAVA_CLASS_OUTPUT_PATH}/java_compiled_${_TARGET_NAME}
-            DEPENDS ${_JAVA_COMPILE_FILES} ${_JAVA_COMPILE_DEPENDS}
+            DEPENDS ${_JAVA_COMPILE_FILES} ${_JAVA_COMPILE_FILELISTS} ${_JAVA_COMPILE_DEPENDS}
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             COMMENT "Building Java objects for ${_TARGET_NAME}.jar"
         )
@@ -613,7 +690,26 @@ function(add_jar _TARGET_NAME)
 
 endfunction()
 
-function(INSTALL_JAR _TARGET_NAME _DESTINATION)
+function(INSTALL_JAR _TARGET_NAME)
+    if (ARGC EQUAL 2)
+      set (_DESTINATION ${ARGV1})
+    else()
+      cmake_parse_arguments(_install_jar
+        ""
+        "DESTINATION;COMPONENT"
+        ""
+        ${ARGN})
+      if (_install_jar_DESTINATION)
+        set (_DESTINATION ${_install_jar_DESTINATION})
+      else()
+        message(SEND_ERROR "install_jar: ${_TARGET_NAME}: DESTINATION must be specified.")
+      endif()
+
+      if (_install_jar_COMPONENT)
+        set (_COMPONENT COMPONENT ${_install_jar_COMPONENT})
+      endif()
+    endif()
+
     get_property(__FILES
         TARGET
             ${_TARGET_NAME}
@@ -627,13 +723,33 @@ function(INSTALL_JAR _TARGET_NAME _DESTINATION)
                 ${__FILES}
             DESTINATION
                 ${_DESTINATION}
+            ${_COMPONENT}
         )
     else ()
-        message(SEND_ERROR "The target ${_TARGET_NAME} is not known in this scope.")
+        message(SEND_ERROR "install_jar: The target ${_TARGET_NAME} is not known in this scope.")
     endif ()
 endfunction()
 
-function(INSTALL_JNI_SYMLINK _TARGET_NAME _DESTINATION)
+function(INSTALL_JNI_SYMLINK _TARGET_NAME)
+    if (ARGC EQUAL 2)
+      set (_DESTINATION ${ARGV1})
+    else()
+      cmake_parse_arguments(_install_jni_symlink
+        ""
+        "DESTINATION;COMPONENT"
+        ""
+        ${ARGN})
+      if (_install_jni_symlink_DESTINATION)
+        set (_DESTINATION ${_install_jni_symlink_DESTINATION})
+      else()
+        message(SEND_ERROR "install_jni_symlink: ${_TARGET_NAME}: DESTINATION must be specified.")
+      endif()
+
+      if (_install_jni_symlink_COMPONENT)
+        set (_COMPONENT COMPONENT ${_install_jni_symlink_COMPONENT})
+      endif()
+    endif()
+
     get_property(__SYMLINK
         TARGET
             ${_TARGET_NAME}
@@ -647,9 +763,10 @@ function(INSTALL_JNI_SYMLINK _TARGET_NAME _DESTINATION)
                 ${__SYMLINK}
             DESTINATION
                 ${_DESTINATION}
+            ${_COMPONENT}
         )
     else ()
-        message(SEND_ERROR "The target ${_TARGET_NAME} is not known in this scope.")
+        message(SEND_ERROR "install_jni_symlink: The target ${_TARGET_NAME} is not known in this scope.")
     endif ()
 endfunction()
 
@@ -1072,4 +1189,102 @@ function(create_javadoc _target)
         DIRECTORY ${_javadoc_builddir}
         DESTINATION ${_javadoc_installpath}
     )
+endfunction()
+
+function (create_javah)
+    cmake_parse_arguments(_create_javah
+      ""
+      "TARGET;GENERATED_FILES;OUTPUT_NAME;OUTPUT_DIR"
+      "CLASSES;CLASSPATH;DEPENDS"
+      ${ARGN})
+
+    # ckeck parameters
+    if (NOT _create_javah_TARGET AND NOT _create_javah_GENERATED_FILES)
+      message (FATAL_ERROR "create_javah: TARGET or GENERATED_FILES must be specified.")
+    endif()
+    if (_create_javah_OUTPUT_NAME AND _create_javah_OUTPUT_DIR)
+      message (FATAL_ERROR "create_javah: OUTPUT_NAME and OUTPUT_DIR are mutually exclusive.")
+    endif()
+
+    if (NOT _create_javah_CLASSES)
+      message (FATAL_ERROR "create_javah: CLASSES is a required parameter.")
+    endif()
+
+    set (_output_files)
+    if (WIN32 AND NOT CYGWIN AND CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
+      set(_classpath_sep "$<SEMICOLON>")
+    else ()
+      set(_classpath_sep ":")
+    endif()
+
+    # handle javah options
+    set (_javah_options)
+
+    if (_create_javah_CLASSPATH)
+      # CLASSPATH can specify directories, jar files or targets created with add_jar command
+      set (_classpath)
+      foreach (_path IN LISTS _create_javah_CLASSPATH)
+        if (TARGET ${_path})
+          get_target_property (_jar_path ${_path} JAR_FILE)
+          if (_jar_path)
+            list (APPEND _classpath "${_jar_path}")
+            list (APPEND _create_javah_DEPENDS "${_path}")
+          else()
+            message(SEND_ERROR "create_javah: CLASSPATH target ${_path} is not a jar.")
+          endif()
+        elseif (EXISTS "${_path}")
+          list (APPEND _classpath "${_path}")
+          if (NOT IS_DIRECTORY "${_path}")
+            list (APPEND _create_javah_DEPENDS "${_path}")
+          endif()
+        else()
+          message(SEND_ERROR "create_javah: CLASSPATH entry ${_path} does not exist.")
+        endif()
+      endforeach()
+      string (REPLACE ";" "${_classpath_sep}" _classpath "${_classpath}")
+      list (APPEND _javah_options -classpath "${_classpath}")
+    endif()
+
+    if (_create_javah_OUTPUT_DIR)
+      list (APPEND _javah_options -d "${_create_javah_OUTPUT_DIR}")
+    endif()
+
+    if (_create_javah_OUTPUT_NAME)
+      list (APPEND _javah_options -o "${_create_javah_OUTPUT_NAME}")
+      set (_output_files "${_create_javah_OUTPUT_NAME}")
+
+      get_filename_component (_create_javah_OUTPUT_DIR "${_create_javah_OUTPUT_NAME}" DIRECTORY)
+      get_filename_component (_create_javah_OUTPUT_DIR "${_create_javah_OUTPUT_DIR}" ABSOLUTE)
+    endif()
+
+    if (NOT _create_javah_OUTPUT_DIR)
+      set (_create_javah_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+    endif()
+
+    if (NOT _create_javah_OUTPUT_NAME)
+      # compute output names
+      foreach (_class IN LISTS _create_javah_CLASSES)
+        string (REPLACE "." "_" _c_header "${_class}")
+        set (_c_header  "${_create_javah_OUTPUT_DIR}/${_c_header}.h")
+        list (APPEND _output_files "${_c_header}")
+      endforeach()
+    endif()
+
+    # finalize custom command arguments
+    if (_create_javah_DEPENDS)
+      list (INSERT _create_javah_DEPENDS 0 DEPENDS)
+    endif()
+
+    add_custom_command (OUTPUT ${_output_files}
+      COMMAND "${Java_JAVAH_EXECUTABLE}" ${_javah_options} -jni ${_create_javah_CLASSES}
+      ${_create_javah_DEPENDS}
+      WORKING_DIRECTORY ${_create_javah_OUTPUT_DIR}
+      COMMENT "Building C header files from classes...")
+
+    if (_create_javah_TARGET)
+      add_custom_target (${_create_javah_TARGET} ALL DEPENDS ${_output_files})
+    endif()
+    if (_create_javah_GENERATED_FILES)
+      set (${_create_javah_GENERATED_FILES} ${_output_files} PARENT_SCOPE)
+    endif()
 endfunction()

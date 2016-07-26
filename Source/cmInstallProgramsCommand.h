@@ -26,22 +26,19 @@ public:
   /**
    * This is a virtual constructor for the command.
    */
-  virtual cmCommand* Clone()
-    {
-    return new cmInstallProgramsCommand;
-    }
+  virtual cmCommand* Clone() { return new cmInstallProgramsCommand; }
 
   /**
    * This is called when the command is first encountered in
    * the CMakeLists.txt file.
    */
   virtual bool InitialPass(std::vector<std::string> const& args,
-                           cmExecutionStatus &status);
+                           cmExecutionStatus& status);
 
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual std::string GetName() const { return "install_programs";}
+  virtual std::string GetName() const { return "install_programs"; }
 
   /**
    * This is called at the end after all the information
@@ -53,21 +50,15 @@ public:
 
   virtual bool HasFinalPass() const { return true; }
 
-  /** This command is kept for compatibility with older CMake versions. */
-  virtual bool IsDiscouraged() const
-    {
-    return true;
-    }
-
   cmTypeMacro(cmInstallProgramsCommand, cmCommand);
 
 protected:
   std::string FindInstallSource(const char* name) const;
+
 private:
   std::vector<std::string> FinalArgs;
   std::string Destination;
   std::vector<std::string> Files;
 };
-
 
 #endif

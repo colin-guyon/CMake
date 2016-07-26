@@ -34,13 +34,18 @@ if(WIN32 AND "${CMAKE_CXX_COMPILER_ID}" MATCHES "Intel")
   set(_cmake_options "-DCMAKE_EXE_LINKER_FLAGS=")
 endif()
 
-if("${CMAKE_GENERATOR}" MATCHES "Make")
+if("${CMAKE_GENERATOR}" MATCHES "Make|Ninja")
   set(TEST_LINK_DEPENDS ${BuildDepends_BINARY_DIR}/Project/linkdep.txt)
   file(WRITE ${TEST_LINK_DEPENDS} "1")
 endif()
 list(APPEND _cmake_options "-DTEST_LINK_DEPENDS=${TEST_LINK_DEPENDS}")
 
 list(APPEND _cmake_options "-DCMAKE_FORCE_DEPFILES=1")
+
+if(NOT CMAKE_GENERATOR MATCHES "Visual Studio ([^789]|[789][0-9])")
+  set(TEST_MULTI3 1)
+  list(APPEND _cmake_options "-DTEST_MULTI3=1")
+endif()
 
 file(MAKE_DIRECTORY ${BuildDepends_BINARY_DIR}/Project)
 message("Creating Project/foo.cxx")
@@ -64,8 +69,13 @@ file(WRITE ${BuildDepends_BINARY_DIR}/Project/link_depends_no_shared_exe.h
   "#define link_depends_no_shared_exe_value 0\n")
 set(link_depends_no_shared_check_txt ${BuildDepends_BINARY_DIR}/Project/link_depends_no_shared_check.txt)
 
+file(WRITE ${BuildDepends_BINARY_DIR}/Project/object_depends.txt "0\n")
+set(object_depends_check_txt ${BuildDepends_BINARY_DIR}/Project/object_depends_check.txt)
+
 file(WRITE ${BuildDepends_BINARY_DIR}/Project/external.in "external original\n")
 file(WRITE ${BuildDepends_BINARY_DIR}/Project/multi1-in.txt "multi1-in original\n")
+file(WRITE ${BuildDepends_BINARY_DIR}/Project/multi2-stamp.txt "multi2-stamp original\n")
+file(WRITE ${BuildDepends_BINARY_DIR}/Project/multi3-stamp.txt "multi3-stamp original\n")
 
 help_xcode_depends()
 
@@ -191,6 +201,34 @@ else()
     "multi1-out2-copy.txt is missing")
 endif()
 
+if(EXISTS ${BuildDepends_BINARY_DIR}/Project/multi2-real.txt)
+  if(${BuildDepends_BINARY_DIR}/Project/multi2-real.txt
+      IS_NEWER_THAN ${BuildDepends_BINARY_DIR}/Project/multi2-stamp.txt)
+    message(STATUS "multi2-real.txt is newer than multi2-stamp.txt")
+  else()
+    message(SEND_ERROR "Project did not initially build properly: "
+      "multi2-real.txt is not newer than multi2-stamp.txt")
+  endif()
+else()
+  message(SEND_ERROR "Project did not initially build properly: "
+    "multi2-real.txt is missing")
+endif()
+
+if(TEST_MULTI3)
+  if(EXISTS ${BuildDepends_BINARY_DIR}/Project/multi3-real.txt)
+    if(${BuildDepends_BINARY_DIR}/Project/multi3-real.txt
+        IS_NEWER_THAN ${BuildDepends_BINARY_DIR}/Project/multi3-stamp.txt)
+      message(STATUS "multi3-real.txt is newer than multi3-stamp.txt")
+    else()
+      message(SEND_ERROR "Project did not initially build properly: "
+        "multi3-real.txt is not newer than multi3-stamp.txt")
+    endif()
+  else()
+    message(SEND_ERROR "Project did not initially build properly: "
+      "multi3-real.txt is missing")
+  endif()
+endif()
+
 message("Waiting 3 seconds...")
 execute_process(COMMAND ${CMAKE_COMMAND} -E sleep 3)
 
@@ -211,12 +249,16 @@ file(WRITE ${BuildDepends_BINARY_DIR}/Project/zot_macro_tgt.hxx
 file(WRITE ${BuildDepends_BINARY_DIR}/Project/link_depends_no_shared_lib.h
   "#define link_depends_no_shared_lib_value 0\n")
 
+file(WRITE ${BuildDepends_BINARY_DIR}/Project/object_depends.txt "1\n")
+
 if(TEST_LINK_DEPENDS)
   file(WRITE ${TEST_LINK_DEPENDS} "2")
 endif()
 
 file(WRITE ${BuildDepends_BINARY_DIR}/Project/external.in "external changed\n")
 file(WRITE ${BuildDepends_BINARY_DIR}/Project/multi1-in.txt "multi1-in changed\n")
+file(WRITE ${BuildDepends_BINARY_DIR}/Project/multi2-stamp.txt "multi2-stamp changed\n")
+file(WRITE ${BuildDepends_BINARY_DIR}/Project/multi3-stamp.txt "multi3-stamp changed\n")
 
 help_xcode_depends()
 
@@ -262,9 +304,6 @@ message("Run result: ${runResult} Output: \"${out}\"")
 
 if("${out}" STREQUAL "HEADER_STRING: ninja changed ")
   message("Worked!")
-elseif(CMAKE_GENERATOR STREQUAL "Visual Studio 6")
-  # Tolerate failure because VS 6 does not seem to recompile ninjadep.cpp
-  # when the "dir/header.h" it includes changes.
 else()
   message(SEND_ERROR "Project did not rebuild properly. Output[${out}]\n"
     " expected [HEADER_STRING: ninja changed]")
@@ -322,6 +361,20 @@ else()
     "Targets link_depends_no_shared_lib and link_depends_no_shared_exe not both built.")
 endif()
 
+if(EXISTS "${object_depends_check_txt}")
+  file(STRINGS "${object_depends_check_txt}" object_depends_check LIMIT_COUNT 1)
+  if("${object_depends_check}" STREQUAL "1")
+    message(STATUS "object_depends exe is newer than object_depends.txt as expected.")
+  elseif(CMAKE_GENERATOR MATCHES "Visual Studio|Xcode")
+    message(STATUS "Known limitation: OBJECT_DEPENDS does not work on ${CMAKE_GENERATOR}")
+  else()
+    message(SEND_ERROR "Project did not rebuild properly: object_depends exe is not newer than object_depends.txt.")
+  endif()
+else()
+  message(SEND_ERROR "Project did not rebuild properly.  "
+    "object_depends exe and object_depends.txt are not both present.")
+endif()
+
 if(EXISTS ${BuildDepends_BINARY_DIR}/Project/external.out)
   file(STRINGS ${BuildDepends_BINARY_DIR}/Project/external.out external_out)
   if("${external_out}" STREQUAL "external changed")
@@ -346,4 +399,32 @@ if(EXISTS ${BuildDepends_BINARY_DIR}/Project/multi1-out2-copy.txt)
 else()
   message(SEND_ERROR "Project did not rebuild properly: "
     "multi1-out2-copy.txt is missing")
+endif()
+
+if(EXISTS ${BuildDepends_BINARY_DIR}/Project/multi2-real.txt)
+  if(${BuildDepends_BINARY_DIR}/Project/multi2-real.txt
+      IS_NEWER_THAN ${BuildDepends_BINARY_DIR}/Project/multi2-stamp.txt)
+    message(STATUS "multi2-real.txt is newer than multi2-stamp.txt")
+  else()
+    message(SEND_ERROR "Project did not rebuild properly: "
+      "multi2-real.txt is not newer than multi2-stamp.txt")
+  endif()
+else()
+  message(SEND_ERROR "Project did not rebuild properly: "
+    "multi2-real.txt is missing")
+endif()
+
+if(TEST_MULTI3)
+  if(EXISTS ${BuildDepends_BINARY_DIR}/Project/multi3-real.txt)
+    if(${BuildDepends_BINARY_DIR}/Project/multi3-real.txt
+        IS_NEWER_THAN ${BuildDepends_BINARY_DIR}/Project/multi3-stamp.txt)
+      message(STATUS "multi3-real.txt is newer than multi3-stamp.txt")
+    else()
+      message(SEND_ERROR "Project did not rebuild properly: "
+        "multi3-real.txt is not newer than multi3-stamp.txt")
+    endif()
+  else()
+    message(SEND_ERROR "Project did not rebuild properly: "
+      "multi3-real.txt is missing")
+  endif()
 endif()

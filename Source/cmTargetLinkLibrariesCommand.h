@@ -27,30 +27,29 @@ public:
   /**
    * This is a virtual constructor for the command.
    */
-  virtual cmCommand* Clone()
-    {
-    return new cmTargetLinkLibrariesCommand;
-    }
+  virtual cmCommand* Clone() { return new cmTargetLinkLibrariesCommand; }
 
   /**
    * This is called when the command is first encountered in
    * the CMakeLists.txt file.
    */
   virtual bool InitialPass(std::vector<std::string> const& args,
-                           cmExecutionStatus &status);
+                           cmExecutionStatus& status);
 
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual std::string GetName() const { return "target_link_libraries";}
+  virtual std::string GetName() const { return "target_link_libraries"; }
 
   cmTypeMacro(cmTargetLinkLibrariesCommand, cmCommand);
+
 private:
   void LinkLibraryTypeSpecifierWarning(int left, int right);
   static const char* LinkLibraryTypeNames[3];
 
   cmTarget* Target;
-  enum ProcessingState {
+  enum ProcessingState
+  {
     ProcessingLinkLibraries,
     ProcessingPlainLinkInterface,
     ProcessingKeywordLinkInterface,
@@ -62,9 +61,7 @@ private:
 
   ProcessingState CurrentProcessingState;
 
-  bool HandleLibrary(const std::string& lib, cmTarget::LinkLibraryType llt);
+  bool HandleLibrary(const std::string& lib, cmTargetLinkLibraryType llt);
 };
-
-
 
 #endif

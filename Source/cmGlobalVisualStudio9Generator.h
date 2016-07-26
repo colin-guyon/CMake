@@ -14,22 +14,17 @@
 
 #include "cmGlobalVisualStudio8Generator.h"
 
-
 /** \class cmGlobalVisualStudio9Generator
  * \brief Write a Unix makefiles.
  *
  * cmGlobalVisualStudio9Generator manages UNIX build process for a tree
  */
-class cmGlobalVisualStudio9Generator :
-  public cmGlobalVisualStudio8Generator
+class cmGlobalVisualStudio9Generator : public cmGlobalVisualStudio8Generator
 {
 public:
-  cmGlobalVisualStudio9Generator(const std::string& name,
-    const std::string& platformName);
+  cmGlobalVisualStudio9Generator(cmake* cm, const std::string& name,
+                                 const std::string& platformName);
   static cmGlobalGeneratorFactory* NewFactory();
-
-  ///! create the correct local generator
-  virtual cmLocalGenerator *CreateLocalGenerator();
 
   /**
    * Try to determine system information such as shared library
@@ -49,6 +44,7 @@ public:
    * Studio?
    */
   virtual std::string GetUserMacrosRegKeyBase();
+
 protected:
   virtual const char* GetIDEVersion() { return "9.0"; }
 private:

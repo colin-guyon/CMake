@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 2.8.5 FATAL_ERROR)
+cmake_policy(SET CMP0054 NEW)
 
 project(GenerateExportHeader)
 
@@ -66,6 +67,12 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL HP AND
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -AA")
 endif ()
 
+# Clang/C2 in C++98 mode cannot properly handle some of MSVC headers
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
+    CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+  set(CMAKE_CXX_STANDARD 11)
+endif()
+
 add_subdirectory(lib_shared_and_static)
 
 add_compiler_export_flags()
@@ -106,10 +113,13 @@ endif()
 add_executable(GenerateExportHeader exportheader_test.cpp)
 
 target_link_libraries(GenerateExportHeader ${link_libraries})
-if (WIN32)
-  if(MSVC AND COMPILER_HAS_DEPRECATED)
+if (WIN32 OR CYGWIN)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
+    CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    set(_platform Win32-Clang)
+  elseif(MSVC AND COMPILER_HAS_DEPRECATED)
     set(_platform Win32)
-  elseif(MINGW AND COMPILER_HAS_DEPRECATED)
+  elseif((MINGW OR CYGWIN) AND COMPILER_HAS_DEPRECATED)
     set(_platform MinGW)
   else()
     set(_platform WinEmpty)
@@ -124,6 +134,6 @@ endif()
 message("#### Testing reference: ${_platform}")
 target_compile_definitions(GenerateExportHeader
   PRIVATE
-    "SRC_DIR=${CMAKE_CURRENT_SOURCE_DIR}/reference/${_platform}"
-    "BIN_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+    "SRC_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/reference/${_platform}\""
+    "BIN_DIR=\"${CMAKE_CURRENT_BINARY_DIR}\""
 )

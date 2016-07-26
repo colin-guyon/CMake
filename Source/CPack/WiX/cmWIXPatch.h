@@ -13,8 +13,8 @@
 #ifndef cmWIXPatch_h
 #define cmWIXPatch_h
 
-#include "cmWIXSourceWriter.h"
 #include "cmWIXPatchParser.h"
+#include "cmWIXSourceWriter.h"
 
 #include <string>
 
@@ -26,20 +26,22 @@ class cmWIXPatch
 public:
   cmWIXPatch(cmCPackLog* logger);
 
-  void LoadFragments(std::string const& patchFilePath);
+  bool LoadFragments(std::string const& patchFilePath);
 
   void ApplyFragment(std::string const& id, cmWIXSourceWriter& writer);
 
   bool CheckForUnappliedFragments();
 
 private:
+  void ApplyElementChildren(const cmWIXPatchElement& element,
+                            cmWIXSourceWriter& writer);
+
   void ApplyElement(const cmWIXPatchElement& element,
-    cmWIXSourceWriter& writer);
+                    cmWIXSourceWriter& writer);
 
   cmCPackLog* Logger;
 
   cmWIXPatchParser::fragment_map_t Fragments;
 };
-
 
 #endif

@@ -13,7 +13,6 @@
 #ifndef cmCPackDebGenerator_h
 #define cmCPackDebGenerator_h
 
-
 #include "cmCPackGenerator.h"
 
 /** \class cmCPackDebGenerator
@@ -32,25 +31,26 @@ public:
   virtual ~cmCPackDebGenerator();
 
   static bool CanGenerate()
-    {
+  {
 #ifdef __APPLE__
     // on MacOS enable CPackDeb iff dpkg is found
     std::vector<std::string> locations;
     locations.push_back("/sw/bin");        // Fink
     locations.push_back("/opt/local/bin"); // MacPorts
-    return cmSystemTools::FindProgram("dpkg",locations) != "" ? true : false;
+    return cmSystemTools::FindProgram("dpkg", locations) != "" ? true : false;
 #else
     // legacy behavior on other systems
     return true;
 #endif
-    }
+  }
 
 protected:
   virtual int InitializeInternal();
   /**
    * This method factors out the work done in component packaging case.
    */
-  int PackageOnePack(std::string initialToplevel, std::string packageName);
+  int PackageOnePack(std::string const& initialToplevel,
+                     std::string const& packageName);
   /**
    * The method used to package files when component
    * install is used. This will create one
@@ -61,17 +61,16 @@ protected:
    * Special case of component install where all
    * components will be put in a single installer.
    */
-  int PackageComponentsAllInOne();
+  int PackageComponentsAllInOne(const std::string& compInstDirName);
   virtual int PackageFiles();
   virtual const char* GetOutputExtension() { return ".deb"; }
   virtual bool SupportsComponentInstallation() const;
   virtual std::string GetComponentInstallDirNameSuffix(
-      const std::string& componentName);
+    const std::string& componentName);
 
 private:
   int createDeb();
   std::vector<std::string> packageFiles;
-
 };
 
 #endif

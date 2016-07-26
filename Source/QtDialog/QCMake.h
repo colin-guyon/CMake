@@ -12,26 +12,35 @@
 
 #ifndef QCMake_h
 #define QCMake_h
+
+#include "cmake.h"
+
 #ifdef _MSC_VER
-#pragma warning ( disable : 4127 )
-#pragma warning ( disable : 4512 )
+#pragma warning(disable : 4127)
+#pragma warning(disable : 4512)
 #endif
 
+#include <vector>
+
+#include <QAtomicInt>
+#include <QList>
+#include <QMetaType>
 #include <QObject>
 #include <QString>
-#include <QVariant>
-#include <QList>
 #include <QStringList>
-#include <QMetaType>
-#include <QAtomicInt>
-
-class cmake;
+#include <QVariant>
 
 /// struct to represent cmake properties in Qt
 /// Value is of type String or Bool
 struct QCMakeProperty
 {
-  enum PropertyType { BOOL, PATH, FILEPATH, STRING };
+  enum PropertyType
+  {
+    BOOL,
+    PATH,
+    FILEPATH,
+    STRING
+  };
   QString Key;
   QVariant Value;
   QStringList Strings;
@@ -39,13 +48,13 @@ struct QCMakeProperty
   PropertyType Type;
   bool Advanced;
   bool operator==(const QCMakeProperty& other) const
-    {
+  {
     return this->Key == other.Key;
-    }
+  }
   bool operator<(const QCMakeProperty& other) const
-    {
+  {
     return this->Key < other.Key;
-    }
+  }
 };
 
 // list of properties
@@ -62,7 +71,7 @@ class QCMake : public QObject
 {
   Q_OBJECT
 public:
-  QCMake(QObject* p=0);
+  QCMake(QObject* p = 0);
   ~QCMake();
 public slots:
   /// load the cache file in a directory
@@ -73,13 +82,16 @@ public slots:
   void setBinaryDirectory(const QString& dir);
   /// set the desired generator to use
   void setGenerator(const QString& generator);
+  /// set the desired generator to use
+  void setToolset(const QString& toolset);
   /// do the configure step
   void configure();
   /// generate the files
   void generate();
   /// set the property values
   void setProperties(const QCMakePropertyList&);
-  /// interrupt the configure or generate process (if connecting, make a direct connection)
+  /// interrupt the configure or generate process (if connecting, make a direct
+  /// connection)
   void interrupt();
   /// delete the cache in binary directory
   void deleteCache();
@@ -87,8 +99,22 @@ public slots:
   void reloadCache();
   /// set whether to do debug output
   void setDebugOutput(bool);
+  /// get whether to do suppress dev warnings
+  bool getSuppressDevWarnings();
   /// set whether to do suppress dev warnings
   void setSuppressDevWarnings(bool value);
+  /// get whether to do suppress deprecated warnings
+  bool getSuppressDeprecatedWarnings();
+  /// set whether to do suppress deprecated warnings
+  void setSuppressDeprecatedWarnings(bool value);
+  /// get whether to treat developer (author) warnings as errors
+  bool getDevWarningsAsErrors();
+  /// set whether to treat developer (author) warnings as errors
+  void setDevWarningsAsErrors(bool value);
+  /// get whether to treat deprecated warnings as errors
+  bool getDeprecatedWarningsAsErrors();
+  /// set whether to treat deprecated warnings as errors
+  void setDeprecatedWarningsAsErrors(bool value);
   /// set whether to run cmake with warnings about uninitialized variables
   void setWarnUninitializedMode(bool value);
   /// set whether to run cmake with warnings about unused variables
@@ -104,12 +130,13 @@ public:
   /// get the current generator
   QString generator() const;
   /// get the available generators
-  QStringList availableGenerators() const;
+  std::vector<cmake::GeneratorInfo> const& availableGenerators() const;
   /// get whether to do debug output
   bool getDebugOutput() const;
 
 signals:
-  /// signal when properties change (during read from disk or configure process)
+  /// signal when properties change (during read from disk or configure
+  /// process)
   void propertiesChanged(const QCMakePropertyList& vars);
   /// signal when the generator changes
   void generatorChanged(const QString& gen);
@@ -130,27 +157,28 @@ signals:
   void errorMessage(const QString& msg);
   /// signal when debug output changes
   void debugOutputChanged(bool);
+  /// signal when the toolset changes
+  void toolsetChanged(const QString& toolset);
 
 protected:
   cmake* CMakeInstance;
 
   static bool interruptCallback(void*);
   static void progressCallback(const char* msg, float percent, void* cd);
-  static void messageCallback(const char* msg, const char* title,
-                              bool&, void* cd);
+  static void messageCallback(const char* msg, const char* title, bool&,
+                              void* cd);
   static void stdoutCallback(const char* msg, size_t len, void* cd);
   static void stderrCallback(const char* msg, size_t len, void* cd);
-  bool SuppressDevWarnings;
   bool WarnUninitializedMode;
   bool WarnUnusedMode;
   bool WarnUnusedAllMode;
   QString SourceDirectory;
   QString BinaryDirectory;
   QString Generator;
-  QStringList AvailableGenerators;
+  QString Toolset;
+  std::vector<cmake::GeneratorInfo> AvailableGenerators;
   QString CMakeExecutable;
   QAtomicInt InterruptFlag;
 };
 
 #endif // QCMake_h
-

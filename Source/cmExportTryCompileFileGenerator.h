@@ -9,48 +9,50 @@
   implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
   See the License for more information.
 ============================================================================*/
-#ifndef cmExportInstallFileGenerator_h
-#define cmExportInstallFileGenerator_h
+#ifndef cmExportTryCompileFileGenerator_h
+#define cmExportTryCompileFileGenerator_h
 
 #include "cmExportFileGenerator.h"
 
 class cmInstallExportGenerator;
 class cmInstallTargetGenerator;
 
-class cmExportTryCompileFileGenerator: public cmExportFileGenerator
+class cmExportTryCompileFileGenerator : public cmExportFileGenerator
 {
 public:
+  cmExportTryCompileFileGenerator(cmGlobalGenerator* gg,
+                                  std::vector<std::string> const& targets,
+                                  cmMakefile* mf);
+
   /** Set the list of targets to export.  */
-  void SetExports(const std::vector<cmTarget const*> &exports)
-    { this->Exports = exports; }
   void SetConfig(const std::string& config) { this->Config = config; }
 protected:
-
   // Implement virtual methods from the superclass.
   virtual bool GenerateMainFile(std::ostream& os);
 
-  virtual void GenerateImportTargetsConfig(std::ostream&,
-                                           const std::string&,
+  virtual void GenerateImportTargetsConfig(std::ostream&, const std::string&,
                                            std::string const&,
-                            std::vector<std::string>&) {}
-  virtual void HandleMissingTarget(std::string&,
-                                   std::vector<std::string>&,
-                                   cmMakefile*,
-                                   cmTarget*,
-                                   cmTarget*) {}
+                                           std::vector<std::string>&)
+  {
+  }
+  virtual void HandleMissingTarget(std::string&, std::vector<std::string>&,
+                                   cmGeneratorTarget*, cmGeneratorTarget*)
+  {
+  }
 
-  void PopulateProperties(cmTarget const* target,
+  void PopulateProperties(cmGeneratorTarget const* target,
                           ImportPropertyMap& properties,
-                          std::set<cmTarget const*> &emitted);
+                          std::set<const cmGeneratorTarget*>& emitted);
 
-  std::string InstallNameDir(cmTarget* target,
+  std::string InstallNameDir(cmGeneratorTarget* target,
                              const std::string& config);
+
 private:
-  std::string FindTargets(const std::string& prop, cmTarget const* tgt,
-                   std::set<cmTarget const*> &emitted);
+  std::string FindTargets(const std::string& prop,
+                          const cmGeneratorTarget* tgt,
+                          std::set<const cmGeneratorTarget*>& emitted);
 
-
-  std::vector<cmTarget const*> Exports;
+  std::vector<cmGeneratorTarget const*> Exports;
   std::string Config;
 };
 

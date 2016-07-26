@@ -12,9 +12,10 @@
 #ifndef cmCursesMainForm_h
 #define cmCursesMainForm_h
 
-#include "../cmStandardIncludes.h"
-#include "cmCursesForm.h"
 #include "cmCursesStandardIncludes.h"
+
+#include "../cmState.h"
+#include "cmCursesForm.h"
 
 class cmCursesCacheEntryComposite;
 class cmCursesWidget;
@@ -53,7 +54,8 @@ public:
    */
   bool LookForCacheEntry(const std::string& key);
 
-  enum {
+  enum
+  {
     MIN_WIDTH = 65,
     MIN_HEIGHT = 6,
     IDEAL_WIDTH = 80,
@@ -87,7 +89,7 @@ public:
    * Used to do a configure. If argument is specified, it does only the check
    * and not configure.
    */
-  int Configure(int noconfigure=0);
+  int Configure(int noconfigure = 0);
 
   /**
    * Used to generate
@@ -97,13 +99,13 @@ public:
   /**
    * Used by main program
    */
-  int LoadCache(const char *dir);
+  int LoadCache(const char* dir);
 
   /**
    * Progress callback
    */
-  static void UpdateProgressOld(const char *msg, float prog, void*);
-  static void UpdateProgress(const char *msg, float prog, void*);
+  static void UpdateProgressOld(const char* msg, float prog, void*);
+  static void UpdateProgress(const char* msg, float prog, void*);
 
 protected:
   cmCursesMainForm(const cmCursesMainForm& from);
@@ -113,8 +115,8 @@ protected:
   // cache.
   void FillCacheManagerFromUI();
   // Fix formatting of values to a consistent form.
-  void FixValue(cmCacheManager::CacheEntryType type,
-                const std::string& in, std::string& out) const;
+  void FixValue(cmState::CacheEntryType type, const std::string& in,
+                std::string& out) const;
   // Re-post the existing fields. Used to toggle between
   // normal and advanced modes. Render() should be called
   // afterwards.
@@ -154,7 +156,7 @@ protected:
   int NumberOfPages;
 
   int InitialWidth;
-  cmake *CMakeInstance;
+  cmake* CMakeInstance;
 
   std::string SearchString;
   std::string OldSearchString;

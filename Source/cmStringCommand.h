@@ -15,9 +15,8 @@
 #include "cmCommand.h"
 
 class cmMakefile;
-namespace cmsys
-{
-  class RegularExpression;
+namespace cmsys {
+class RegularExpression;
 }
 
 /** \class cmStringCommand
@@ -30,17 +29,14 @@ public:
   /**
    * This is a virtual constructor for the command.
    */
-  virtual cmCommand* Clone()
-    {
-    return new cmStringCommand;
-    }
+  virtual cmCommand* Clone() { return new cmStringCommand; }
 
   /**
    * This is called when the command is first encountered in
    * the CMakeLists.txt file.
    */
   virtual bool InitialPass(std::vector<std::string> const& args,
-                           cmExecutionStatus &status);
+                           cmExecutionStatus& status);
 
   /**
    * This determines if the command is invoked when in script mode.
@@ -50,9 +46,10 @@ public:
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual std::string GetName() const { return "string";}
+  virtual std::string GetName() const { return "string"; }
 
   cmTypeMacro(cmStringCommand, cmCommand);
+
 protected:
   bool HandleConfigureCommand(std::vector<std::string> const& args);
   bool HandleAsciiCommand(std::vector<std::string> const& args);
@@ -67,6 +64,7 @@ protected:
   bool HandleReplaceCommand(std::vector<std::string> const& args);
   bool HandleLengthCommand(std::vector<std::string> const& args);
   bool HandleSubstringCommand(std::vector<std::string> const& args);
+  bool HandleAppendCommand(std::vector<std::string> const& args);
   bool HandleConcatCommand(std::vector<std::string> const& args);
   bool HandleStripCommand(std::vector<std::string> const& args);
   bool HandleRandomCommand(std::vector<std::string> const& args);
@@ -79,14 +77,25 @@ protected:
   class RegexReplacement
   {
   public:
-    RegexReplacement(const char* s): number(-1), value(s) {}
-    RegexReplacement(const std::string& s): number(-1), value(s) {}
-    RegexReplacement(int n): number(n), value() {}
+    RegexReplacement(const char* s)
+      : number(-1)
+      , value(s)
+    {
+    }
+    RegexReplacement(const std::string& s)
+      : number(-1)
+      , value(s)
+    {
+    }
+    RegexReplacement(int n)
+      : number(n)
+      , value()
+    {
+    }
     RegexReplacement() {}
     int number;
     std::string value;
   };
 };
-
 
 #endif

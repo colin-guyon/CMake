@@ -1,8 +1,9 @@
 #include <stdio.h>
 #include <string.h>
+
 #include "OutputFile.h"
 
-int main(int, char*[])
+int main(int, char* [])
 {
   int res = 0;
 

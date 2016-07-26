@@ -12,6 +12,8 @@
 # (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
+include(CMakeLanguageInformation)
+
 # This file sets the basic flags for the Fortran language in CMake.
 # It also loads the available platform file for the system-compiler
 # if it exists.
@@ -36,6 +38,12 @@ if (NOT _INCLUDED_FILE)
   include(Platform/${CMAKE_SYSTEM_NAME}-${CMAKE_BASE_NAME} OPTIONAL
           RESULT_VARIABLE _INCLUDED_FILE)
 endif ()
+
+# load any compiler-wrapper specific information
+if (CMAKE_Fortran_COMPILER_WRAPPER)
+  __cmake_include_compiler_wrapper(Fortran)
+endif ()
+
 # We specify the compiler information in the system file for some
 # platforms, but this language may not have been enabled when the file
 # was first included.  Include it again to get the language info.
@@ -194,7 +202,7 @@ endif()
 # Create a static archive incrementally for large object file counts.
 # If CMAKE_Fortran_CREATE_STATIC_LIBRARY is set it will override these.
 if(NOT DEFINED CMAKE_Fortran_ARCHIVE_CREATE)
-  set(CMAKE_Fortran_ARCHIVE_CREATE "<CMAKE_AR> cq <TARGET> <LINK_FLAGS> <OBJECTS>")
+  set(CMAKE_Fortran_ARCHIVE_CREATE "<CMAKE_AR> qc <TARGET> <LINK_FLAGS> <OBJECTS>")
 endif()
 if(NOT DEFINED CMAKE_Fortran_ARCHIVE_APPEND)
   set(CMAKE_Fortran_ARCHIVE_APPEND "<CMAKE_AR> q  <TARGET> <LINK_FLAGS> <OBJECTS>")
@@ -207,7 +215,7 @@ endif()
 # (put -o after -c to workaround bug in at least one mpif77 wrapper)
 if(NOT CMAKE_Fortran_COMPILE_OBJECT)
   set(CMAKE_Fortran_COMPILE_OBJECT
-    "<CMAKE_Fortran_COMPILER> <DEFINES> <FLAGS> -c <SOURCE> -o <OBJECT>")
+    "<CMAKE_Fortran_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -c <SOURCE> -o <OBJECT>")
 endif()
 
 # link a fortran program

@@ -135,6 +135,7 @@ All Modules
    /module/FindLibLZMA
    /module/FindLibXml2
    /module/FindLibXslt
+   /module/FindLTTngUST
    /module/FindLua50
    /module/FindLua51
    /module/FindLua
@@ -212,6 +213,8 @@ All Modules
    /module/FindWish
    /module/FindwxWidgets
    /module/FindwxWindows
+   /module/FindXCTest
+   /module/FindXalanC
    /module/FindXercesC
    /module/FindX11
    /module/FindXMLRPC

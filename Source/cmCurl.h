@@ -12,10 +12,10 @@
 #ifndef cmCurl_h
 #define cmCurl_h
 
-#include <cmsys/Configure.h>
-#include "cm_curl.h"
 #include "cmStandardIncludes.h"
 
-std::string cmCurlSetCAInfo(::CURL *curl, const char* cafile = 0);
+#include "cm_curl.h"
+
+std::string cmCurlSetCAInfo(::CURL* curl, const char* cafile = 0);
 
 #endif

@@ -14,6 +14,8 @@
 
 #include "cmLocalGenerator.h"
 
+#include "cmGlobalVisualStudioGenerator.h"
+
 #include <cmsys/auto_ptr.hxx>
 
 class cmSourceFile;
@@ -30,22 +32,7 @@ class cmCustomCommandGenerator;
 class cmLocalVisualStudioGenerator : public cmLocalGenerator
 {
 public:
-  /** Known versions of Visual Studio.  */
-  enum VSVersion
-  {
-    VS6 = 60,
-    VS7 = 70,
-    VS71 = 71,
-    VS8 = 80,
-    VS9 = 90,
-    VS10 = 100,
-    VS11 = 110,
-    VS12 = 120,
-    /* VS13 = 130 was skipped */
-    VS14 = 140
-  };
-
-  cmLocalVisualStudioGenerator(VSVersion v);
+  cmLocalVisualStudioGenerator(cmGlobalGenerator* gg, cmMakefile* mf);
   virtual ~cmLocalVisualStudioGenerator();
 
   /** Construct a script from the given list of command lines.  */
@@ -56,27 +43,24 @@ public:
       sequence of custom commands. */
   const char* GetReportErrorLabel() const;
 
-  /** Version of Visual Studio.  */
-  VSVersion GetVersion() const { return this->Version; }
+  cmGlobalVisualStudioGenerator::VSVersion GetVersion() const;
 
-  virtual std::string ComputeLongestObjectDirectory(cmTarget&) const = 0;
+  virtual std::string ComputeLongestObjectDirectory(
+    cmGeneratorTarget const*) const = 0;
 
   virtual void AddCMakeListsRules() = 0;
 
   virtual void ComputeObjectFilenames(
-                        std::map<cmSourceFile const*, std::string>& mapping,
-                        cmGeneratorTarget const* = 0);
+    std::map<cmSourceFile const*, std::string>& mapping,
+    cmGeneratorTarget const* = 0);
 
 protected:
   virtual const char* ReportErrorLabel() const;
   virtual bool CustomCommandUseLocal() const { return false; }
 
   /** Construct a custom command to make exe import lib dir.  */
-  cmsys::auto_ptr<cmCustomCommand>
-  MaybeCreateImplibDir(cmTarget& target, const std::string& config,
-                       bool isFortran);
-
-  VSVersion Version;
+  cmsys::auto_ptr<cmCustomCommand> MaybeCreateImplibDir(
+    cmGeneratorTarget* target, const std::string& config, bool isFortran);
 };
 
 #endif

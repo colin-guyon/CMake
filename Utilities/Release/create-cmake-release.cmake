@@ -6,16 +6,15 @@ endif()
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/logs)
 
 set(RELEASE_SCRIPTS_BATCH_1
-  dash2win64_release.cmake    # Windows
-  dashmacmini2_release.cmake  # Mac Darwin universal ppc;i386
-  dashmacmini5_release.cmake  # Mac Darwin64 universal x86_64;i386
-  magrathea_release.cmake     # Linux
+  win32_release.cmake         # Windows x86
+  osx_release.cmake           # OS X x86_64
+  linux32_release.cmake       # Linux x86
   linux64_release.cmake       # Linux x86_64
-  ibm_aix_release.cmake       # AIX
 )
 
 set(RELEASE_SCRIPTS_BATCH_2
-  dash2win64_cygwin.cmake     # Cygwin
+  cygwin_release.cmake        # Cygwin x86
+  win64_release.cmake         # Windows x64
 )
 
 function(write_batch_shell_script filename)
@@ -55,6 +54,7 @@ mkdir \${name}-build &&
 cd \${name}-build &&
 \"${CMAKE_COMMAND}\" ../\${name}-src/Utilities/Sphinx \\
   -DCMAKE_INSTALL_PREFIX=\"\$inst/\" \\
+  -DCMAKE_DOC_DIR=doc/cmake \\
   -DSPHINX_EXECUTABLE=\"${SPHINX_EXECUTABLE}\" \\
   -DSPHINX_HTML=ON -DSPHINX_MAN=ON &&
 make install &&

@@ -13,9 +13,7 @@
 #ifndef cmParseBlanketJSCoverage_h
 #define cmParseBlanketJSCoverage_h
 
-#include "cmStandardIncludes.h"
 #include "cmCTestCoverageHandler.h"
-
 
 /** \class cmParseBlanketJSCoverage
  * \brief Parse BlanketJS coverage information
@@ -34,13 +32,12 @@ class cmParseBlanketJSCoverage
 {
 public:
   cmParseBlanketJSCoverage(cmCTestCoverageHandlerContainer& cont,
-       cmCTest* ctest);
+                           cmCTest* ctest);
   bool LoadCoverageData(std::vector<std::string> files);
   //  Read the JSON output
-  bool ReadJSONFile(std::string file);
+  bool ReadJSONFile(std::string const& file);
 
 protected:
-
   class JSONParser;
   cmCTestCoverageHandlerContainer& Coverage;
   cmCTest* CTest;

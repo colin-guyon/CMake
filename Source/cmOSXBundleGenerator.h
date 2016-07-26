@@ -13,10 +13,11 @@
 #define cmOSXBundleGenerator_h
 
 #include "cmStandardIncludes.h"
+
 #include "cmSourceFile.h"
 
-#include <string>
 #include <set>
+#include <string>
 
 class cmTarget;
 class cmMakefile;
@@ -34,12 +35,10 @@ public:
   void CreateAppBundle(const std::string& targetName, std::string& root);
 
   // create a framework at a given root
-  void CreateFramework(const std::string& targetName,
-                       const std::string& root);
+  void CreateFramework(const std::string& targetName, const std::string& root);
 
   // create a cf bundle at a given root
-  void CreateCFBundle(const std::string& targetName,
-                      const std::string& root);
+  void CreateCFBundle(const std::string& targetName, const std::string& root);
 
   struct MacOSXContentGeneratorType
   {
@@ -54,7 +53,9 @@ public:
   std::string InitMacOSXContentDirectory(const char* pkgloc);
 
   void SetMacContentFolders(std::set<std::string>* macContentFolders)
-  { this->MacContentFolders = macContentFolders; }
+  {
+    this->MacContentFolders = macContentFolders;
+  }
 
 private:
   bool MustSkip();
@@ -66,6 +67,5 @@ private:
   std::string ConfigName;
   std::set<std::string>* MacContentFolders;
 };
-
 
 #endif

@@ -14,18 +14,16 @@
 
 #include "cmGlobalVisualStudio8Generator.h"
 
-
 /** \class cmGlobalVisualStudio10Generator
  * \brief Write a Unix makefiles.
  *
  * cmGlobalVisualStudio10Generator manages UNIX build process for a tree
  */
-class cmGlobalVisualStudio10Generator :
-  public cmGlobalVisualStudio8Generator
+class cmGlobalVisualStudio10Generator : public cmGlobalVisualStudio8Generator
 {
 public:
-  cmGlobalVisualStudio10Generator(const std::string& name,
-    const std::string& platformName);
+  cmGlobalVisualStudio10Generator(cmake* cm, const std::string& name,
+                                  const std::string& platformName);
   static cmGlobalGeneratorFactory* NewFactory();
 
   virtual bool MatchesGeneratorName(const std::string& name) const;
@@ -35,29 +33,22 @@ public:
   virtual bool SetGeneratorToolset(std::string const& ts, cmMakefile* mf);
 
   virtual void GenerateBuildCommand(
-    std::vector<std::string>& makeCommand,
-    const std::string& makeProgram,
-    const std::string& projectName,
-    const std::string& projectDir,
-    const std::string& targetName,
-    const std::string& config,
-    bool fast, bool verbose,
-    std::vector<std::string> const& makeOptions = std::vector<std::string>()
-    );
+    std::vector<std::string>& makeCommand, const std::string& makeProgram,
+    const std::string& projectName, const std::string& projectDir,
+    const std::string& targetName, const std::string& config, bool fast,
+    bool verbose,
+    std::vector<std::string> const& makeOptions = std::vector<std::string>());
 
   ///! create the correct local generator
-  virtual cmLocalGenerator *CreateLocalGenerator();
+  virtual cmLocalGenerator* CreateLocalGenerator(cmMakefile* mf);
 
   /**
    * Try to determine system information such as shared library
    * extension, pthreads, byte order etc.
    */
-  virtual void EnableLanguage(std::vector<std::string>const& languages,
-                              cmMakefile *, bool optional);
+  virtual void EnableLanguage(std::vector<std::string> const& languages,
+                              cmMakefile*, bool optional);
   virtual void WriteSLNHeader(std::ostream& fout);
-
-  /** Is the installed VS an Express edition?  */
-  bool IsExpressEdition() const { return this->ExpressEdition; }
 
   /** Generating for Nsight Tegra VS plugin?  */
   bool IsNsightTegra() const;
@@ -72,38 +63,28 @@ public:
   /** Return the CMAKE_SYSTEM_VERSION.  */
   std::string const& GetSystemVersion() const { return this->SystemVersion; }
 
+  /** Return the Windows version targeted on VS 2015 and above.  */
+  std::string const& GetWindowsTargetPlatformVersion() const
+  {
+    return this->WindowsTargetPlatformVersion;
+  }
+
   /** Return true if building for WindowsCE */
-  bool TargetsWindowsCE() const
-    { return this->SystemIsWindowsCE; }
+  bool TargetsWindowsCE() const { return this->SystemIsWindowsCE; }
 
   /** Return true if building for WindowsPhone */
-  bool TargetsWindowsPhone() const
-    { return this->SystemIsWindowsPhone; }
+  bool TargetsWindowsPhone() const { return this->SystemIsWindowsPhone; }
 
   /** Return true if building for WindowsStore */
-  bool TargetsWindowsStore() const
-    { return this->SystemIsWindowsStore; }
+  bool TargetsWindowsStore() const { return this->SystemIsWindowsStore; }
 
-  /**
-   * Where does this version of Visual Studio look for macros for the
-   * current user? Returns the empty string if this version of Visual
-   * Studio does not implement support for VB macros.
-   */
-  virtual std::string GetUserMacrosDirectory();
-
-  /**
-   * What is the reg key path to "vsmacros" for this version of Visual
-   * Studio?
-   */
-  virtual std::string GetUserMacrosRegKeyBase();
-  virtual const char* GetCMakeCFGIntDir() const
-    { return "$(Configuration)";}
+  virtual const char* GetCMakeCFGIntDir() const { return "$(Configuration)"; }
   bool Find64BitTools(cmMakefile* mf);
 
   /** Generate an <output>.rule file path for a given command output.  */
   virtual std::string GenerateRuleFile(std::string const& output) const;
 
-  void PathTooLong(cmTarget* target, cmSourceFile const* sf,
+  void PathTooLong(cmGeneratorTarget* target, cmSourceFile const* sf,
                    std::string const& sfRel);
 
   virtual const char* GetToolsVersion() { return "4.0"; }
@@ -115,6 +96,7 @@ public:
 protected:
   virtual void Generate();
   virtual bool InitializeSystem(cmMakefile* mf);
+  virtual bool InitializeWindows(cmMakefile* mf);
   virtual bool InitializeWindowsCE(cmMakefile* mf);
   virtual bool InitializeWindowsPhone(cmMakefile* mf);
   virtual bool InitializeWindowsStore(cmMakefile* mf);
@@ -129,23 +111,26 @@ protected:
 
   std::string GeneratorToolset;
   std::string DefaultPlatformToolset;
+  std::string WindowsTargetPlatformVersion;
   std::string SystemName;
   std::string SystemVersion;
   std::string NsightTegraVersion;
   bool SystemIsWindowsCE;
   bool SystemIsWindowsPhone;
   bool SystemIsWindowsStore;
-  bool ExpressEdition;
-
-  bool UseFolderProperty();
 
 private:
   class Factory;
   struct LongestSourcePath
   {
-    LongestSourcePath(): Length(0), Target(0), SourceFile(0) {}
+    LongestSourcePath()
+      : Length(0)
+      , Target(0)
+      , SourceFile(0)
+    {
+    }
     size_t Length;
-    cmTarget* Target;
+    cmGeneratorTarget* Target;
     cmSourceFile const* SourceFile;
     std::string SourceRel;
   };
@@ -156,5 +141,8 @@ private:
   virtual std::string FindMSBuildCommand();
   virtual std::string FindDevEnvCommand();
   virtual std::string GetVSMakeProgram() { return this->GetMSBuildCommand(); }
+
+  // We do not use the reload macros for VS >= 10.
+  virtual std::string GetUserMacrosDirectory() { return ""; }
 };
 #endif

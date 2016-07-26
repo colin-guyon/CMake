@@ -13,7 +13,6 @@
 #ifndef cmCPackRPMGenerator_h
 #define cmCPackRPMGenerator_h
 
-
 #include "cmCPackGenerator.h"
 
 /** \class cmCPackRPMGenerator
@@ -36,7 +35,7 @@ public:
   virtual ~cmCPackRPMGenerator();
 
   static bool CanGenerate()
-    {
+  {
 #ifdef __APPLE__
     // on MacOS enable CPackRPM iff rpmbuild is found
     std::vector<std::string> locations;
@@ -47,7 +46,7 @@ public:
     // legacy behavior on other systems
     return true;
 #endif
-    }
+  }
 
 protected:
   virtual int InitializeInternal();
@@ -55,7 +54,8 @@ protected:
   /**
    * This method factors out the work done in component packaging case.
    */
-  int PackageOnePack(std::string initialToplevel, std::string packageName);
+  int PackageOnePack(std::string const& initialToplevel,
+                     std::string const& packageName);
   /**
    * The method used to package files when component
    * install is used. This will create one
@@ -66,12 +66,13 @@ protected:
    * Special case of component install where all
    * components will be put in a single installer.
    */
-  int PackageComponentsAllInOne();
+  int PackageComponentsAllInOne(const std::string& compInstDirName);
   virtual const char* GetOutputExtension() { return ".rpm"; }
   virtual bool SupportsComponentInstallation() const;
   virtual std::string GetComponentInstallDirNameSuffix(
-      const std::string& componentName);
+    const std::string& componentName);
 
+  void AddGeneratedPackageNames();
 };
 
 #endif

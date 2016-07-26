@@ -15,6 +15,7 @@
 
 #include "cmStandardIncludes.h"
 
+class cmake;
 class cmGlobalGenerator;
 struct cmDocumentationEntry;
 
@@ -29,33 +30,46 @@ public:
   virtual ~cmGlobalGeneratorFactory() {}
 
   /** Create a GlobalGenerator */
-  virtual cmGlobalGenerator* CreateGlobalGenerator(
-      const std::string& n) const = 0;
+  virtual cmGlobalGenerator* CreateGlobalGenerator(const std::string& n,
+                                                   cmake* cm) const = 0;
 
   /** Get the documentation entry for this factory */
   virtual void GetDocumentation(cmDocumentationEntry& entry) const = 0;
 
   /** Get the names of the current registered generators */
   virtual void GetGenerators(std::vector<std::string>& names) const = 0;
+
+  /** Determine whether or not this generator supports toolsets */
+  virtual bool SupportsToolset() const = 0;
 };
 
-template<class T>
+template <class T>
 class cmGlobalGeneratorSimpleFactory : public cmGlobalGeneratorFactory
 {
 public:
   /** Create a GlobalGenerator */
-  virtual cmGlobalGenerator* CreateGlobalGenerator(
-                                              const std::string& name) const {
-    if (name != T::GetActualName()) return 0;
-    return new T; }
+  virtual cmGlobalGenerator* CreateGlobalGenerator(const std::string& name,
+                                                   cmake* cm) const
+  {
+    if (name != T::GetActualName())
+      return 0;
+    return new T(cm);
+  }
 
   /** Get the documentation entry for this factory */
-  virtual void GetDocumentation(cmDocumentationEntry& entry) const {
-    T::GetDocumentation(entry); }
+  virtual void GetDocumentation(cmDocumentationEntry& entry) const
+  {
+    T::GetDocumentation(entry);
+  }
 
   /** Get the names of the current registered generators */
-  virtual void GetGenerators(std::vector<std::string>& names) const {
-    names.push_back(T::GetActualName()); }
+  virtual void GetGenerators(std::vector<std::string>& names) const
+  {
+    names.push_back(T::GetActualName());
+  }
+
+  /** Determine whether or not this generator supports toolsets */
+  virtual bool SupportsToolset() const { return T::SupportsToolset(); }
 };
 
 #endif

@@ -52,9 +52,9 @@ When adding the first supported feature to a particular CompilerId, it is
 necessary to list support for all features known to cmake (See
 :variable:`CMAKE_C_COMPILE_FEATURES` and
 :variable:`CMAKE_CXX_COMPILE_FEATURES` as appropriate), where available for
-the compiler.  Furthermore, set ``CMAKE_<LANG>_STANDARD_DEFAULT`` to the
-default language standard level the compiler uses, or to the empty string
-if the compiler has no notion of standard levels (such as ``MSVC``).
+the compiler.  Ensure that the ``CMAKE_<LANG>_STANDARD_DEFAULT`` is set to
+the computed internal variable ``CMAKE_<LANG>_STANDARD_COMPUTED_DEFAULT``
+for compiler versions which should be supported.
 
 It is sensible to record the features for the most recent version of a
 particular CompilerId first, and then work backwards.  It is sensible to
@@ -605,6 +605,7 @@ have a .cmake file in this directory NOT show up in the modules
 documentation, simply leave out the ``Help/module/<module-name>.rst``
 file and the ``Help/manual/cmake-modules.7.rst`` toctree entry.
 
+.. _`Find Modules`:
 
 Find Modules
 ------------
@@ -717,7 +718,7 @@ same consideration applies to macros, functions and imported targets.
   If False, do not try to use the relevant CMake wrapping command.
 
 ``Xxx_Yy_FOUND``
-  If False, optional Yy part of Xxx sytem is not available.
+  If False, optional Yy part of Xxx system is not available.
 
 ``Xxx_FOUND``
   Set to false, or undefined, if we haven't found, or don't want to use
@@ -866,7 +867,6 @@ look.
   find_path(Foo_INCLUDE_DIR
     NAMES foo.h
     PATHS ${PC_Foo_INCLUDE_DIRS}
-    # if you need to put #include <Foo/foo.h> in your code, add:
     PATH_SUFFIXES Foo
   )
   find_library(Foo_LIBRARY

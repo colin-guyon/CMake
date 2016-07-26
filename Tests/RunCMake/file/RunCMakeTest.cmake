@@ -1,5 +1,6 @@
 include(RunCMake)
 
+run_cmake(DOWNLOAD-hash-mismatch)
 run_cmake(INSTALL-DIRECTORY)
 run_cmake(INSTALL-MESSAGE-bad)
 run_cmake(FileOpenFailRead)
@@ -17,3 +18,13 @@ run_cmake(LOCK-error-no-result-variable)
 run_cmake(LOCK-error-no-timeout)
 run_cmake(LOCK-error-timeout)
 run_cmake(LOCK-error-unknown-option)
+run_cmake(GLOB)
+run_cmake(GLOB_RECURSE)
+# test is valid both for GLOB and GLOB_RECURSE
+run_cmake(GLOB-error-LIST_DIRECTORIES-not-boolean)
+# test is valid both for GLOB and GLOB_RECURSE
+run_cmake(GLOB-error-LIST_DIRECTORIES-no-arg)
+
+if(NOT WIN32 OR CYGWIN)
+  run_cmake(GLOB_RECURSE-cyclic-recursion)
+endif()

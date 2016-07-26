@@ -12,11 +12,13 @@
 #ifndef cmTimestamp_h
 #define cmTimestamp_h
 
+#include "cmStandardIncludes.h"
+
 #include <string>
 #include <time.h>
 
 /** \class cmTimestamp
- * \brief Utility class to generate sting representation of a timestamp
+ * \brief Utility class to generate string representation of a timestamp
  *
  */
 class cmTimestamp
@@ -27,14 +29,17 @@ public:
   std::string CurrentTime(const std::string& formatString, bool utcFlag);
 
   std::string FileModificationTime(const char* path,
-    const std::string& formatString, bool utcFlag);
+                                   const std::string& formatString,
+                                   bool utcFlag);
 
 private:
-  std::string CreateTimestampFromTimeT(time_t timeT,
-      std::string formatString, bool utcFlag);
+  time_t CreateUtcTimeTFromTm(struct tm& timeStruct) const;
 
-  std::string AddTimestampComponent(char flag, struct tm& timeStruct);
+  std::string CreateTimestampFromTimeT(time_t timeT, std::string formatString,
+                                       bool utcFlag) const;
+
+  std::string AddTimestampComponent(char flag, struct tm& timeStruct,
+                                    time_t timeT) const;
 };
-
 
 #endif

@@ -30,6 +30,14 @@
 #
 #  undocumented.
 #
+# .. variable:: CPACK_NSIS_MUI_WELCOMEFINISHPAGE_BITMAP
+#
+#  The filename of a bitmap to use as the NSIS MUI_WELCOMEFINISHPAGE_BITMAP.
+#
+# .. variable:: CPACK_NSIS_MUI_UNWELCOMEFINISHPAGE_BITMAP
+#
+#  The filename of a bitmap to use as the NSIS MUI_UNWELCOMEFINISHPAGE_BITMAP.
+#
 # .. variable:: CPACK_NSIS_EXTRA_PREINSTALL_COMMANDS
 #
 #  Extra NSIS commands that will be added to the beginning of the install
@@ -115,7 +123,7 @@
 #
 #   set(CPACK_NSIS_MENU_LINKS
 #       "doc/cmake-@CMake_VERSION_MAJOR@.@CMake_VERSION_MINOR@/cmake.html"
-#       "CMake Help" "http://www.cmake.org" "CMake Web Site")
+#       "CMake Help" "https://cmake.org" "CMake Web Site")
 #
 
 #=============================================================================

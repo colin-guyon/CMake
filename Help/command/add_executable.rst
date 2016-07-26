@@ -14,7 +14,7 @@ files listed in the command invocation.  The ``<name>`` corresponds to the
 logical target name and must be globally unique within a project.  The
 actual file name of the executable built is constructed based on
 conventions of the native platform (such as ``<name>.exe`` or just
-``<name>``.
+``<name>``).
 
 By default the executable file will be created in the build tree
 directory corresponding to the source tree directory in which the
@@ -73,7 +73,7 @@ does not appear in the generated buildsystem as a make target.  The
 ``<target>`` may not be an :ref:`Imported Target <Imported Targets>` or an
 ``ALIAS``.  ``ALIAS`` targets can be used as targets to read properties
 from, executables for custom commands and custom targets.  They can also be
-tested for existance with the regular :command:`if(TARGET)` subcommand.
+tested for existence with the regular :command:`if(TARGET)` subcommand.
 The ``<name>`` may not be used to modify properties of ``<target>``, that
 is, it may not be used as the operand of :command:`set_property`,
 :command:`set_target_properties`, :command:`target_link_libraries` etc.

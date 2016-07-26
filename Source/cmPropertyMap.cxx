@@ -10,73 +10,55 @@
   See the License for more information.
 ============================================================================*/
 #include "cmPropertyMap.h"
+
+#include "cmState.h"
 #include "cmSystemTools.h"
 #include "cmake.h"
 
-cmProperty *cmPropertyMap::GetOrCreateProperty(const std::string& name)
+#include <assert.h>
+
+cmProperty* cmPropertyMap::GetOrCreateProperty(const std::string& name)
 {
   cmPropertyMap::iterator it = this->find(name);
-  cmProperty *prop;
-  if (it == this->end())
-    {
+  cmProperty* prop;
+  if (it == this->end()) {
     prop = &(*this)[name];
-    }
-  else
-    {
+  } else {
     prop = &(it->second);
-    }
+  }
   return prop;
 }
 
-void cmPropertyMap::SetProperty(const std::string& name, const char *value,
-                                cmProperty::ScopeType scope)
+void cmPropertyMap::SetProperty(const std::string& name, const char* value)
 {
-  if(!value)
-    {
+  if (!value) {
     this->erase(name);
     return;
-    }
-  (void)scope;
+  }
 
-  cmProperty *prop = this->GetOrCreateProperty(name);
-  prop->Set(name,value);
+  cmProperty* prop = this->GetOrCreateProperty(name);
+  prop->Set(value);
 }
 
 void cmPropertyMap::AppendProperty(const std::string& name, const char* value,
-                                   cmProperty::ScopeType scope, bool asString)
+                                   bool asString)
 {
   // Skip if nothing to append.
-  if(!value || !*value)
-    {
+  if (!value || !*value) {
     return;
-    }
-  (void)scope;
+  }
 
-  cmProperty *prop = this->GetOrCreateProperty(name);
-  prop->Append(name,value,asString);
+  cmProperty* prop = this->GetOrCreateProperty(name);
+  prop->Append(value, asString);
 }
 
-const char *cmPropertyMap
-::GetPropertyValue(const std::string& name,
-                   cmProperty::ScopeType scope,
-                   bool &chain) const
+const char* cmPropertyMap::GetPropertyValue(const std::string& name) const
 {
-  chain = false;
-  if (name.empty())
-    {
-    return 0;
-    }
+  assert(!name.empty());
 
   cmPropertyMap::const_iterator it = this->find(name);
-  if (it == this->end())
-    {
-    // should we chain up?
-    if (this->CMakeInstance)
-      {
-      chain = this->CMakeInstance->IsPropertyChained(name,scope);
-      }
+  if (it == this->end()) {
     return 0;
-    }
+  }
   return it->second.GetValue();
 }
-

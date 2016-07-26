@@ -12,8 +12,8 @@
 #ifndef cmCursesForm_h
 #define cmCursesForm_h
 
-#include "../cmStandardIncludes.h"
 #include "cmCursesStandardIncludes.h"
+
 #include <cmsys/FStream.hxx>
 
 class cmCursesForm
@@ -54,16 +54,11 @@ public:
 
   // Description:
   // Return the FORM. Should be only used by low-level methods.
-  FORM* GetForm()
-    {
-      return this->Form;
-    }
+  FORM* GetForm() { return this->Form; }
 
   static cmCursesForm* CurrentForm;
 
-
 protected:
-
   static cmsys::ofstream DebugFile;
   static bool Debug;
 

@@ -20,41 +20,45 @@ void compare(const char* refName, const char* testName)
 {
   std::ifstream ref;
   ref.open(refName);
-  if (!ref.is_open())
-    {
+  if (!ref.is_open()) {
     std::cout << "Could not open \"" << refName << "\"." << std::endl;
     exit(1);
-    }
+  }
   std::ifstream test;
   test.open(testName);
-  if (!test.is_open())
-    {
+  if (!test.is_open()) {
     std::cout << "Could not open \"" << testName << "\"." << std::endl;
     exit(1);
-    }
+  }
 
-  while (!ref.eof() && !test.eof())
-    {
+  while (!ref.eof() && !test.eof()) {
     std::string refLine;
     std::string testLine;
     std::getline(ref, refLine);
     std::getline(test, testLine);
-    if (testLine.size() && testLine[testLine.size()-1] == ' ')
-      {
-      testLine = testLine.substr(0, testLine.size() - 1);
-      }
-    if (refLine != testLine)
-      {
-      std::cout << "Ref and test are not the same:\n  Ref:  \""
-                          << refLine << "\"\n  Test: \"" << testLine << "\"\n";
-      exit(1);
-      }
+    // Some very old Borland runtimes (C++ Builder 5 WITHOUT Update 1) add a
+    // trailing null to the string that we need to strip before testing for a
+    // trailing space.
+    if (refLine.size() && refLine[refLine.size() - 1] == 0) {
+      refLine = refLine.substr(0, refLine.size() - 1);
     }
-  if (!ref.eof() || !test.eof())
-    {
+    if (testLine.size() && testLine[testLine.size() - 1] == 0) {
+      testLine = testLine.substr(0, testLine.size() - 1);
+    }
+    // The reference files never have trailing spaces:
+    if (testLine.size() && testLine[testLine.size() - 1] == ' ') {
+      testLine = testLine.substr(0, testLine.size() - 1);
+    }
+    if (refLine != testLine) {
+      std::cout << "Ref and test are not the same:\n  Ref:  \"" << refLine
+                << "\"\n  Test: \"" << testLine << "\"\n";
+      exit(1);
+    }
+  }
+  if (!ref.eof() || !test.eof()) {
     std::cout << "Ref and test have differing numbers of lines.";
     exit(1);
-    }
+  }
 }
 
 int main()
@@ -124,13 +128,10 @@ int main()
   libstatic_not_exported();
   libstatic_excluded();
 
-#define STRINGIFY_IMPL(A) #A
-#define STRINGIFY(A) STRINGIFY_IMPL(A)
-
-  compare(STRINGIFY(SRC_DIR) "/libshared_export.h",
-          STRINGIFY(BIN_DIR) "/libshared/libshared_export.h");
-  compare(STRINGIFY(SRC_DIR) "/libstatic_export.h",
-          STRINGIFY(BIN_DIR) "/libstatic/libstatic_export.h");
+  compare(SRC_DIR "/libshared_export.h",
+          BIN_DIR "/libshared/libshared_export.h");
+  compare(SRC_DIR "/libstatic_export.h",
+          BIN_DIR "/libstatic/libstatic_export.h");
 
   return 0;
 }

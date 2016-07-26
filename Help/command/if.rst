@@ -67,16 +67,21 @@ Possible expressions are:
  True if the given name is an existing policy (of the form ``CMP<NNNN>``).
 
 ``if(TARGET target-name)``
- True if the given name is an existing logical target name such as those
- created by the :command:`add_executable`, :command:`add_library`, or
- :command:`add_custom_target` commands.
+ True if the given name is an existing logical target name created
+ by a call to the :command:`add_executable`, :command:`add_library`,
+ or :command:`add_custom_target` command that has already been invoked
+ (in any directory).
+
+``if(TEST test-name)``
+ True if the given name is an existing test name created by the
+ :command:`add_test` command.
 
 ``if(EXISTS path-to-file-or-directory)``
  True if the named file or directory exists.  Behavior is well-defined
  only for full paths.
 
 ``if(file1 IS_NEWER_THAN file2)``
- True if file1 is newer than file2 or if one of the two files doesn't
+ True if ``file1`` is newer than ``file2`` or if one of the two files doesn't
  exist.  Behavior is well-defined only for full paths.  If the file
  time stamps are exactly the same, an ``IS_NEWER_THAN`` comparison returns
  true, so that any dependent build operations will occur in the event
@@ -133,6 +138,9 @@ Possible expressions are:
 ``if(<variable|string> VERSION_GREATER <variable|string>)``
  Component-wise integer version number comparison (version format is
  ``major[.minor[.patch[.tweak]]]``).
+
+``if(<variable|string> IN_LIST <variable>)``
+ True if the given element is contained in the named list variable.
 
 ``if(DEFINED <variable>)``
  True if the given variable is defined.  It does not matter if the

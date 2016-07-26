@@ -12,9 +12,9 @@
 #ifndef cmCursesLongMessageForm_h
 #define cmCursesLongMessageForm_h
 
-#include "../cmStandardIncludes.h"
-#include "cmCursesForm.h"
 #include "cmCursesStandardIncludes.h"
+
+#include "cmCursesForm.h"
 
 class cmCursesCacheEntryComposite;
 
@@ -52,7 +52,6 @@ protected:
   std::string Title;
 
   FIELD* Fields[2];
-
 };
 
 #endif // cmCursesLongMessageForm_h

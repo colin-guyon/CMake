@@ -53,7 +53,7 @@ set(CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS "-dynamiclib -Wl,-headerpad_max_install_
 set(CMAKE_SHARED_MODULE_CREATE_C_FLAGS "-bundle -Wl,-headerpad_max_install_names")
 set(CMAKE_SHARED_MODULE_LOADER_C_FLAG "-Wl,-bundle_loader,")
 set(CMAKE_SHARED_MODULE_LOADER_CXX_FLAG "-Wl,-bundle_loader,")
-set(CMAKE_FIND_LIBRARY_SUFFIXES ".dylib" ".so" ".a")
+set(CMAKE_FIND_LIBRARY_SUFFIXES ".tbd" ".dylib" ".so" ".a")
 
 # hack: if a new cmake (which uses CMAKE_INSTALL_NAME_TOOL) runs on an old build tree
 # (where install_name_tool was hardcoded) and where CMAKE_INSTALL_NAME_TOOL isn't in the cache
@@ -167,12 +167,20 @@ if(_CMAKE_OSX_SYSROOT_PATH)
     ${_CMAKE_OSX_SYSROOT_PATH}/System/Library/Frameworks
     )
   # add platform developer framework path if exists
-  get_filename_component(_CMAKE_OSX_PLATFORM_FRAMEWORK_PATH
-    ${_CMAKE_OSX_SYSROOT_PATH}/../../Library/Frameworks ABSOLUTE)
-  if(IS_DIRECTORY ${_CMAKE_OSX_PLATFORM_FRAMEWORK_PATH})
-    list(APPEND CMAKE_SYSTEM_FRAMEWORK_PATH
-      ${_CMAKE_OSX_PLATFORM_FRAMEWORK_PATH})
-  endif()
+  foreach(_path
+    # Xcode 6
+    ${_CMAKE_OSX_SYSROOT_PATH}/../../Library/Frameworks
+    # Xcode 5 iOS
+    ${_CMAKE_OSX_SYSROOT_PATH}/Developer/Library/Frameworks
+    # Xcode 5 OSX
+    ${_CMAKE_OSX_SYSROOT_PATH}/../../../../../Library/Frameworks
+    )
+    get_filename_component(_abolute_path "${_path}" ABSOLUTE)
+    if(EXISTS "${_abolute_path}")
+      list(APPEND CMAKE_SYSTEM_FRAMEWORK_PATH "${_abolute_path}")
+      break()
+    endif()
+  endforeach()
 endif()
 list(APPEND CMAKE_SYSTEM_FRAMEWORK_PATH
   /Library/Frameworks

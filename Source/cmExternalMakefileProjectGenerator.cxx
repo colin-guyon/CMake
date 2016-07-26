@@ -9,62 +9,52 @@
   implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
   See the License for more information.
 ============================================================================*/
-#include <assert.h>
 
 #include "cmExternalMakefileProjectGenerator.h"
 
-void cmExternalMakefileProjectGenerator
-::EnableLanguage(std::vector<std::string> const&,
-                 cmMakefile *, bool)
+#include <assert.h>
+
+void cmExternalMakefileProjectGenerator::EnableLanguage(
+  std::vector<std::string> const&, cmMakefile*, bool)
 {
 }
 
 std::string cmExternalMakefileProjectGenerator::CreateFullGeneratorName(
-                                            const std::string& globalGenerator,
-                                            const std::string& extraGenerator)
+  const std::string& globalGenerator, const std::string& extraGenerator)
 {
   std::string fullName;
-  if (!globalGenerator.empty())
-    {
-    if (!extraGenerator.empty())
-      {
+  if (!globalGenerator.empty()) {
+    if (!extraGenerator.empty()) {
       fullName = extraGenerator;
       fullName += " - ";
-      }
-    fullName += globalGenerator;
     }
+    fullName += globalGenerator;
+  }
   return fullName;
 }
 
 std::string cmExternalMakefileProjectGenerator::GetGlobalGeneratorName(
-                                                  const std::string& fullName)
+  const std::string& fullName)
 {
   // at least one global generator must be supported
   assert(!this->SupportedGlobalGenerators.empty());
 
-  if (fullName.empty())
-    {
+  if (fullName.empty()) {
     return "";
-    }
+  }
 
-  std::string currentName = fullName;
   // if we get only the short name, take the first global generator as default
-  if (currentName == this->GetName())
-    {
+  if (fullName == this->GetName()) {
     return this->SupportedGlobalGenerators[0];
-    }
+  }
 
   // otherwise search for the matching global generator
-  for (std::vector<std::string>::const_iterator
-       it = this->SupportedGlobalGenerators.begin();
-       it != this->SupportedGlobalGenerators.end();
-       ++it)
-    {
-      if (this->CreateFullGeneratorName(*it, this->GetName())
-                                                                == currentName)
-      {
-        return *it;
-      }
+  for (std::vector<std::string>::const_iterator it =
+         this->SupportedGlobalGenerators.begin();
+       it != this->SupportedGlobalGenerators.end(); ++it) {
+    if (this->CreateFullGeneratorName(*it, this->GetName()) == fullName) {
+      return *it;
     }
+  }
   return "";
 }

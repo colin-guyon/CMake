@@ -18,14 +18,13 @@
 class cmcmd
 {
 public:
-
   /**
    * Execute commands during the build process. Supports options such
    * as echo, remove file etc.
    */
   static int ExecuteCMakeCommand(std::vector<std::string>&);
-protected:
 
+protected:
   static int SymlinkLibrary(std::vector<std::string>& args);
   static int SymlinkExecutable(std::vector<std::string>& args);
   static bool SymlinkInternal(std::string const& file,
@@ -35,20 +34,6 @@ protected:
   static int WindowsCEEnvironment(const char* version,
                                   const std::string& name);
   static int VisualStudioLink(std::vector<std::string>& args, int type);
-  static int VisualStudioLinkIncremental(std::vector<std::string>& args,
-                                         int type,
-                                         bool verbose);
-  static int VisualStudioLinkNonIncremental(std::vector<std::string>& args,
-                                            int type,
-                                            bool hasManifest,
-                                            bool verbose);
-  static int ParseVisualStudioLinkCommand(std::vector<std::string>& args,
-                                          std::vector<std::string>& command,
-                                          std::string& targetName);
-  static bool RunCommand(const char* comment,
-                         std::vector<std::string>& command,
-                         bool verbose,
-                         int* retCodeOut = 0);
 };
 
 #endif
