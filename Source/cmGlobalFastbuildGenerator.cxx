@@ -106,35 +106,16 @@ The following tests FAILED:
 
 static const char fastbuildGeneratorName[] = "Fastbuild";
 
-class cmGlobalFastbuildGenerator::Factory 
-	: public cmGlobalGeneratorFactory
+void cmGlobalFastbuildGenerator::GetDocumentation(cmDocumentationEntry& entry)
 {
-public:
-	Factory()
-	{
+	entry.Name = fastbuildGeneratorName;
+	entry.Brief = "Generates fastbuild project files.";
+}
 
-	}
-
-	cmGlobalGenerator* CreateGlobalGenerator(const std::string& name) const 
-	{
-		if (name == (fastbuildGeneratorName))
-		{
-			return new cmGlobalFastbuildGenerator();
-		}
-		return NULL;
-	}
-
-	void GetDocumentation(cmDocumentationEntry& entry) const 
-	{
-		entry.Name = fastbuildGeneratorName;
-		entry.Brief = "Generates fastbuild project files.";
-	}
-
-	void GetGenerators(std::vector<std::string>& names) const 
-	{
-		names.push_back(fastbuildGeneratorName);
-	}
-};
+std::string cmGlobalFastbuildGenerator::GetActualName()
+{
+    return fastbuildGeneratorName;
+}
 
 //----------------------------------------------------------------------------
 class cmGlobalFastbuildGenerator::Detail
@@ -256,19 +237,6 @@ public:
 		return string.substr(string.rfind('/'));
 	}
 
-	static bool IsExcludedFromAll( cmTarget* target )
-	{
-		bool excluded = target->GetPropertyAsBool("EXCLUDE_FROM_ALL");
-		cmLocalGenerator* lg = target->GetMakefile()->GetLocalGenerator();
-		while(lg->GetParent() != 0 && !excluded)
-		{
-			excluded = lg->GetMakefile()->GetPropertyAsBool("EXCLUDE_FROM_ALL");
-			lg = lg->GetParent();
-		}
-
-		return excluded;
-	}
-
 #define FASTBUILD_DOLLAR_TAG "FASTBUILD_DOLLAR_TAG"
 
 	static void UnescapeFastbuildVariables(std::string& string)
@@ -386,7 +354,7 @@ public:
 			"Semicolon separated list of supported configuration types, "
 			"only supports Debug, Release, MinSizeRel, and RelWithDebInfo, "
 			"anything else will be ignored.",
-			cmCacheManager::STRING);
+			cmState::STRING);
 	}
 
 	struct FastbuildTargetNames
@@ -407,10 +375,10 @@ public:
 
 	static void DetectOutput(
 		FastbuildTargetNames & targetNamesOut,
-		cmTarget &target,
+		cmGeneratorTarget &target,
 		const std::string & configName)
 	{
-		if (target.GetType() == cmTarget::EXECUTABLE)
+		if (target.GetType() == cmState::EXECUTABLE)
 		{
 			target.GetExecutableNames(
 				targetNamesOut.targetNameOut,
@@ -443,7 +411,7 @@ public:
 		}
 		else
 		{
-			targetNamesOut.targetOutputDir = target.GetMakefile()->GetStartOutputDirectory();
+			targetNamesOut.targetOutputDir = target.Target->GetMakefile()->GetCurrentBinaryDirectory();
 			if (targetNamesOut.targetOutputDir.empty() || 
 				targetNamesOut.targetOutputDir == ".")
 			{
@@ -466,15 +434,15 @@ public:
 				targetNamesOut.targetNameReal;
 		}
 
-		if (target.GetType() == cmTarget::EXECUTABLE ||
-			target.GetType() == cmTarget::STATIC_LIBRARY ||
-			target.GetType() == cmTarget::SHARED_LIBRARY ||
-			target.GetType() == cmTarget::MODULE_LIBRARY)
+		if (target.GetType() == cmState::EXECUTABLE ||
+			target.GetType() == cmState::STATIC_LIBRARY ||
+			target.GetType() == cmState::SHARED_LIBRARY ||
+			target.GetType() == cmState::MODULE_LIBRARY)
 		{
 			targetNamesOut.targetOutputPDBDir = target.GetPDBDirectory(configName);
 			targetNamesOut.targetOutputPDBDir += "/";
 		}
-		if (target.GetType() <= cmTarget::OBJECT_LIBRARY)
+		if (target.GetType() <= cmState::OBJECT_LIBRARY)
 		{
 			targetNamesOut.targetOutputCompilePDBDir = target.GetCompilePDBPath(configName);
 			if (targetNamesOut.targetOutputCompilePDBDir.empty())
@@ -494,15 +462,14 @@ public:
 
 	static void ComputeLinkCmds(std::vector<std::string> & linkCmds,
 		cmLocalFastbuildGenerator *lg,
-		cmTarget &target,
-		cmGeneratorTarget *gt,
+		cmGeneratorTarget &target,
 		std::string configName)
 	{
 		const std::string& linkLanguage = target.GetLinkerLanguage(configName);
 		cmMakefile* mf = lg->GetMakefile();
 		{
 			std::string linkCmdVar = 
-				gt->GetCreateRuleVariable(linkLanguage, configName);
+				target.GetCreateRuleVariable(linkLanguage, configName);
 			const char *linkCmd = mf->GetDefinition(linkCmdVar);
 			if (linkCmd)
 			{
@@ -514,7 +481,7 @@ public:
 		// If the above failed, then lets try this:
 		switch (target.GetType()) 
 		{
-			case cmTarget::STATIC_LIBRARY: 
+			case cmState::STATIC_LIBRARY: 
 			{
 				// We have archive link commands set. First, delete the existing archive.
 				{
@@ -540,9 +507,9 @@ public:
 				}
 				return;
 			}
-			case cmTarget::SHARED_LIBRARY:
-			case cmTarget::MODULE_LIBRARY:
-			case cmTarget::EXECUTABLE:
+			case cmState::SHARED_LIBRARY:
+			case cmState::MODULE_LIBRARY:
+			case cmState::EXECUTABLE:
 				break;
 			default:
 				assert(0 && "Unexpected target type");
@@ -552,7 +519,7 @@ public:
 
 	static std::string ComputeDefines(
 		cmLocalFastbuildGenerator *lg,
-		cmTarget &target,
+		cmGeneratorTarget &target,
 		const cmSourceFile* source,
 		const std::string& configName,
 		const std::string& language)
@@ -598,7 +565,7 @@ public:
 	static void DetectLinkerLibPaths(
 		std::string& linkerLibPath,
 		cmLocalFastbuildGenerator *lg,
-		cmTarget &target,
+		cmGeneratorTarget &target,
 		const std::string & configName )
 	{
 		cmMakefile* pMakefile = lg->GetMakefile();
@@ -643,8 +610,7 @@ public:
 
 	static bool DetectBaseLinkerCommand(std::string & command,
 		cmLocalFastbuildGenerator *lg,
-		cmTarget &target,
-		cmGeneratorTarget *gt,
+		cmGeneratorTarget &target,
 		const std::string & configName)
 	{
 		const std::string& linkLanguage = target.GetLinkerLanguage(configName);
@@ -692,7 +658,7 @@ public:
 		vars.LinkFlags = FASTBUILD_DOLLAR_TAG "LinkFlags" FASTBUILD_DOLLAR_TAG " " FASTBUILD_DOLLAR_TAG "LinkPath" FASTBUILD_DOLLAR_TAG;
 		// Rule for linking library/executable.
 		std::vector<std::string> linkCmds;
-		ComputeLinkCmds(linkCmds, lg, target, gt, configName);
+		ComputeLinkCmds(linkCmds, lg, target, configName);
 		for (std::vector<std::string>::iterator i = linkCmds.begin();
 			i != linkCmds.end();
 			++i)
@@ -721,7 +687,7 @@ public:
 
 	static void DetectBaseCompileCommand(std::string & command,
 		cmLocalFastbuildGenerator *lg,
-		cmTarget &target,
+		cmGeneratorTarget &target,
 		const std::string & language)
 	{
 		cmLocalGenerator::RuleVariables compileObjectVars;
@@ -754,7 +720,7 @@ public:
 	}
 
 	static std::string DetectCompileRule(cmLocalFastbuildGenerator *lg,
-		cmTarget &target,
+		cmGeneratorTarget &target,
 		const std::string& lang)
 	{
 		cmLocalGenerator::RuleVariables vars;
@@ -793,19 +759,17 @@ public:
 
 	static void DetectLanguages(std::set<std::string> & languages,
 		cmGlobalFastbuildGenerator * self,
-		cmTarget &target)
+		cmGeneratorTarget &target)
 	{
 		// Object libraries do not have linker stages
 		// nor utilities
 		bool hasObjectGroups =
-			target.GetType() != cmTarget::UTILITY &&
-			target.GetType() != cmTarget::GLOBAL_TARGET;
+			target.GetType() != cmState::UTILITY &&
+			target.GetType() != cmState::GLOBAL_TARGET;
 		if (!hasObjectGroups)
 		{
 			return;
 		}
-
-		cmGeneratorTarget *gt = self->GetGeneratorTarget(&target);
 
 		std::vector<std::string>::const_iterator
 			iter = self->GetConfigurations().begin(),
@@ -815,7 +779,7 @@ public:
 			const std::string & configName = *iter;
 
 			std::vector<const cmSourceFile*> sourceFiles;
-			gt->GetObjectSources(sourceFiles, configName);
+			target.GetObjectSources(sourceFiles, configName);
 			for (std::vector<const cmSourceFile*>::const_iterator
 				i = sourceFiles.begin(); i != sourceFiles.end(); ++i)
 			{
@@ -844,8 +808,7 @@ public:
 
 	static void DetectCompilerFlags(std::string & compileFlags,
 		cmLocalFastbuildGenerator *lg,
-		cmGeneratorTarget *gt,
-		cmTarget &target,
+		cmGeneratorTarget &target,
 		const cmSourceFile* source,
 		const std::string& language,
 		const std::string& configName)
@@ -855,7 +818,7 @@ public:
 			configName);
 
 		lg->AddArchitectureFlags(compileFlags,
-			gt,
+			&target,
 			language,
 			configName);
 
@@ -870,12 +833,12 @@ public:
 
 		std::vector<std::string> includes;
 		lg->GetIncludeDirectories(includes,
-			gt,
+			&target,
 			language,
 			configName);
 
 		// Add include directory flags.
-		std::string includeFlags = lg->GetIncludeFlags(includes, gt,
+		std::string includeFlags = lg->GetIncludeFlags(includes, &target,
 			language,
 			language == "RC" ? true : false,  // full include paths for RC
 			// needed by cmcldeps
@@ -902,10 +865,10 @@ public:
 
 	static void DetectTargetCompileDependencies(
 		cmGlobalFastbuildGenerator* gg,
-		cmTarget& target, 
+		cmGeneratorTarget& target,
 		std::vector<std::string>& dependencies)
 	{
-		if (target.GetType() == cmTarget::GLOBAL_TARGET)
+		if (target.GetType() == cmState::GLOBAL_TARGET)
 		{
 			// Global targets only depend on other utilities, which may not appear in
 			// the TargetDepends set (e.g. "all").
@@ -915,12 +878,12 @@ public:
 		else 
 		{
 			cmTargetDependSet const& targetDeps =
-				gg->GetTargetDirectDepends(target);
+				gg->GetTargetDirectDepends(&target);
 			for (cmTargetDependSet::const_iterator i = targetDeps.begin();
 				i != targetDeps.end(); ++i)
 			{
 				const cmTargetDepend& depTarget = *i;
-				if (depTarget->GetType() == cmTarget::INTERFACE_LIBRARY)
+				if (depTarget->GetType() == cmState::INTERFACE_LIBRARY)
 				{
 					continue;
 				}
@@ -930,13 +893,13 @@ public:
 	}
 
 	static void DetectTargetLinkDependencies(
-		cmTarget& target,
+		cmGeneratorTarget& target,
 		const std::string& configName,
 		std::vector<std::string>& dependencies)
 	{
 		// Static libraries never depend on other targets for linking.
-		if (target.GetType() == cmTarget::STATIC_LIBRARY ||
-			target.GetType() == cmTarget::OBJECT_LIBRARY)
+		if (target.GetType() == cmState::STATIC_LIBRARY ||
+			target.GetType() == cmState::OBJECT_LIBRARY)
 		{
 			return;
 		}
@@ -954,10 +917,10 @@ public:
 
 	static std::string DetectTargetCompileOutputDir(
 		cmLocalFastbuildGenerator* lg,
-		const cmTarget& target,
+		const cmGeneratorTarget& target,
 		std::string configName)
 	{
-		std::string result = lg->GetTargetDirectory(target) + "/";
+		std::string result = lg->GetTargetDirectory(&target) + "/";
 		if (!configName.empty())
 		{
 			result = result + configName + "/";
@@ -968,18 +931,16 @@ public:
 
 	static void DetectTargetObjectDependencies(
 		cmGlobalFastbuildGenerator* gg,
-		cmTarget& target, 
+		cmGeneratorTarget& target,
 		const std::string& configName,
 		std::vector<std::string>& dependencies)
 	{
 		// Iterate over all source files and look for 
 		// object file dependencies
-		cmGeneratorTarget *gt = gg->GetGeneratorTarget(&target);
-
 		std::set<std::string> objectLibs;
 
 		std::vector<cmSourceFile*> sourceFiles;
-		gt->GetSourceFiles(sourceFiles, configName);
+		target.GetSourceFiles(sourceFiles, configName);
 		for (std::vector<cmSourceFile*>::const_iterator
 			i = sourceFiles.begin(); i != sourceFiles.end(); ++i)
 		{
@@ -1000,7 +961,7 @@ public:
 
 		// Now add the external obj files that also need to be linked in
 		std::vector<const cmSourceFile*> objFiles;
-		gt->GetExternalObjects(objFiles, configName);
+		target.GetExternalObjects(objFiles, configName);
 		for (std::vector<const cmSourceFile*>::const_iterator
 			i = objFiles.begin(); i != objFiles.end(); ++i)
 		{
@@ -1018,17 +979,17 @@ public:
 		{
 			cmGlobalFastbuildGenerator *gg;
 
-			void GetOutputs(const cmTarget* entry, std::vector<std::string>& outputs)
+			void GetOutputs(const cmGeneratorTarget* entry, std::vector<std::string>& outputs)
 			{
 				outputs.push_back(entry->GetName());
 			}
 
-			void GetInputs(const cmTarget* entry, std::vector<std::string>& inputs)
+			void GetInputs(const cmGeneratorTarget* entry, std::vector<std::string>& inputs)
 			{
-				TargetDependSet const& ts = gg->GetTargetDirectDepends(*entry);
+				TargetDependSet const& ts = gg->GetTargetDirectDepends(entry);
 				for (TargetDependSet::const_iterator iter = ts.begin(); iter != ts.end(); ++iter)
 				{
-					const cmTarget * dtarget = *iter;
+					const cmGeneratorTarget * dtarget = *iter;
 					inputs.push_back(dtarget->GetName());
 				}
 			}
@@ -1043,10 +1004,9 @@ public:
 			void GetOutputs(const cmSourceFile* entry, std::vector<std::string>& outputs)
 			{
 				const cmCustomCommand* cc = entry->GetCustomCommand();
-				cmMakefile* makefile = lg->GetMakefile();
 
 				// We need to generate the command for execution.
-				cmCustomCommandGenerator ccg(*cc, configName, makefile);
+				cmCustomCommandGenerator ccg(*cc, configName, lg);
 
 				const std::vector<std::string> &ccOutputs = ccg.GetOutputs();
 				const std::vector<std::string> &byproducts = ccg.GetByproducts();
@@ -1058,12 +1018,12 @@ public:
 			{
 				const cmCustomCommand* cc = entry->GetCustomCommand();
 				cmMakefile* makefile = lg->GetMakefile();
-				cmCustomCommandGenerator ccg(*cc, configName, makefile);
+				cmCustomCommandGenerator ccg(*cc, configName, lg);
 
 				std::string workingDirectory = ccg.GetWorkingDirectory();
 				if (workingDirectory.empty())
 				{
-					workingDirectory = makefile->GetCurrentOutputDirectory();
+					workingDirectory = makefile->GetCurrentBinaryDirectory();
 					workingDirectory += "/";
 				}
 
@@ -1206,7 +1166,7 @@ public:
 		}
 	};
 
-	typedef std::vector<const cmTarget*> OrderedTargetSet;
+	typedef std::vector<const cmGeneratorTarget*> OrderedTargetSet;
 	static void ComputeTargetOrderAndDependencies(
 		cmGlobalFastbuildGenerator* gg,
 		OrderedTargetSet& orderedTargets)
@@ -1235,9 +1195,9 @@ public:
 			++iter)
 		{
 			const cmTargetDepend& targetDepend = *iter;
-			const cmTarget& target = *targetDepend;
+			const cmGeneratorTarget* target = targetDepend;
 
-			orderedTargets.push_back(&target);
+			orderedTargets.push_back(target);
 		}
 
 		DependencySorter::TargetHelper targetHelper = {gg};
@@ -1249,15 +1209,16 @@ public:
 	// i.e. the nested global targets
 	struct RemovalTest
 	{
-		bool operator()(const cmTarget* target) const
+		bool operator()(const cmGeneratorTarget* target) const
 		{
-			if (target->GetType() == cmTarget::GLOBAL_TARGET)
+			if (target->GetType() == cmState::GLOBAL_TARGET)
 			{
 				// We only want to process global targets that live in the home
 				// (i.e. top-level) directory.  CMake creates copies of these targets
 				// in every directory, which we don't need.
-				cmMakefile *mf = target->GetMakefile();
-				if (strcmp(mf->GetStartDirectory(), mf->GetHomeDirectory()) != 0)
+				cmMakefile *mf = target->Target->GetMakefile();
+                /// @TODO: not sure if this works, add logs to check compared values
+				if (strcmp(mf->GetCurrentSourceDirectory(), mf->GetCMakeInstance()->GetHomeDirectory()) != 0)
 				{
 					return true;
 				}
@@ -1396,12 +1357,12 @@ class cmGlobalFastbuildGenerator::Detail::Generation
 public:
 	struct TargetGenerationContext
 	{
-		cmTarget* target;
+        cmGeneratorTarget* target;
 		cmLocalFastbuildGenerator* root;
 		std::vector<cmLocalGenerator*> generators;
 		cmLocalFastbuildGenerator* lg;
 	};
-	typedef std::map<const cmTarget*, TargetGenerationContext> TargetContextMap;
+	typedef std::map<const cmGeneratorTarget*, TargetGenerationContext> TargetContextMap;
 	typedef std::map<const cmCustomCommand*, std::set<std::string> > CustomCommandAliasMap;
 	typedef Detection::OrderedTargetSet OrderedTargets;
 
@@ -1522,15 +1483,17 @@ public:
 				{
 					cmTarget &target = (targetIter->second);
 
-					if(gg->IsRootOnlyTarget(&target) &&
+                    cmGeneratorTarget* gt = gg->FindGeneratorTarget(target.GetName());
+
+					if(gg->IsRootOnlyTarget(gt) &&
 						target.GetMakefile() != root->GetMakefile())
 					{
 						continue;
 					}
 
 					TargetGenerationContext targetContext =
-						{ &target, root, generators, lg };
-					map[&target] = targetContext;
+						{ gt, root, generators, lg };
+					map[gt] = targetContext;
 				}
 			}
 		}
@@ -1543,7 +1506,7 @@ public:
 			static_cast<cmLocalFastbuildGenerator*>(self->GetLocalGenerators()[0]);
 
 		// Calculate filename
-		std::string fname = root->GetMakefile()->GetStartOutputDirectory();
+		std::string fname = root->GetMakefile()->GetHomeOutputDirectory();
 		fname += "/";
 		//fname += root->GetMakefile()->GetProjectName();
 		fname += "fbuild";
@@ -1634,7 +1597,7 @@ public:
 		{
 			TargetGenerationContext& targetContext = iter->second;
 
-			if (targetContext.target->GetType() == cmTarget::INTERFACE_LIBRARY)
+			if (targetContext.target->GetType() == cmState::INTERFACE_LIBRARY)
 			{
 				continue;
 			}
@@ -1766,7 +1729,7 @@ public:
 		GenerationContext& context,
 		const cmCustomCommand* cc,
 		cmLocalFastbuildGenerator *lg,
-		cmTarget& target,
+		cmGeneratorTarget& target,
 		const std::string& configName,
 		std::string& targetName,
 		const std::string& hostTargetName)
@@ -1774,7 +1737,7 @@ public:
 		cmMakefile* makefile = lg->GetMakefile();
 		
 		// We need to generate the command for execution.
-		cmCustomCommandGenerator ccg(*cc, configName, makefile);
+		cmCustomCommandGenerator ccg(*cc, configName, lg);
 
 		const std::vector<std::string> &outputs = ccg.GetOutputs();
 		const std::vector<std::string> &byproducts = ccg.GetByproducts();
@@ -1884,7 +1847,7 @@ public:
 		std::string workingDirectory = ccg.GetWorkingDirectory();
 		if (workingDirectory.empty())
 		{
-			workingDirectory = makefile->GetCurrentOutputDirectory();
+			workingDirectory = makefile->GetCurrentBinaryDirectory();
 			workingDirectory += "/";
 		}
 
@@ -1953,7 +1916,7 @@ public:
 			{
 				context.fc.WriteVariable("ExecUseStdOutAsOutput", "true");
 
-				std::string outputDir = target.GetMakefile()->GetStartOutputDirectory();
+				std::string outputDir = target.Target->GetMakefile()->GetCurrentBinaryDirectory();
 				mergedOutputs.push_back(outputDir + "/dummy-out-" + targetName + ".txt");
 			}
 			// Currently fastbuild doesn't support more than 1
@@ -1968,7 +1931,7 @@ public:
 	static void WriteCustomBuildSteps(
 		GenerationContext& context,
 		cmLocalFastbuildGenerator *lg,
-		cmTarget &target,
+		cmGeneratorTarget &target,
 		const std::vector<cmCustomCommand>& commands,
 		const std::string& buildStep,
 		const std::vector<std::string>& orderDeps)
@@ -2028,8 +1991,7 @@ public:
 	static bool WriteCustomBuildRules(
 		GenerationContext& context, 
 		cmLocalFastbuildGenerator *lg, 
-		cmGeneratorTarget *gt,
-		cmTarget &target)
+		cmGeneratorTarget &target)
 	{
 		bool hasCustomCommands = false;
 		const std::string& targetName = target.GetName();
@@ -2050,7 +2012,7 @@ public:
 			// Figure out the list of custom build rules in use by this target
 			// get a list of source files
 			std::vector<cmSourceFile const*> customCommands;
-			gt->GetCustomCommands(customCommands, configName);
+			target.GetCustomCommands(customCommands, configName);
 
 			if (!customCommands.empty())
 			{
@@ -2116,40 +2078,40 @@ public:
 	};
 
 	static void WriteTargetDefinition(GenerationContext& context,
-		cmLocalFastbuildGenerator *lg, cmTarget &target)
+		cmLocalFastbuildGenerator *lg, cmGeneratorTarget &target)
 	{
 		// Detection of the link command as follows:
 		std::string linkCommand = "Library";
 		switch (target.GetType())
 		{
-			case cmTarget::INTERFACE_LIBRARY:
+			case cmState::INTERFACE_LIBRARY:
 				// We don't write out interface libraries.
 				return;
-			case cmTarget::EXECUTABLE:
+			case cmState::EXECUTABLE:
 			{
 				linkCommand = "Executable";
 				break;
 			}
-			case cmTarget::SHARED_LIBRARY:
+			case cmState::SHARED_LIBRARY:
 			{
 				linkCommand = "DLL";
 				break;
 			}
-			case cmTarget::STATIC_LIBRARY:
-			case cmTarget::MODULE_LIBRARY:
-			case cmTarget::OBJECT_LIBRARY:
+			case cmState::STATIC_LIBRARY:
+			case cmState::MODULE_LIBRARY:
+			case cmState::OBJECT_LIBRARY:
 			{
 				// No changes required
 				break;
 			}
-			case cmTarget::UTILITY:
-			case cmTarget::GLOBAL_TARGET:
+			case cmState::UTILITY:
+			case cmState::GLOBAL_TARGET:
 			{
 				// No link command used 
 				linkCommand = "NoLinkCommand";
 				break;
 			}
-			case cmTarget::UNKNOWN_LIBRARY:
+			case cmState::UNKNOWN_LIBRARY:
 			{
 				// Ignoring this target generation...
 				return;
@@ -2157,7 +2119,6 @@ public:
 		}
 
 		const std::string& targetName = target.GetName();
-		cmGeneratorTarget *gt = context.self->GetGeneratorTarget(&target);
 
 		context.fc.WriteComment("Target definition: "+targetName);
 		context.fc.WritePushScope();
@@ -2206,7 +2167,7 @@ public:
 				// Compile directory always needs to exist
 				EnsureDirectoryExists(targetNames.targetOutputCompilePDBDir, context);
 
-				if (target.GetType() != cmTarget::OBJECT_LIBRARY)
+				if (target.GetType() != cmState::OBJECT_LIBRARY)
 				{
 					// on Windows the output dir is already needed at compile time
 					// ensure the directory exists (OutDir test)
@@ -2268,7 +2229,7 @@ public:
 		}
 
 		// Write the custom build rules
-		bool hasCustomBuildRules = WriteCustomBuildRules(context, lg, gt, target);
+		bool hasCustomBuildRules = WriteCustomBuildRules(context, lg, target);
 		
 		// Figure out the list of languages in use by this target
 		std::vector<std::string> linkableDeps;
@@ -2330,7 +2291,7 @@ public:
 				{
 					// get a list of source files
 					std::vector<cmSourceFile const*> objectSources;
-					gt->GetObjectSources(objectSources, configName);
+					target.GetObjectSources(objectSources, configName);
 
 					std::vector<cmSourceFile const*> filteredObjectSources;
 					Detection::FilterSourceFiles(filteredObjectSources, objectSources,
@@ -2350,7 +2311,7 @@ public:
 						// Detect flags and defines
 						std::string compilerFlags;
 						Detection::DetectCompilerFlags(compilerFlags, 
-							lg, gt, target, srcFile, objectGroupLanguage, configName);
+							lg, target, srcFile, objectGroupLanguage, configName);
 						std::string compileDefines = 
 							Detection::ComputeDefines(lg, target, srcFile, configName, objectGroupLanguage);
 						
@@ -2442,9 +2403,9 @@ public:
 		// Object libraries do not have linker stages
 		// nor utilities
 		bool hasLinkerStage = 
-			target.GetType() != cmTarget::OBJECT_LIBRARY &&
-			target.GetType() != cmTarget::UTILITY &&
-			target.GetType() != cmTarget::GLOBAL_TARGET;
+			target.GetType() != cmState::OBJECT_LIBRARY &&
+			target.GetType() != cmState::UTILITY &&
+			target.GetType() != cmState::GLOBAL_TARGET;
 
 		// Iterate over each configuration
 		// This time to define linker settings for each config
@@ -2481,7 +2442,7 @@ public:
 						linkFlags,
 						frameworkPath,
 						dummyLinkPath,
-						gt,
+						&target,
 						false);
 
 					std::string linkPath;
@@ -2498,7 +2459,7 @@ public:
 					if(target.IsExecutableWithExports())
 					{
 						const char* defFileFlag = lg->GetMakefile()->GetDefinition("CMAKE_LINK_DEF_FILE_FLAG");
-						const std::string defFile = gt->GetModuleDefinitionFile(configName);
+						const std::string defFile = target.GetModuleDefinitionFile(configName)->GetFullPath();
 						if(!defFile.empty())
 						{
 							linkFlags += defFileFlag + defFile;
@@ -2513,7 +2474,7 @@ public:
 					// Remove the command from the front and leave the flags behind
 					std::string linkCmd;
 					if (!Detection::DetectBaseLinkerCommand(linkCmd,
-						lg, target, gt, configName))
+						lg, target, configName))
 					{
 						return;
 					}
@@ -2616,7 +2577,7 @@ public:
 
 	static void WriteTargetAliases(
 		GenerationContext& context,
-		cmTarget& target,
+		cmGeneratorTarget& target,
 		const std::vector<std::string>& linkableDeps,
 		const std::vector<std::string>& orderDeps)
 	{
@@ -2655,7 +2616,7 @@ public:
 	}
 
 	static void WriteTargetUtilityDefinition(GenerationContext& context,
-		cmLocalFastbuildGenerator *lg, cmTarget &target)
+		cmLocalFastbuildGenerator *lg, cmGeneratorTarget& target)
 	{
 		WriteTargetDefinition(context, lg, target);
 	}
@@ -2670,8 +2631,8 @@ public:
 			targetIter != context.orderedTargets.end();
 			++targetIter)
 		{
-			const cmTarget* constTarget = (*targetIter);
-			if(constTarget->GetType() == cmTarget::INTERFACE_LIBRARY)
+			const cmGeneratorTarget* constTarget = (*targetIter);
+			if(constTarget->GetType() == cmState::INTERFACE_LIBRARY)
 			{
 				continue;
 			}
@@ -2682,10 +2643,10 @@ public:
 				continue;
 			}
 
-			cmTarget* target = findResult->second.target;
+			cmGeneratorTarget* target = findResult->second.target;
 			cmLocalFastbuildGenerator* lg = findResult->second.lg;
 
-			if (target->GetType() == cmTarget::GLOBAL_TARGET)
+			if (target->GetType() == cmState::GLOBAL_TARGET)
 			{
 				if (!outputGlobals)
 					continue;
@@ -2698,15 +2659,15 @@ public:
 
 			switch (target->GetType())
 			{
-				case cmTarget::EXECUTABLE:
-				case cmTarget::SHARED_LIBRARY:
-				case cmTarget::STATIC_LIBRARY:
-				case cmTarget::MODULE_LIBRARY:
-				case cmTarget::OBJECT_LIBRARY:
+				case cmState::EXECUTABLE:
+				case cmState::SHARED_LIBRARY:
+				case cmState::STATIC_LIBRARY:
+				case cmState::MODULE_LIBRARY:
+				case cmState::OBJECT_LIBRARY:
 					WriteTargetDefinition(context, lg, *target);
 					break;
-				case cmTarget::UTILITY:
-				case cmTarget::GLOBAL_TARGET:
+				case cmState::UTILITY:
+				case cmState::GLOBAL_TARGET:
 					WriteTargetUtilityDefinition(context, lg, *target);
 					break;
 				default:
@@ -2733,8 +2694,8 @@ public:
 			targetIter != context.orderedTargets.end();
 			++targetIter)
 		{
-			const cmTarget* constTarget = (*targetIter);
-			if(constTarget->GetType() == cmTarget::INTERFACE_LIBRARY)
+			const cmGeneratorTarget* constTarget = (*targetIter);
+			if(constTarget->GetType() == cmState::INTERFACE_LIBRARY)
 			{
 				continue;
 			}
@@ -2745,10 +2706,11 @@ public:
 				continue;
 			}
 
-			cmTarget* target = findResult->second.target;
+			cmGeneratorTarget* target = findResult->second.target;
+            cmLocalFastbuildGenerator* lg = findResult->second.lg;
 			const std::string & targetName = target->GetName();
 
-			if (target->GetType() == cmTarget::GLOBAL_TARGET)
+			if (target->GetType() == cmState::GLOBAL_TARGET)
 			{
 				if (!outputGlobals)
 					continue;
@@ -2770,7 +2732,7 @@ public:
 
 				perTarget[targetName].push_back(aliasName);
 
-				if (!Detection::IsExcludedFromAll(target))
+                if (!context.self->IsExcluded(context.root, target))
 				{
 					perConfig[configName].push_back(aliasName);
 				}
@@ -2832,11 +2794,12 @@ public:
 //----------------------------------------------------------------------------
 cmGlobalGeneratorFactory* cmGlobalFastbuildGenerator::NewFactory()
 {
-	return new Factory();
+    return new cmGlobalGeneratorSimpleFactory<cmGlobalFastbuildGenerator>();
 }
 
 //----------------------------------------------------------------------------
-cmGlobalFastbuildGenerator::cmGlobalFastbuildGenerator()
+cmGlobalFastbuildGenerator::cmGlobalFastbuildGenerator(cmake* cm)
+    : cmGlobalGenerator(cm)
 {
 	this->FindMakeProgramFile = "CMakeFastbuildFindMake.cmake";
 }
@@ -2854,10 +2817,9 @@ std::string cmGlobalFastbuildGenerator::GetName() const
 }
 
 //----------------------------------------------------------------------------
-cmLocalGenerator *cmGlobalFastbuildGenerator::CreateLocalGenerator()
+cmLocalGenerator *cmGlobalFastbuildGenerator::CreateLocalGenerator(cmMakefile* mf)
 {
-	cmLocalGenerator * lg = new cmLocalFastbuildGenerator();
-	lg->SetGlobalGenerator(this);
+	cmLocalGenerator * lg = new cmLocalFastbuildGenerator(this, mf);
 	return lg;
 }
 
@@ -2984,9 +2946,9 @@ void cmGlobalFastbuildGenerator::ComputeTargetObjectDirectory(
 
 	// Compute full path to object file directory for this target.
 	std::string dir;
-	dir += gt->Makefile->GetCurrentOutputDirectory();
+	dir += gt->Makefile->GetCurrentBinaryDirectory();
 	dir += "/";
-	dir += gt->LocalGenerator->GetTargetDirectory(*target);
+	dir += gt->LocalGenerator->GetTargetDirectory(gt);
 	dir += "/";
 	gt->ObjectDirectory = dir;
 }

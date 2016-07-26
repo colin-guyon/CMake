@@ -20,6 +20,7 @@ class cmSourceFile;
 class cmSourceGroup;
 class cmCustomCommand;
 class cmCustomCommandGenerator;
+class cmGlobalFastbuildGenerator;
 
 /** \class cmLocalFastbuildGenerator
  * \brief Base class for Visual Studio generators.
@@ -32,7 +33,7 @@ class cmLocalFastbuildGenerator
 {
 public:
   
-	cmLocalFastbuildGenerator();
+	cmLocalFastbuildGenerator(cmGlobalFastbuildGenerator* gg, cmMakefile* makefile);
 	virtual ~cmLocalFastbuildGenerator();
 
 	virtual void Generate();
@@ -45,7 +46,7 @@ public:
 		std::map<cmSourceFile const*, std::string>& mapping,
 		cmGeneratorTarget const* gt);
 	virtual std::string GetTargetDirectory(
-		cmTarget const& target) const;
+		cmGeneratorTarget const* target) const;
 	virtual void AppendFlagEscape(std::string& flags,
 		const std::string& rawFlag);
 

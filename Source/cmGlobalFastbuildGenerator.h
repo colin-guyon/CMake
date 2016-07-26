@@ -23,12 +23,12 @@ class cmGlobalFastbuildGenerator
 	: public cmGlobalGenerator
 {
 public:
-	cmGlobalFastbuildGenerator();
+	cmGlobalFastbuildGenerator(cmake* cm);
 	virtual ~cmGlobalFastbuildGenerator();
 
 	static cmGlobalGeneratorFactory* NewFactory();
 
-	void EnableLanguage(
+	virtual void EnableLanguage(
 		std::vector<std::string>const &  lang,
 		cmMakefile *mf, bool optional);
 	virtual void Generate();
@@ -43,7 +43,7 @@ public:
 		std::vector<std::string> const& makeOptions);
 
 	///! create the correct local generator
-	virtual cmLocalGenerator *CreateLocalGenerator();
+	virtual cmLocalGenerator *CreateLocalGenerator(cmMakefile* mf);
 	virtual std::string GetName() const;
 
 	virtual bool IsMultiConfig() { return true; }
@@ -63,8 +63,17 @@ public:
 
 	const std::vector<std::string> & GetConfigurations() const;
 
+    static void GetDocumentation(cmDocumentationEntry& entry);
+
+    static std::string GetActualName();
+
+    /**
+    * Utilized by the generator factory to determine if this generator
+    * supports toolsets.
+    */
+    static bool SupportsToolset() { return false; }
+
 private:
-	class Factory;
 	class Detail;
 
 	std::vector<std::string> Configurations;
