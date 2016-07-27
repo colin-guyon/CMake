@@ -656,6 +656,18 @@ public:
 		vars.Defines = FASTBUILD_DOLLAR_TAG "CompileDefineFlags" FASTBUILD_DOLLAR_TAG;
 		vars.Flags = FASTBUILD_DOLLAR_TAG "TargetFlags" FASTBUILD_DOLLAR_TAG;
 		vars.LinkFlags = FASTBUILD_DOLLAR_TAG "LinkFlags" FASTBUILD_DOLLAR_TAG " " FASTBUILD_DOLLAR_TAG "LinkPath" FASTBUILD_DOLLAR_TAG;
+
+		// compute MANIFESTS
+		std::vector<cmSourceFile const*> manifest_srcs;
+		target.GetManifests(manifest_srcs, configName);
+		std::vector<std::string> manifests;
+		for (std::vector<cmSourceFile const*>::iterator mi = manifest_srcs.begin();
+			mi != manifest_srcs.end(); ++mi) {
+			manifests.push_back(lg->Convert((*mi)->GetFullPath(), cmOutputConverter::HOME_OUTPUT, cmOutputConverter::SHELL));
+		}
+		std::string manifestsStr = cmJoin(manifests, " ");
+		vars.Manifests = manifestsStr.c_str();
+
 		// Rule for linking library/executable.
 		std::vector<std::string> linkCmds;
 		ComputeLinkCmds(linkCmds, lg, target, configName);
@@ -688,7 +700,8 @@ public:
 	static void DetectBaseCompileCommand(std::string & command,
 		cmLocalFastbuildGenerator *lg,
 		cmGeneratorTarget &target,
-		const std::string & language)
+		const std::string & language,
+		const std::string & configName)
 	{
 		cmLocalGenerator::RuleVariables compileObjectVars;
 		compileObjectVars.CMTarget = &target;
@@ -699,6 +712,21 @@ public:
 		compileObjectVars.ObjectFileDir = "";
 		compileObjectVars.Flags = "";
 		compileObjectVars.Defines = "";
+
+		// Compute INCLUDES
+		std::vector<std::string> includes;
+		lg->GetIncludeDirectories(includes, &target,
+			language, configName);
+		// Add include directory flags.
+		std::string includeFlags = lg->GetIncludeFlags(
+			includes, &target, language,
+			language == "RC" ? true : false, // full include paths for RC
+			                                 // needed by cmcldeps
+			false, configName);
+		//if (lg->GetGlobalGenerator()->IsGCCOnWindows())
+		//    std::replace(includeFlags.begin(), includeFlags.end(), '\\', '/');
+		compileObjectVars.Includes = includeFlags.c_str();
+
 		compileObjectVars.TargetCompilePDB = FASTBUILD_DOLLAR_TAG "TargetOutCompilePDBDir" FASTBUILD_DOLLAR_TAG FASTBUILD_DOLLAR_TAG "TargetNamePDB" FASTBUILD_DOLLAR_TAG;
 
 		// Rule for compiling object file.
@@ -2269,7 +2297,7 @@ public:
 					// Remove the command from the front and leave the flags behind
 					std::string compileCmd;
 					Detection::DetectBaseCompileCommand(compileCmd,
-						lg, target, objectGroupLanguage);
+						lg, target, objectGroupLanguage, configName);
 
 					// No need to double unescape the variables
 					//Detection::UnescapeFastbuildVariables(compileCmd);
