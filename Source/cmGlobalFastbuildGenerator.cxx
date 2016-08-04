@@ -33,11 +33,14 @@
 	 doesn't exist where the reference is attempted.
 	 - Parsing strings with double $$ doesn't generate a nice error
 	 - Undocumented that you can escape a $ with ^$
+	   -> now documented in http://www.fastbuild.org/docs/syntaxguide.html#escaping
 	 - ExecInputs is invalid empty
 	 - Would be great if you could define dummy targets (maybe blank aliases?)
 	 - Exec nodes need to not worry about dummy output files not being created
 	 - Would be nice if nodes didn't need to be completely in order. But then cycles would be possible
 	 - Implib directory is not created for exeNodes (DLLs work now though)
+	 - Issues with preserving escaped quotes and double spaces, such as in -DMYVAR="\"string  with 2 spaces\""
+	   -> disabled it from Preprocess unit test, but it would be cleaner to find a way to fix it instead
 
 	Limitations:
 	 - Only tested/working with MSVC
