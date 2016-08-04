@@ -1055,6 +1055,9 @@ public:
 				if (workingDirectory.empty())
 				{
 					workingDirectory = makefile->GetCurrentBinaryDirectory();
+				}
+				if (workingDirectory.back() != '/')
+				{
 					workingDirectory += "/";
 				}
 
@@ -1884,8 +1887,15 @@ public:
 		{
 			workingDirectory += "/";
 		}
+		// FIX: workindDirectory may be within the source hierarchy that we are not permitted to write to
+		// so the script is now always generated in the current binary directory.
+		std::string scriptDirectory = makefile->GetCurrentBinaryDirectory();
+		if (scriptDirectory.back() != '/')
+		{
+			scriptDirectory += "/";
+		}
 
-		std::string scriptFileName(workingDirectory + targetName + ".bat");
+		std::string scriptFileName(scriptDirectory + targetName + ".bat");
 		cmsys::ofstream scriptFile(scriptFileName.c_str());
 
 		for (unsigned i = 0; i != ccg.GetNumberOfCommands(); ++i) 
