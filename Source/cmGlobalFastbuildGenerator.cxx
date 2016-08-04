@@ -3070,7 +3070,10 @@ public:
 			folders.push_back("."+folderVarNameStr);
 		}
 
-		context.fc.WriteArray("SolutionFolders", folders);
+		if (!folders.empty())
+		{
+			context.fc.WriteArray("SolutionFolders", folders);
+		}
 
 		context.fc.WriteVariable("SolutionBuildProject", Quote("ALL_BUILD-project"));
 
