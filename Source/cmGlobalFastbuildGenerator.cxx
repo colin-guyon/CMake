@@ -148,6 +148,14 @@ public:
 		fout << linePrefix << ";" << comment << "\n";
 	}
 
+	void WriteCommentMultiLines(std::string comment)
+	{
+		if (!comment.empty() && comment.back() != '\n')
+			comment.pop_back(); // remove last EOL
+		cmSystemTools::ReplaceString(comment, "\n", "\n" + linePrefix + ";");
+		fout << linePrefix << ";" << comment << "\n";
+	}
+
 	void WriteBlankLine()
 	{
 		fout << "\n";
@@ -241,7 +249,7 @@ class cmGlobalFastbuildGenerator::Detail::Detection
 public:
 	static std::string GetLastFolderName(const std::string& string)
 	{
-		return string.substr(string.rfind('/'));
+		return string.substr(string.rfind('/')+1);
 	}
 
 #define FASTBUILD_DOLLAR_TAG "FASTBUILD_DOLLAR_TAG"
@@ -1402,7 +1410,7 @@ public:
 		cmLocalFastbuildGenerator* lg;
 	};
 	typedef std::map<const cmGeneratorTarget*, TargetGenerationContext> TargetContextMap;
-	typedef std::map<const cmCustomCommand*, std::set<std::string> > CustomCommandAliasMap;
+	typedef std::map<std::pair<const cmCustomCommand*,std::string>, std::vector<std::string> > CustomCommandAliasMap;
 	typedef Detection::OrderedTargetSet OrderedTargets;
 
 	struct GenerationContext
@@ -1811,18 +1819,38 @@ public:
 		cmCustomCommandGenerator ccg(*cc, configName, lg);
 
 		std::string command0 = ccg.GetNumberOfCommands() > 0 ? ccg.GetCommand(0) : std::string();
+		Detection::UnescapeFastbuildVariables(command0);
 		const cmGeneratorTarget* command0target = ccg.GetNumberOfCommands() > 0 ? ccg.GetCommandTarget(0) : NULL;
 		const std::vector<std::string> &outputs = ccg.GetOutputs();
 		const std::vector<std::string> &byproducts = ccg.GetByproducts();
 		// Take the dependencies listed and split into targets and files.
-		const std::vector<std::string> &depends = ccg.GetDepends();
-		context.fc.WriteComment(std::string("Command0:   ") + command0 + (command0target ? std::string(" ( ") + command0target->GetName() + std::string(" ) ") : std::string()));
-		context.fc.WriteComment(std::string("Depends: ") + Join(depends, " "));
-		context.fc.WriteComment(std::string("Outputs:    ") + Join(outputs," "));
-		context.fc.WriteComment(std::string("Byproducts: ") + Join(byproducts," "));
+		std::vector<std::string> depends = ccg.GetDepends();
+
+		for (std::vector<std::string>::iterator iter = depends.begin();
+			iter != depends.end();
+			++iter)
+		{
+			std::string& str = *iter;
+			Detection::UnescapeFastbuildVariables(str);
+			Detection::ResolveFastbuildVariables(str, configName);
+		}
+
 		std::vector<std::string> mergedOutputs;
 		mergedOutputs.insert(mergedOutputs.end(), outputs.begin(), outputs.end());
 		mergedOutputs.insert(mergedOutputs.end(), byproducts.begin(), byproducts.end());
+
+		for (std::vector<std::string>::iterator iter = mergedOutputs.begin();
+			iter != mergedOutputs.end();
+			++iter)
+		{
+			std::string& str = *iter;
+			Detection::UnescapeFastbuildVariables(str);
+			Detection::ResolveFastbuildVariables(str, configName);
+		}
+
+		context.fc.WriteComment(std::string("Command0:   ") + command0 + (command0target ? std::string(" ( ") + command0target->GetName() + std::string(" ) ") : std::string()));
+		context.fc.WriteCommentMultiLines(std::string("Depends: ") + Join(depends, "\n  "));
+		context.fc.WriteCommentMultiLines(std::string("Outputs: ") + Join(mergedOutputs, "\n  "));
 
 		// TODO: Double check that none of the outputs are 'symbolic'
 		// In which case, FASTBuild won't want them treated as 
@@ -1856,7 +1884,43 @@ public:
 		// then we will output a new one.
 		if (!mergedOutputs.empty())
 		{
-			context.customCommandAliases[cc].insert(targetName);
+			// Check if this custom command has already been output.
+			// If it has then just drop an alias here to the original
+			CustomCommandAliasMap::iterator findResult = context.customCommandAliases.find(std::make_pair(cc, mergedOutputs[0]));
+			if (findResult != context.customCommandAliases.end())
+			{
+				const std::vector<std::string>& aliases = findResult->second;
+				if (std::find(aliases.begin(), aliases.end(), targetName) != aliases.end())
+				{
+					// This target has already been generated
+					// with the correct name somewhere else.
+					return;
+				}
+				//if (!Detection::isConfigDependant(ccg))
+				{
+					// This command has already been generated.
+					// But under a different name so setup an alias to redirect
+					// No merged outputs, so this command must always be run.
+					// Make it's name unique to its host target
+					// This might create a dependency between different configurations (i.e. Debug target being compiled when asking for Release)
+					// TODO: We should output a warning about this here...
+					targetName += "-";
+					targetName += hostTargetName;
+
+					std::vector<std::string> targets;
+					targets.push_back(*findResult->second.begin());
+
+					context.fc.WriteCommand("Alias", Quote(targetName));
+					context.fc.WritePushScope();
+					{
+						context.fc.WriteArray("Targets",
+							Wrap(targets));
+					}
+					context.fc.WritePopScope();
+					return;
+				}
+			}
+			context.customCommandAliases[std::make_pair(cc, mergedOutputs[0])].push_back(targetName);
 		}
 		else
 		{
@@ -2158,11 +2222,29 @@ public:
 							dep = workingDirectory + dep;
 						}
 
-						inputs.push_back(dep);
 						Detection::UnescapeFastbuildVariables(dep);
 						if (dep.find("$ConfigName$") != std::string::npos)
 						{
 							configWhy << " - input \"" << dep << "\" uses ConfigName\n";
+							isConfigDependant = true;
+						}
+						Detection::ResolveFastbuildVariables(dep, configName);
+						inputs.push_back(dep);
+					}
+				}
+
+
+				// Add dependencies from command executables
+				for (unsigned int ci = 0; ci < ccg.GetNumberOfCommands(); ++ci)
+				{
+					const cmGeneratorTarget* target = ccg.GetCommandTarget(ci);
+					if (target != NULL)
+					{
+						inputTargets.push_back(target->GetName() + "-" + configName);
+						if (!target->IsImported()) // we ignore imported targets as they are probably not dependant on config (such as Qt4::moc)
+						{
+							configWhy << " - command \"" << target->GetName() << "\" is a generated target " << cmState::GetTargetTypeName(target->GetType()) << "\n";
+							isConfigDependant = true;
 						}
 					}
 				}
@@ -2170,11 +2252,11 @@ public:
 				// Check if the outputs don't depend on the config name, and if we have a real output
 
 				bool isCustomTarget = true;
-				for (std::vector<std::string>::const_iterator iter = outputs.begin();
+				for (std::vector<std::string>::iterator iter = outputs.begin();
 					iter != outputs.end();
 					++iter)
 				{
-					std::string str = *iter;
+					std::string& str = *iter;
 					cmSourceFile* outputSourceFile = makefile->GetSource(str);
 					// Check if this file is symbolic
 					if (outputSourceFile && outputSourceFile->GetPropertyAsBool("SYMBOLIC"))
@@ -2185,10 +2267,13 @@ public:
 							configWhy << " - output \"" << str << "\" uses ConfigName\n";
 							isConfigDependant = true;
 						}
+						Detection::ResolveFastbuildVariables(str, configName);
 					}
 					else
 					{
 						isCustomTarget = false;
+						Detection::UnescapeFastbuildVariables(str);
+						Detection::ResolveFastbuildVariables(str, configName);
 					}
 				}
 				if (isCustomTarget)
@@ -2250,6 +2335,7 @@ public:
 			}
 			if (isConfigDependant)
 			{
+				context.fc.WriteCommentMultiLines(configWhy.str());
 				//cmSystemTools::Stdout(configWhy.str().c_str());
 				configCustomCommands.push_back(sourceFile);
 			}
@@ -2257,6 +2343,7 @@ public:
 			{
 				std::stringstream configWhy2;
 				configWhy2 << "SourceFile " << sourceFilePath << " CustomCommand is shared between configs\n";
+				context.fc.WriteCommentMultiLines(configWhy2.str());
 				//cmSystemTools::Stdout(configWhy2.str().c_str());
 				commonCustomCommands.push_back(sourceFile);
 			}
@@ -2273,7 +2360,7 @@ public:
 
 			const std::string refConfigName = configs.front(); // we need one config name to access computed maps
 			const std::map<const cmSourceFile*, std::string >& refWorkingDirectory = mapCCWorkingDir[refConfigName];
-			const std::map<const cmSourceFile*, std::vector<std::string> >& refInputs = mapCCOutputs[refConfigName];
+			const std::map<const cmSourceFile*, std::vector<std::string> >& refInputs = mapCCInputs[refConfigName];
 			const std::map<const cmSourceFile*, std::vector<std::string> >& refOutputs = mapCCOutputs[refConfigName];
 			//if (!customCommands.empty())
 			{
@@ -2545,6 +2632,26 @@ public:
 		WriteCustomBuildSteps(context, lg, target, target.GetPreBuildCommands(), "PreBuild", dependencies);
 		WriteCustomBuildSteps(context, lg, target, target.GetPreLinkCommands(), "PreLink", dependencies);
 
+		// Output the ExportAll (Prelink) command if WINDOWS_EXPORT_ALL_SYMBOLS is on
+		bool addExportAll = false;
+		std::string exportAllOutDir;
+		std::string exportAllDefFile;
+		std::string exportAllObjsFile;
+		std::map<std::string, std::vector<std::string> > exportAllConfigObjectFiles;
+
+		if (target.GetType() == cmState::SHARED_LIBRARY &&
+			target.Target->GetMakefile()->IsOn("CMAKE_SUPPORT_WINDOWS_EXPORT_ALL_SYMBOLS") &&
+			target.GetPropertyAsBool("WINDOWS_EXPORT_ALL_SYMBOLS"))
+		{
+			addExportAll = true;
+
+			std::vector<cmCustomCommand> commands;
+			std::vector<std::string> outputs;
+			exportAllOutDir = target.ObjectDirectory;
+			exportAllDefFile = "exportall.def";
+			exportAllObjsFile = "objects.txt";
+		}
+
 		// Write the custom build rules
 		std::pair<bool, bool> hasCustomBuildRules = WriteCustomBuildRules(context, lg, target);
 
@@ -2619,6 +2726,7 @@ public:
 			for (; configIter != configEnd; ++configIter)
 			{
 				const std::string & configName = *configIter;
+				std::vector<std::string>& exportAllObjectFiles = exportAllConfigObjectFiles[configName];
 				context.fc.WriteVariable("ObjectConfig_" + configName, "");
 				context.fc.WritePushScopeStruct();
 
@@ -2671,6 +2779,11 @@ public:
 					{
 						cmSourceFile const *srcFile = *sourceIter;
 						std::string sourceFile = srcFile->GetFullPath();
+						Detection::UnescapeFastbuildVariables(sourceFile);
+						Detection::ResolveFastbuildVariables(sourceFile, configName);
+						std::string sourceDir = srcFile->GetLocation().GetDirectory();
+						Detection::UnescapeFastbuildVariables(sourceDir);
+						Detection::ResolveFastbuildVariables(sourceDir, configName);
 
 						// Detect flags and defines
 						std::string compilerFlags;
@@ -2684,7 +2797,7 @@ public:
 
 						std::string configKey = compilerFlags + "{|}" + compileDefines;
 						CompileCommand& command = commandPermutations[configKey];
-						command.sourceFiles[srcFile->GetLocation().GetDirectory()].push_back(sourceFile);
+						command.sourceFiles[sourceDir].push_back(sourceFile);
 						command.flags = compilerFlags;
 						command.defines = compileDefines;
 					}
@@ -2705,15 +2818,16 @@ public:
 					context.fc.WriteVariable("CompileDefineFlags", Quote( command.defines ));
 					context.fc.WriteVariable("CompileFlags", Quote( command.flags ));
 					context.fc.WriteVariable("CompilerOptions", Quote("$CompileFlags$ $CompileDefineFlags$ $CompilerCmdBaseFlags$"));
-
+					std::string outputExtension;
 					if(objectGroupLanguage == "RC")
 					{
-						context.fc.WriteVariable("CompilerOutputExtension", Quote( ".res" ));
+						outputExtension = ".res";
 					}
 					else
 					{
-						context.fc.WriteVariable("CompilerOutputExtension", Quote( "." + objectGroupLanguage + ".obj" ));
+						outputExtension = "." + objectGroupLanguage + ".obj";
 					}
+					context.fc.WriteVariable("CompilerOutputExtension", Quote(outputExtension));
 
 					std::map<std::string, std::vector<std::string> >::const_iterator objectListIt;
 					for(objectListIt = command.sourceFiles.begin(); objectListIt != command.sourceFiles.end(); ++objectListIt)
@@ -2732,7 +2846,8 @@ public:
 
 						std::string targetCompileOutDirectory =
 							Detection::DetectTargetCompileOutputDir(lg, target, configName);
-						context.fc.WriteVariable("CompilerOutputPath", Quote(targetCompileOutDirectory + folderName));
+						std::string outputPath = targetCompileOutDirectory + folderName;
+						context.fc.WriteVariable("CompilerOutputPath", Quote(outputPath));
 
 						// Unity source files:
 						context.fc.WriteVariable("UnityInputFiles", ".CompilerInputFiles");
@@ -2744,6 +2859,17 @@ public:
 							preCompiledHeaderOutput,
 							preCompiledHeaderOptions)
 						*/
+
+						if (addExportAll && objectGroupLanguage != "RC")
+						{
+							for (std::vector<std::string>::const_iterator it = objectListIt->second.begin(); it != objectListIt->second.end(); ++it)
+							{
+								const std::string filename = cmSystemTools::GetFilenameWithoutExtension(*it);
+								std::string objfile = outputPath + '/' + filename + outputExtension;
+								exportAllObjectFiles.push_back(objfile);
+							}
+						}
+
 						context.fc.WritePopScope();
 					}
 
@@ -2762,6 +2888,58 @@ public:
 				context.fc.WritePopScope();
 			}
 			context.fc.WritePopScope();
+		}
+		
+		if (addExportAll)
+		{
+
+			// Iterating over all configurations
+			configIter = context.self->GetConfigurations().begin();
+			for (; configIter != configEnd; ++configIter)
+			{
+				const std::string & configName = *configIter;
+				const std::vector<std::string>& exportAllObjectFiles = exportAllConfigObjectFiles[configName];
+				std::string obj_dir_expanded = exportAllOutDir;
+				Detection::UnescapeFastbuildVariables(obj_dir_expanded);
+				Detection::ResolveFastbuildVariables(obj_dir_expanded, configName);
+				cmSystemTools::MakeDirectory(obj_dir_expanded.c_str());
+				std::string objs_file = obj_dir_expanded + exportAllObjsFile;
+				cmGeneratedFileStream fout(objs_file.c_str());
+				if (!fout) {
+					cmSystemTools::Error("could not open ", objs_file.c_str());
+					continue;
+				}
+				for (std::vector<std::string>::const_iterator it = exportAllObjectFiles.begin(); it != exportAllObjectFiles.end(); ++it)
+				{
+					fout << *it << "\n";
+				}
+			}
+
+			std::vector<std::string> outputs;
+			outputs.push_back(exportAllOutDir + exportAllDefFile);
+
+			std::vector<std::string> empty;
+
+			std::string cmakeCommand = cmSystemTools::GetCMakeCommand();
+			cmSystemTools::ConvertToWindowsExtendedPath(cmakeCommand);
+			cmCustomCommandLine cmdl;
+			cmdl.push_back(cmakeCommand);
+			cmdl.push_back("-E");
+			cmdl.push_back("__create_def");
+			cmdl.push_back(exportAllOutDir + exportAllDefFile);
+			cmdl.push_back(exportAllOutDir + exportAllObjsFile);
+			cmCustomCommandLines commandLines;
+			commandLines.push_back(cmdl);
+			std::vector<cmCustomCommand> commands;
+			cmCustomCommand command(target.Target->GetMakefile(), outputs, empty, empty,
+				commandLines, "Auto build dll exports", ".");
+			commands.push_back(command);
+
+			//context.fc.WriteArray("Libraries",
+			//	Wrap(linkableDeps, "'" + targetName + "-", "-" + configName + "'"));
+
+			WriteCustomBuildSteps(context, lg, target, commands, "ExportAll", linkableDeps);
+
 		}
 
 		// Iterate over each configuration
@@ -2813,24 +2991,32 @@ public:
 
 					linkPath = frameworkPath + linkPath;
 
-					if(target.IsExecutableWithExports())
+					if(addExportAll || target.IsExecutableWithExports())
 					{
 						const char* defFileFlag = target.Makefile->GetDefinition("CMAKE_LINK_DEF_FILE_FLAG");
-						if (defFileFlag)
+						std::string defFilePath;
+						if (addExportAll)
+						{
+							defFilePath = exportAllOutDir;
+							Detection::UnescapeFastbuildVariables(defFilePath);
+							Detection::ResolveFastbuildVariables(defFilePath, configName);
+							defFilePath += exportAllDefFile;
+						}
+						else
 						{
 							const cmSourceFile* defFile = target.GetModuleDefinitionFile(configName);
 							if (defFile)
 							{
-								const std::string defFilePath = defFile->GetFullPath();
-								if (!defFilePath.empty())
-								{
-									if (!linkFlags.empty())
-									{
-										linkFlags += ' ';
-									}
-									linkFlags += defFileFlag + defFilePath;
-								}
+								defFilePath = defFile->GetFullPath();
 							}
+						}
+						if (defFileFlag && !defFilePath.empty())
+						{
+							if (!linkFlags.empty())
+							{
+								linkFlags += ' ';
+							}
+							linkFlags += defFileFlag + defFilePath;
 						}
 					}
 
@@ -2900,6 +3086,14 @@ public:
 
 						context.fc.WriteVariable("LibrarianAdditionalInputs", ".Libraries");
 					}
+					if (addExportAll)
+					{
+						std::vector<std::string> deps;
+						deps.push_back(std::string("'") + targetName + "-ExportAll-" + configName + "'");
+						context.fc.WriteArray("PreBuildDependencies",
+							deps,
+							"+");
+					}
 					context.fc.WritePopScope();
 				}
 				context.fc.WritePopScope();
@@ -2921,6 +3115,10 @@ public:
 		if (hasCustomBuildRules.second)
 		{
 			orderDeps.push_back("CustomCommands");
+		}
+		if (addExportAll)
+		{
+			orderDeps.push_back("ExportAll");
 		}
 		if (hasLinkerStage)
 		{
