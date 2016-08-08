@@ -50,6 +50,13 @@ bool cmCustomCommandGenerator::UseCrossCompilingEmulator(unsigned int c) const
   return false;
 }
 
+cmGeneratorTarget* cmCustomCommandGenerator::GetCommandTarget(unsigned int c) const
+{
+    std::string const& argv0 = this->CC.GetCommandLines()[c][0];
+    cmGeneratorTarget* target = this->LG->FindGeneratorTargetToUse(argv0);
+    return target;
+}
+
 std::string cmCustomCommandGenerator::GetCommand(unsigned int c) const
 {
   std::string const& argv0 = this->CC.GetCommandLines()[c][0];

@@ -17,6 +17,7 @@
 class cmCustomCommand;
 class cmLocalGenerator;
 class cmGeneratorExpression;
+class cmGeneratorTarget;
 
 class cmCustomCommandGenerator
 {
@@ -36,6 +37,7 @@ public:
   cmCustomCommand const& GetCC() const { return this->CC; }
   unsigned int GetNumberOfCommands() const;
   std::string GetCommand(unsigned int c) const;
+  cmGeneratorTarget* GetCommandTarget(unsigned int c) const;
   bool UseCrossCompilingEmulator(unsigned int c) const;
   void AppendArguments(unsigned int c, std::string& cmd) const;
   const char* GetComment() const;
