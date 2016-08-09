@@ -1221,13 +1221,15 @@ function(_ep_get_build_command name step cmd_var)
         if(CMAKE_CONFIGURATION_TYPES)
           if (CMAKE_CFG_INTDIR AND
               NOT CMAKE_CFG_INTDIR STREQUAL "." AND
-              NOT CMAKE_CFG_INTDIR MATCHES "\\$")
+              NOT CMAKE_CFG_INTDIR MATCHES "\\$" AND
+              NOT CMAKE_CFG_INTDIR MATCHES "FASTBUILD_DOLLAR_TAG")
             # CMake 3.4 and below used the CMAKE_CFG_INTDIR placeholder value
             # provided by multi-configuration generators.  Some projects were
             # taking advantage of that undocumented implementation detail to
             # specify a specific configuration here.  They should use
             # BUILD_COMMAND to change the default command instead, but for
             # compatibility honor the value.
+            # FASTBUILD_DOLLAR_TAG was added to support the Fastbuild generator
             set(config ${CMAKE_CFG_INTDIR})
             message(AUTHOR_WARNING "CMAKE_CFG_INTDIR should not be set by project code.\n"
               "To get a non-default build command, use the BUILD_COMMAND option.")

@@ -17,6 +17,7 @@
 	 - Execute unit tests against the generator somehow
 	 - Fix target aliases being repeated in the output
 	 - Fix cmake build using fastbuild (currently appears configuration incorrect)
+	   -> seems to be working now :)
 	 - Running some of the Cmake generation, the pdb files can't be deleted (shows up errors)
 	 - Depends upon visual studio generator code to sort dependencies
 	 - When generating CMAKE from scratch, it sometimes errors with fortran complaints and fails generation?
@@ -26,6 +27,9 @@
 	 But it might mean that the cache has trouble calculating deps for obj->lib/exe.
 	 Not sure if Fastbuild supports that anyway yet
 	 - Need to sort custom build commands by their outputs
+	 - Unit test BuildDepends requires auto-rerun of cmake when detecting changes to source scripts. Not implementable unless FASTBuild can detect when a rule outputs the current bff file and reload it afterwards ?
+	 - Unit test SimpleInstall (and SimpleInstall-Stage2) call cmake --build . as post-build commands,
+	   leading to FASTBuild to exit with error "FBuild: Error: Another instance of FASTBuild is already running in".
 
 	Fastbuild bugs:
 	 - Defining prebuild dependencies that don't exist, causes the error output when that
@@ -150,7 +154,7 @@ public:
 
 	void WriteCommentMultiLines(std::string comment)
 	{
-		if (!comment.empty() && comment.back() != '\n')
+		if (!comment.empty() && comment.back() == '\n')
 			comment.pop_back(); // remove last EOL
 		cmSystemTools::ReplaceString(comment, "\n", "\n" + linePrefix + ";");
 		fout << linePrefix << ";" << comment << "\n";
@@ -1875,45 +1879,42 @@ public:
 			Detection::ResolveFastbuildVariables(str, configName);
 		}
 
-		std::vector<std::string> mergedOutputs;
-		mergedOutputs.insert(mergedOutputs.end(), outputs.begin(), outputs.end());
-		mergedOutputs.insert(mergedOutputs.end(), byproducts.begin(), byproducts.end());
-
-		for (std::vector<std::string>::iterator iter = mergedOutputs.begin();
-			iter != mergedOutputs.end();
-			++iter)
-		{
-			std::string& str = *iter;
-			Detection::UnescapeFastbuildVariables(str);
-			Detection::ResolveFastbuildVariables(str, configName);
-		}
-
 		context.fc.WriteComment(std::string("Command0:   ") + command0 + (command0target ? std::string(" ( ") + command0target->GetName() + std::string(" ) ") : std::string()));
-		context.fc.WriteCommentMultiLines(std::string("Depends: ") + Join(depends, "\n  "));
-		context.fc.WriteCommentMultiLines(std::string("Outputs: ") + Join(mergedOutputs, "\n  "));
+		context.fc.WriteCommentMultiLines(std::string("Depends: ") + Join(depends, "\n         "));
 
-		// TODO: Double check that none of the outputs are 'symbolic'
+		std::vector<std::string> mergedOutputsIn;
+		mergedOutputsIn.insert(mergedOutputsIn.end(), outputs.begin(), outputs.end());
+		mergedOutputsIn.insert(mergedOutputsIn.end(), byproducts.begin(), byproducts.end());
+		std::vector<std::string> mergedOutputs;
+
+		// Double check that none of the outputs are 'symbolic'
 		// In which case, FASTBuild won't want them treated as 
 		// outputs.
 		{
 			// Loop through all outputs, and attempt to find it in the 
 			// source files.
-			for (size_t index = 0; index < mergedOutputs.size(); ++index)
+			for (std::vector<std::string>::const_iterator iter = mergedOutputsIn.begin();
+				iter != mergedOutputsIn.end();
+				++iter)
 			{
-				const std::string& outputName = mergedOutputs[index];
+				const std::string& outputName = *iter;
+				std::string outputNameConv = outputName;
+				Detection::UnescapeFastbuildVariables(outputNameConv);
+				Detection::ResolveFastbuildVariables(outputNameConv, configName);
 
 				cmSourceFile* outputSourceFile = makefile->GetSource(outputName);
 				// Check if this file is symbolic
 				if (outputSourceFile && outputSourceFile->GetPropertyAsBool("SYMBOLIC"))
 				{
-					context.fc.WriteComment(outputName + " is SYMBOLIC, dropping");
-					// We need to remove this file from the list of outputs
-					// Swap with back and pop
-					mergedOutputs[index] = mergedOutputs.back();
-					mergedOutputs.pop_back();
+					context.fc.WriteComment(outputNameConv + " is SYMBOLIC, dropping");
+				}
+				else
+				{
+					mergedOutputs.push_back(outputNameConv);
 				}
 			}
 		}
+		context.fc.WriteCommentMultiLines(std::string("Outputs: ") + Join(mergedOutputs, "\n         "));
 
 		std::vector<std::string> inputs;
 		std::vector<std::string> orderDependencies;
@@ -2019,26 +2020,35 @@ public:
 			scriptDirectory += "/";
 		}
 
-		std::string scriptFileName(scriptDirectory + targetName + ".bat");
-		cmsys::ofstream scriptFile(scriptFileName.c_str());
+		std::string scriptFileName(scriptDirectory + targetName + shellExt);
 
-		for (unsigned i = 0; i != ccg.GetNumberOfCommands(); ++i) 
+		if (ccg.GetNumberOfCommands() > 0)
 		{
-			std::string args;
-			ccg.AppendArguments(i, args);
-			cmSystemTools::ReplaceString(args, "$$", "$");
-			cmSystemTools::ReplaceString(args, FASTBUILD_DOLLAR_TAG, "$");
+			cmsys::ofstream scriptFile(scriptFileName.c_str());
+
+			for (unsigned i = 0; i != ccg.GetNumberOfCommands(); ++i)
+			{
+				std::string args;
+				ccg.AppendArguments(i, args);
+				cmSystemTools::ReplaceString(args, "$$", "$");
+				cmSystemTools::ReplaceString(args, FASTBUILD_DOLLAR_TAG, "$");
 #ifdef _WIN32
-			//in windows batch, '%' is a special character that needs to be doubled to be escaped
-			cmSystemTools::ReplaceString(args, "%", "%%");
+				//in windows batch, '%' is a special character that needs to be doubled to be escaped
+				cmSystemTools::ReplaceString(args, "%", "%%");
 #endif
-			Detection::ResolveFastbuildVariables(args, configName);
+				Detection::ResolveFastbuildVariables(args, configName);
 
-			std::string command(ccg.GetCommand(i));
-			cmSystemTools::ReplaceString(command, FASTBUILD_DOLLAR_TAG, "$");
-			Detection::ResolveFastbuildVariables(command, configName);
+				std::string command(ccg.GetCommand(i));
+				cmSystemTools::ReplaceString(command, FASTBUILD_DOLLAR_TAG, "$");
+				Detection::ResolveFastbuildVariables(command, configName);
 
-			scriptFile << Quote(command, "\"") << args << std::endl;
+				scriptFile << Quote(command, "\"") << args << std::endl;
+			}
+		}
+		else
+		{
+			// no command, replace by cd .
+			scriptFileName = "cd .";
 		}
 
 		// Write out an exec command
@@ -2058,7 +2068,8 @@ public:
 		*/
 
 		std::for_each(inputs.begin(), inputs.end(), &Detection::UnescapeFastbuildVariables);
-		std::for_each(mergedOutputs.begin(), mergedOutputs.end(), &Detection::UnescapeFastbuildVariables);
+		// mergedOutput was already passed through UnescapeFastbuildVariables
+		//std::for_each(mergedOutputs.begin(), mergedOutputs.end(), &Detection::UnescapeFastbuildVariables);
 
 		context.fc.WriteCommand("Exec", Quote(targetName));
 		context.fc.WritePushScope();
@@ -2297,24 +2308,22 @@ public:
 					++iter)
 				{
 					std::string& str = *iter;
-					cmSourceFile* outputSourceFile = makefile->GetSource(str);
-					// Check if this file is symbolic
+					cmSourceFile* outputSourceFile = makefile->GetSource(str); // GetSource called before any filtering of the file path
+					Detection::UnescapeFastbuildVariables(str);
+					// Check if this file is symbolic and if it depends on config value (before resolving $ConfigName$)
 					if (outputSourceFile && outputSourceFile->GetPropertyAsBool("SYMBOLIC"))
 					{
-						Detection::UnescapeFastbuildVariables(str);
 						if (str.find("$ConfigName$") != std::string::npos)
 						{
 							configWhy << " - output \"" << str << "\" uses ConfigName\n";
 							isConfigDependant = true;
 						}
-						Detection::ResolveFastbuildVariables(str, configName);
 					}
 					else
 					{
 						isCustomTarget = false;
-						Detection::UnescapeFastbuildVariables(str);
-						Detection::ResolveFastbuildVariables(str, configName);
 					}
+					Detection::ResolveFastbuildVariables(str, configName);
 				}
 				if (isCustomTarget)
 				{
@@ -2416,7 +2425,8 @@ public:
 
 				// Write the custom command build rules for each configuration
 				int commandCount = firstCommandCount;
-				std::string customCommandNameBase = "CustomCommand-Common-";
+				// GetFilenameName is not unique, so we need to add the targetName as prefix
+				std::string customCommandNameBase = targetName + "-CustomCommand-Common-";
 				for (std::vector<cmSourceFile const*>::iterator ccIter = commonCustomCommands.begin();
 					ccIter != commonCustomCommands.end(); ++ccIter)
 				{
@@ -2482,7 +2492,8 @@ public:
 
 				// Write the custom command build rules for each configuration
 				int commandCount = firstCommandCount;
-				std::string customCommandNameBase = "CustomCommand-" + configName + "-";
+				// GetFilenameName is not unique, so we need to add the targetName as prefix
+				std::string customCommandNameBase = targetName + "-CustomCommand-" + configName + "-";
 				for (std::vector<cmSourceFile const*>::iterator ccIter = configCustomCommands.begin();
 					ccIter != configCustomCommands.end(); ++ccIter)
 				{
@@ -3185,7 +3196,7 @@ public:
 		}
 
 		// Output a list of aliases
-		WriteTargetAliases(context, target, linkableDeps, orderDeps, commonDeps);
+		WriteTargetAliases(context, target, linkableDeps, orderDeps, commonDeps, dependencies);
 
 		// Output Visual Studio Project info
 		WriteVSProject(context, target);
@@ -3198,7 +3209,8 @@ public:
 		cmGeneratorTarget& target,
 		const std::vector<std::string>& linkableDeps,
 		const std::vector<std::string>& orderDeps,
-		const std::vector<std::string>& commonDeps)
+		const std::vector<std::string>& commonDeps,
+		const std::vector<std::string>& targetDeps)
 	{
 		const std::string& targetName = target.GetName();
 
@@ -3208,8 +3220,16 @@ public:
 				context.fc.WriteCommand("Alias",
 					Quote(targetName + "-Common"));
 				context.fc.WritePushScope();
-				context.fc.WriteArray("Targets",
-					Wrap(commonDeps, "'" + targetName + "-", "-Common'"));
+				if (!commonDeps.empty())
+				{
+					context.fc.WriteArray("Targets",
+						Wrap(commonDeps, "'" + targetName + "-", "-Common'"));
+				}
+				else
+				{
+					context.fc.WriteArray("Targets",
+						Wrap(targetDeps, "'", "-Common'"));
+				}
 				context.fc.WritePopScope();
 			}
 		}
@@ -3230,7 +3250,8 @@ public:
 				context.fc.WritePopScope();
 			}
 
-			if (!orderDeps.empty() || !commonDeps.empty() || !linkableDeps.empty())
+			// Always output targetName-Config alias for all configs, even when they did not output anything
+			//if (!orderDeps.empty() || !commonDeps.empty() || !linkableDeps.empty())
 			{
 				context.fc.WriteCommand("Alias",
 					Quote(targetName + "-" + configName));
@@ -3256,6 +3277,20 @@ public:
 						Wrap(orderDeps, "'" + targetName + "-", "-" + configName + "'"),
 						targetsOp);
 					targetsOp = "+";
+				}
+				if (targetsOp == "=" && !targetDeps.empty())
+				{
+					// no active output, directly refer to the cmake target dependencies instead
+					context.fc.WriteArray("Targets",
+						Wrap(targetDeps, "'", "-" + configName + "'"),
+						targetsOp);
+					targetsOp = "+";
+				}
+				if (targetsOp == "=")
+				{ // this target really is empty, but we still have to write Targets
+					std::vector<std::string> empty;
+					context.fc.WriteArray("Targets",empty,
+						targetsOp);
 				}
 				context.fc.WritePopScope();
 			}
