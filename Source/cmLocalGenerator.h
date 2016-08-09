@@ -311,7 +311,8 @@ public:
   void GetTargetFlags(std::string& linkLibs, std::string& flags,
                       std::string& linkFlags, std::string& frameworkPath,
                       std::string& linkPath, cmGeneratorTarget* target,
-                      bool useWatcomQuote);
+                      bool useWatcomQuote,
+                      const std::string& config = "");
 
   virtual void ComputeObjectFilenames(
     std::map<cmSourceFile const*, std::string>& mapping,
@@ -332,7 +333,8 @@ protected:
   void OutputLinkLibraries(std::string& linkLibraries,
                            std::string& frameworkPath, std::string& linkPath,
                            cmGeneratorTarget&, bool relink,
-                           bool forResponseFile, bool useWatcomQuote);
+                           bool forResponseFile, bool useWatcomQuote,
+                           const std::string& config = "");
 
   // Expand rule variables in CMake of the type found in language rules
   void ExpandRuleVariables(std::string& string,

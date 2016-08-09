@@ -934,7 +934,7 @@ public:
 			}
 		}
 	}
-
+/*
 	static void DetectTargetLinkDependencies(
 		cmGeneratorTarget& target,
 		const std::string& configName,
@@ -949,13 +949,53 @@ public:
 
 		cmComputeLinkInformation* cli =
 			target.GetLinkInformation(configName);
-		if(!cli)
+		if (!cli)
 		{
 			return;
 		}
 
 		const std::vector<std::string> &deps = cli->GetDepends();
 		std::copy(deps.begin(), deps.end(), std::back_inserter(dependencies));
+	}
+*/
+	static void DetectTargetLinkItems(
+		cmGeneratorTarget& target,
+		const std::string& configName,
+		std::vector<std::string>& libs,
+		std::ostringstream& log
+		)
+	{
+		// Static libraries never depend on other targets for linking.
+		if (target.GetType() == cmState::STATIC_LIBRARY ||
+			target.GetType() == cmState::OBJECT_LIBRARY)
+		{
+			return;
+		}
+
+		cmComputeLinkInformation* cli =
+			target.GetLinkInformation(configName);
+		if (!cli)
+		{
+			return;
+		}
+
+		const cmComputeLinkInformation::ItemVector &items = cli->GetItems();
+		for (cmComputeLinkInformation::ItemVector::const_iterator li = items.begin(); li != items.end();
+			++li) {
+			log << " - " << li->Value;
+			if (li->IsPath) log << " (Path)";
+			if (li->Target) log << " (Target " << li->Target->GetName() << " " << cmState::GetTargetTypeName(li->Target->GetType()) << ")";
+			log << "\n";
+			if (li->Target && li->Target->GetType() == cmState::INTERFACE_LIBRARY) {
+				continue;
+			}
+			if (li->IsPath || li->Target) {
+				libs.push_back(li->Value); // += this->ConvertToLinkReference(li->Value, shellFormat);
+			}
+			//else {
+			//	libs.push_back(li->Value);
+			//}
+		}
 	}
 
 	static std::string DetectTargetCompileOutputDir(
@@ -2978,7 +3018,9 @@ public:
 						frameworkPath,
 						dummyLinkPath,
 						&target,
-						false);
+						false,
+						configName);
+					context.fc.WriteComment("Link Path: " + dummyLinkPath);
 
 					std::string linkPath;
 					Detection::DetectLinkerLibPaths(linkPath, lg, target, configName);
@@ -3056,7 +3098,10 @@ public:
 					{
 						std::vector<std::string> extraDependencies;
 						Detection::DetectTargetObjectDependencies( context.self, target, configName, extraDependencies );
-						Detection::DetectTargetLinkDependencies(target, configName, extraDependencies);
+						//Detection::DetectTargetLinkDependencies(target, configName, extraDependencies);
+						std::ostringstream log;
+						Detection::DetectTargetLinkItems(target, configName, extraDependencies, log);
+						context.fc.WriteCommentMultiLines(log.str().c_str());
 
 						std::for_each(extraDependencies.begin(), extraDependencies.end(), Detection::UnescapeFastbuildVariables);
 

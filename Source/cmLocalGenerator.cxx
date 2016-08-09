@@ -1154,11 +1154,11 @@ void cmLocalGenerator::GetStaticLibraryFlags(std::string& flags,
 void cmLocalGenerator::GetTargetFlags(
   std::string& linkLibs, std::string& flags, std::string& linkFlags,
   std::string& frameworkPath, std::string& linkPath, cmGeneratorTarget* target,
-  bool useWatcomQuote)
+  bool useWatcomQuote, const std::string& config)
 {
-  std::string buildType =
+  std::string configName = !config.empty() ? config :
     this->Makefile->GetSafeDefinition("CMAKE_BUILD_TYPE");
-  buildType = cmSystemTools::UpperCase(buildType);
+  std::string buildType = cmSystemTools::UpperCase(configName);
   const char* libraryLinkVariable =
     "CMAKE_SHARED_LINKER_FLAGS"; // default to shared library
 
@@ -1181,7 +1181,7 @@ void cmLocalGenerator::GetTargetFlags(
       if (this->Makefile->IsOn("WIN32") &&
           !(this->Makefile->IsOn("CYGWIN") || this->Makefile->IsOn("MINGW"))) {
         std::vector<cmSourceFile*> sources;
-        target->GetSourceFiles(sources, buildType);
+        target->GetSourceFiles(sources, configName);
         for (std::vector<cmSourceFile*>::const_iterator i = sources.begin();
              i != sources.end(); ++i) {
           cmSourceFile* sf = *i;
@@ -1208,7 +1208,7 @@ void cmLocalGenerator::GetTargetFlags(
         }
       }
       this->OutputLinkLibraries(linkLibs, frameworkPath, linkPath, *target,
-                                false, false, useWatcomQuote);
+                                false, false, useWatcomQuote, config);
     } break;
     case cmState::EXECUTABLE: {
       linkFlags += this->Makefile->GetSafeDefinition("CMAKE_EXE_LINKER_FLAGS");
@@ -1219,16 +1219,16 @@ void cmLocalGenerator::GetTargetFlags(
         linkFlags += this->Makefile->GetSafeDefinition(build);
         linkFlags += " ";
       }
-      std::string linkLanguage = target->GetLinkerLanguage(buildType);
+      std::string linkLanguage = target->GetLinkerLanguage(configName);
       if (linkLanguage.empty()) {
         cmSystemTools::Error(
           "CMake can not determine linker language for target: ",
           target->GetName().c_str());
         return;
       }
-      this->AddLanguageFlags(flags, linkLanguage, buildType);
+      this->AddLanguageFlags(flags, linkLanguage, configName);
       this->OutputLinkLibraries(linkLibs, frameworkPath, linkPath, *target,
-                                false, false, useWatcomQuote);
+                                false, false, useWatcomQuote, configName);
       if (cmSystemTools::IsOn(
             this->Makefile->GetDefinition("BUILD_SHARED_LIBS"))) {
         std::string sFlagVar = std::string("CMAKE_SHARED_BUILD_") +
@@ -1312,14 +1312,15 @@ void cmLocalGenerator::OutputLinkLibraries(std::string& linkLibraries,
                                            std::string& linkPath,
                                            cmGeneratorTarget& tgt, bool relink,
                                            bool forResponseFile,
-                                           bool useWatcomQuote)
+                                           bool useWatcomQuote,
+                                           const std::string& config)
 {
   OutputFormat shellFormat =
     (forResponseFile) ? RESPONSE : ((useWatcomQuote) ? WATCOMQUOTE : SHELL);
   bool escapeAllowMakeVars = !forResponseFile;
   std::ostringstream fout;
-  std::string config = this->Makefile->GetSafeDefinition("CMAKE_BUILD_TYPE");
-  cmComputeLinkInformation* pcli = tgt.GetLinkInformation(config);
+  std::string configName = !config.empty() ? config : this->Makefile->GetSafeDefinition("CMAKE_BUILD_TYPE");
+  cmComputeLinkInformation* pcli = tgt.GetLinkInformation(configName);
   if (!pcli) {
     return;
   }
