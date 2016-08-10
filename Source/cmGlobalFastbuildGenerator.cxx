@@ -27,7 +27,9 @@
 	 But it might mean that the cache has trouble calculating deps for obj->lib/exe.
 	 Not sure if Fastbuild supports that anyway yet
 	 - Need to sort custom build commands by their outputs
-	 - Unit test BuildDepends requires auto-rerun of cmake when detecting changes to source scripts. Not implementable unless FASTBuild can detect when a rule outputs the current bff file and reload it afterwards ?
+	 - Unit tests BuildDepends, RunCMake.Configure, and requires auto-rerun of cmake when detecting changes to
+	   source scripts. Not implementable unless FASTBuild can detect when a rule outputs the current bff file and
+	   reload it afterwards ?
 	 - Unit test SimpleInstall (and SimpleInstall-Stage2) call cmake --build . as post-build commands,
 	   leading to FASTBuild to exit with error "FBuild: Error: Another instance of FASTBuild is already running in".
 
@@ -962,6 +964,21 @@ public:
 		std::copy(deps.begin(), deps.end(), std::back_inserter(dependencies));
 	}
 */
+	static void DetectTargetLinkOtherInputs(
+		cmLocalFastbuildGenerator *lg,
+		cmGeneratorTarget& target,
+		const std::string& configName,
+		std::vector<std::string>& dependencies)
+	{
+		// compute MANIFESTS
+		std::vector<cmSourceFile const*> manifest_srcs;
+		target.GetManifests(manifest_srcs, configName);
+		for (std::vector<cmSourceFile const*>::iterator mi = manifest_srcs.begin();
+			mi != manifest_srcs.end(); ++mi) {
+			dependencies.push_back(lg->Convert((*mi)->GetFullPath(), cmOutputConverter::HOME_OUTPUT, cmOutputConverter::SHELL));
+		}
+	}
+
 	static void DetectTargetLinkItems(
 		cmGeneratorTarget& target,
 		const std::string& configName,
@@ -1080,12 +1097,21 @@ public:
 					inputs.push_back(dtarget->GetName());
 				}
 			}
+
+			void AddDependency(const cmGeneratorTarget* /*from*/, const cmGeneratorTarget* /*to*/)
+			{
+			}
 		};
 		
 		struct CustomCommandHelper
 		{
 			std::map<const cmSourceFile*, std::vector<std::string> > mapInputs;
 			std::map<const cmSourceFile*, std::vector<std::string> > mapOutputs;
+			std::map<const cmSourceFile*, std::vector<const cmSourceFile*> > mapInputCmds;
+			std::map<const cmSourceFile*, std::string > mapWorkingDirectory;
+			std::map<const cmSourceFile*, std::string > mapSingleOutput;
+			std::map<const cmSourceFile*, std::string > mapRuleName;
+			std::vector<const cmSourceFile*> orderedCommands;
 
 			void GetOutputs(const cmSourceFile* entry, std::vector<std::string>& outputs)
 			{
@@ -1096,22 +1122,26 @@ public:
 			{
 				inputs = mapInputs[entry];
 			}
+
+			void AddDependency(const cmSourceFile* from, const cmSourceFile* to)
+			{
+				mapInputCmds[from].push_back(to);
+			}
 		};
 
 		template <class TType, class TTypeHelper>
 		static void Sort(TTypeHelper& helper, std::vector<const TType*>& entries)
 		{
+			typedef unsigned int EntryIndex;
 			typedef std::vector<std::string> StringVector;
-			typedef std::vector<const TType*> OrderedEntrySet;
-			typedef std::map<std::string, const TType*> OutputMap;
+			typedef std::vector<EntryIndex> OrderedEntrySet;
+			typedef std::map<std::string, EntryIndex> OutputMap;
 
 			// Build up a map of outputNames to entries
 			OutputMap outputMap;
-			for (typename OrderedEntrySet::iterator iter = entries.begin();
-				iter != entries.end();
-				++iter)
+			for (EntryIndex index = 0; index < entries.size(); ++index)
 			{
-				const TType* entry = *iter;
+				const TType* entry = entries[index];
 				StringVector outputs;
 				helper.GetOutputs(entry, outputs);
 
@@ -1119,22 +1149,20 @@ public:
 					outIter != outputs.end();
 					++outIter)
 				{
-					outputMap[*outIter] = entry;
+					outputMap[*outIter] = index;
 				}
 			}
 
 			// Now build a forward and reverse map of dependencies
 			// Build the reverse graph, 
 			// each target, and the set of things that depend upon it
-			typedef std::map<const TType*, std::vector<const TType*> > DepMap;
+			typedef std::map<EntryIndex, std::vector<EntryIndex> > DepMap;
 			DepMap forwardDeps;
 			DepMap reverseDeps;
-			for (typename OrderedEntrySet::iterator iter = entries.begin();
-				iter != entries.end();
-				++iter)
+			for (EntryIndex index = 0; index < entries.size(); ++index)
 			{
-				const TType* entry = *iter;
-				std::vector<const TType*>& entryInputs = forwardDeps[entry];
+				const TType* entry = entries[index];
+				std::vector<EntryIndex>& entryInputs = forwardDeps[index];
 
 				StringVector inputs;
 				helper.GetInputs(entry, inputs);
@@ -1147,16 +1175,20 @@ public:
 					typename OutputMap::iterator findResult = outputMap.find(input);
 					if (findResult != outputMap.end())
 					{
-						const TType* dentry = findResult->second;
-						entryInputs.push_back(dentry);
-						reverseDeps[dentry].push_back(entry);
+						const EntryIndex dentryIndex = findResult->second;
+						if (std::find(entryInputs.begin(), entryInputs.end(), dentryIndex) == entryInputs.end())
+						{
+							entryInputs.push_back(dentryIndex);
+							reverseDeps[dentryIndex].push_back(index);
+							helper.AddDependency(entries[index], entries[dentryIndex]);
+						}
 					}
 				}
 			}
 
 			// We have all the information now.
 			// Clear the array passed in
-			entries.clear();
+			std::vector<const TType*> sortedEntries;
 
 			// Now iterate over each target with its list of dependencies.
 			// And dump out ones that have 0 dependencies.
@@ -1167,8 +1199,9 @@ public:
 				for (typename DepMap::iterator iter = forwardDeps.begin();
 					iter != forwardDeps.end(); ++iter)
 				{
-					std::vector<const TType*>& fwdDeps = iter->second;
-					const TType* entry = iter->first;
+					std::vector<EntryIndex>& fwdDeps = iter->second;
+					EntryIndex index = iter->first;
+					const TType* entry = entries[index];
 					if (!fwdDeps.empty())
 					{
 						// Looking for empty dependency lists.
@@ -1179,27 +1212,28 @@ public:
 					// dependency list is empty,
 					// add it to the output list
 					written = true;
-					entries.push_back(entry);
+					sortedEntries.push_back(entry);
 
 					// Use reverse dependencies to determine 
 					// what forward dep lists to adjust
-					std::vector<const TType*>& revDeps = reverseDeps[entry];
+					std::vector<EntryIndex>& revDeps = reverseDeps[index];
 					for (unsigned int i = 0; i < revDeps.size(); ++i)
 					{
-						const TType* revDep = revDeps[i];
+						EntryIndex revDepIndex = revDeps[i];
+						const TType* revDep = entries[revDepIndex];
 
 						// Fetch the list of deps on that target
-						std::vector<const TType*>& revDepFwdDeps =
-							forwardDeps[revDep];
+						std::vector<EntryIndex>& revDepFwdDeps =
+							forwardDeps[revDepIndex];
 						// remove the one we just added from the list
 						revDepFwdDeps.erase(
-							std::remove(revDepFwdDeps.begin(), revDepFwdDeps.end(), entry),
+							std::remove(revDepFwdDeps.begin(), revDepFwdDeps.end(), index),
 							revDepFwdDeps.end());
 					}
 
 					// Remove it from forward deps so not
 					// considered again
-					forwardDeps.erase(entry);
+					forwardDeps.erase(index);
 
 					// Must break now as we've invalidated
 					// our forward deps iterator
@@ -1213,6 +1247,9 @@ public:
 			// If this fires, then there is most likely
 			// a cycle in the graph...
 			assert(forwardDeps.empty());
+
+			// Swap entries and sortedEntries to return the result
+			entries.swap(sortedEntries);
 		}
 	};
 
@@ -1853,7 +1890,8 @@ public:
 		const std::string& configName,
 		std::string& targetName,
 		const std::string& hostTargetName,
-		bool commonToAllConfig)
+		bool commonToAllConfig,
+		const std::vector<std::string>& deps)
 	{
 		cmMakefile* makefile = lg->GetMakefile();
 
@@ -1887,6 +1925,7 @@ public:
 		mergedOutputsIn.insert(mergedOutputsIn.end(), byproducts.begin(), byproducts.end());
 		std::vector<std::string> mergedOutputs;
 
+		bool hasSymbolicOutput = false;
 		// Double check that none of the outputs are 'symbolic'
 		// In which case, FASTBuild won't want them treated as 
 		// outputs.
@@ -1907,6 +1946,7 @@ public:
 				if (outputSourceFile && outputSourceFile->GetPropertyAsBool("SYMBOLIC"))
 				{
 					context.fc.WriteComment(outputNameConv + " is SYMBOLIC, dropping");
+					hasSymbolicOutput = true;
 				}
 				else
 				{
@@ -1917,7 +1957,7 @@ public:
 		context.fc.WriteCommentMultiLines(std::string("Outputs: ") + Join(mergedOutputs, "\n         "));
 
 		std::vector<std::string> inputs;
-		std::vector<std::string> orderDependencies;
+		std::vector<std::string> orderDependencies = deps;
 
 		// If this exec node always generates outputs,
 		// then we need to make sure we don't define outputs multiple times.
@@ -2094,6 +2134,7 @@ public:
 			if (mergedOutputs.empty())
 			{
 				context.fc.WriteVariable("ExecUseStdOutAsOutput", "true");
+				hasSymbolicOutput = true;
 
 				std::string outputDir = target.Target->GetMakefile()->GetCurrentBinaryDirectory();
 				mergedOutputs.push_back(outputDir + "/dummy-out-" + targetName + ".txt");
@@ -2102,6 +2143,10 @@ public:
 			// output for a custom command (soon to change hopefully).
 			// so only use the first one
 			context.fc.WriteVariable("ExecOutput", Quote(mergedOutputs[0]));
+			if (hasSymbolicOutput)
+			{
+				context.fc.WriteVariable("ExecAlwaysRun", "true"); // Requires modified version of FASTBuild (after 0.90)
+			}
 			if (!orderDependencies.empty())
 			{
 				context.fc.WriteArray("PreBuildDependencies", Wrap(orderDependencies), "+"); // , (configName == "Common") ? "=" : "+");
@@ -2126,6 +2171,7 @@ public:
 		}
 
 		const std::string& targetName = target.GetName();
+		std::vector<std::string> deps;
 
 		// Now output the commands
 		std::vector<std::string>::const_iterator
@@ -2165,7 +2211,7 @@ public:
 				
 				std::string customCommandTargetNameStr = customCommandTargetName.str();
 				WriteCustomCommand(context, &cc, lg, target, configName, customCommandTargetNameStr,
-					targetName, false);
+					targetName, false, deps);
 				customCommandTargets.push_back(customCommandTargetNameStr);
 			}
 
@@ -2195,17 +2241,13 @@ public:
 		std::vector<cmSourceFile const*> allCustomCommands;
 		target.GetCustomCommands(allCustomCommands, "");
 		// compute inputs, outputs, and working dir for each config-command combination
-		std::map < std::string, std::map<cmSourceFile const*, std::vector<std::string> > > mapCCInputs;
-		std::map < std::string, std::map<cmSourceFile const*, std::vector<std::string> > > mapCCInputTargets;
-		std::map < std::string, std::map<cmSourceFile const*, std::vector<std::string> > > mapCCOutputs;
-		std::map < std::string, std::map<cmSourceFile const*, std::string > > mapCCWorkingDir;
 		cmMakefile* makefile = lg->GetMakefile();
 		std::string currentBinaryDirectory = makefile->GetCurrentBinaryDirectory();
 
 		// Separate config-independant custom commands from specific ones
 
-		std::vector<cmSourceFile const*> commonCustomCommands;
-		std::vector<cmSourceFile const*> configCustomCommands;
+		std::map< std::string, Detection::DependencySorter::CustomCommandHelper > mapConfigCC;
+		std::set<const cmSourceFile*> setConfigDependant;
 
 		for (std::vector<cmSourceFile const*>::const_iterator ccIter = allCustomCommands.begin();
 			ccIter != allCustomCommands.end(); ++ccIter)
@@ -2223,17 +2265,18 @@ public:
 				configWhy << " - source file \"" << sourceFilePath << "\" uses ConfigName\n";
 				isConfigDependant = true;
 			}
-			for (std::vector<std::string>::const_iterator cfIter = configs.begin(); cfIter != configs.end(); ++cfIter)
+			bool firstConfig = true;
+			for (std::vector<std::string>::const_iterator cfIter = configs.begin(); cfIter != configs.end(); ++cfIter, firstConfig = false)
 			{
 				const std::string& configName = *cfIter;
 
 				// We need to generate the command for execution.
 				cmCustomCommandGenerator ccg(*cc, configName, lg);
 
-				std::string& workingDirectory = mapCCWorkingDir[configName][sourceFile];
-				std::vector<std::string>& inputs = mapCCInputs[configName][sourceFile];
-				std::vector<std::string>& inputTargets = mapCCInputTargets[configName][sourceFile];
-				std::vector<std::string>& outputs = mapCCOutputs[configName][sourceFile];
+				std::string& workingDirectory = mapConfigCC[configName].mapWorkingDirectory[sourceFile];
+				std::vector<std::string>& inputs = mapConfigCC[configName].mapInputs[sourceFile];
+				std::vector<std::string>& outputs = mapConfigCC[configName].mapOutputs[sourceFile];
+				std::string& singleOutput = mapConfigCC[configName].mapSingleOutput[sourceFile];
 
 				const std::vector<std::string> &ccOutputs = ccg.GetOutputs();
 				const std::vector<std::string> &byproducts = ccg.GetByproducts();
@@ -2249,6 +2292,7 @@ public:
 				{
 					workingDirectory += "/";
 				}
+				Detection::UnescapeFastbuildVariables(workingDirectory);
 
 				// Take the dependencies listed and split into targets and files.
 				const std::vector<std::string> &depends = ccg.GetDepends();
@@ -2256,14 +2300,41 @@ public:
 					iter != depends.end(); ++iter)
 				{
 					std::string dep = *iter;
-
-					bool isTarget = context.self->FindTarget(dep) != NULL;
-					if (isTarget)
+					cmSourceFile* depSourceFile = makefile->GetSource(dep);
+					bool isSymbolic = depSourceFile && depSourceFile->GetPropertyAsBool("SYMBOLIC");
+					cmTarget* depTarget = context.self->FindTarget(dep);
+					if (depSourceFile && !depTarget)
+						dep = depSourceFile->GetFullPath();
+					Detection::UnescapeFastbuildVariables(dep);
+					if (firstConfig) configWhy << ">>> " << dep << (depTarget ? " (Target)" : "") << (depSourceFile ? " (SourceFile)" : "") << (isSymbolic ? " (SYMBOLIC)" : "") << "\n";
+					if (depTarget != NULL)
 					{
-						inputTargets.push_back(dep);
+						//inputTargets.push_back(dep);
 						// FIX: disable this condition, as it breaks OutDir unit test (using a target executable to generate a header)
 						// instead we keep track of this list of target and add it as prebuilddeps
-						// configWhy << " - dependency \"" << dep << "\" is a target\n";
+						if (firstConfig) configWhy << " - dependency \"" << dep << "\" is a target " << cmState::GetTargetTypeName(depTarget->GetType()) << "\n";
+						// isConfigDependant = true;
+					}
+					else if (depSourceFile != NULL)
+					{
+						// Check if this file is symbolic
+						if (firstConfig) configWhy << " - dependency \"" << dep << "\" is a " << (isSymbolic ? "SYMBOLIC " : "" ) << "source file " << depSourceFile->GetFullPath() << "\n";
+						//if (!isSymbolic)
+						{
+							//dep = depSourceFile->GetFullPath();
+							//Detection::UnescapeFastbuildVariables(dep);
+							if (dep.find("$ConfigName$") != std::string::npos)
+							{
+								if (firstConfig) configWhy << " - input \"" << dep << "\" uses ConfigName\n";
+								isConfigDependant = true;
+							}
+							Detection::ResolveFastbuildVariables(dep, configName);
+							inputs.push_back(dep);
+						}
+						//else
+						//{
+						//	inputTargets.push_back(dep);
+						//}
 						// isConfigDependant = true;
 					}
 					else
@@ -2273,10 +2344,9 @@ public:
 							dep = workingDirectory + dep;
 						}
 
-						Detection::UnescapeFastbuildVariables(dep);
 						if (dep.find("$ConfigName$") != std::string::npos)
 						{
-							configWhy << " - input \"" << dep << "\" uses ConfigName\n";
+							if (firstConfig) configWhy << " - input \"" << dep << "\" uses ConfigName\n";
 							isConfigDependant = true;
 						}
 						Detection::ResolveFastbuildVariables(dep, configName);
@@ -2291,10 +2361,20 @@ public:
 					const cmGeneratorTarget* target = ccg.GetCommandTarget(ci);
 					if (target != NULL)
 					{
-						inputTargets.push_back(target->GetName() + "-" + configName);
+						//inputTargets.push_back(target->GetName() + "-" + configName);
 						if (!target->IsImported()) // we ignore imported targets as they are probably not dependant on config (such as Qt4::moc)
 						{
-							configWhy << " - command \"" << target->GetName() << "\" is a generated target " << cmState::GetTargetTypeName(target->GetType()) << "\n";
+							if (firstConfig) configWhy << " - command \"" << target->GetName() << "\" is a generated target " << cmState::GetTargetTypeName(target->GetType()) << "\n";
+							isConfigDependant = true;
+						}
+					}
+					else
+					{
+						std::string command = ccg.GetCommand(ci);
+						Detection::UnescapeFastbuildVariables(command);
+						if (command.find("$ConfigName$") != std::string::npos)
+						{
+							if (firstConfig) configWhy << " - command \"" << command << "\" uses ConfigName\n";
 							isConfigDependant = true;
 						}
 					}
@@ -2307,15 +2387,20 @@ public:
 					iter != outputs.end();
 					++iter)
 				{
-					std::string& str = *iter;
-					cmSourceFile* outputSourceFile = makefile->GetSource(str); // GetSource called before any filtering of the file path
-					Detection::UnescapeFastbuildVariables(str);
+					std::string& dep = *iter;
+					cmSourceFile* depSourceFile = makefile->GetSource(dep); // GetSource called before any filtering of the file path
+					bool isSymbolic = depSourceFile && depSourceFile->GetPropertyAsBool("SYMBOLIC");
+					cmTarget* depTarget = context.self->FindTarget(dep);
+					if (depSourceFile && !depTarget)
+						dep = depSourceFile->GetFullPath();
+					Detection::UnescapeFastbuildVariables(dep);
+					if (firstConfig) configWhy << "<<< " << dep << (depTarget ? " (Target)" : "") << (depSourceFile ? " (SourceFile)":"") << (isSymbolic ? " (SYMBOLIC)":"") << "\n";
 					// Check if this file is symbolic and if it depends on config value (before resolving $ConfigName$)
-					if (outputSourceFile && outputSourceFile->GetPropertyAsBool("SYMBOLIC"))
+					if (isSymbolic)
 					{
-						if (str.find("$ConfigName$") != std::string::npos)
+						if (dep.find("$ConfigName$") != std::string::npos)
 						{
-							configWhy << " - output \"" << str << "\" uses ConfigName\n";
+							if (firstConfig) configWhy << " - output \"" << dep << "\" uses ConfigName\n";
 							isConfigDependant = true;
 						}
 					}
@@ -2323,29 +2408,41 @@ public:
 					{
 						isCustomTarget = false;
 					}
-					Detection::ResolveFastbuildVariables(str, configName);
+					if (!depSourceFile && !depTarget)
+					{
+						if (!cmSystemTools::FileIsFullPath(dep.c_str()))
+						{
+							dep = workingDirectory + dep;
+						}
+					}
+					Detection::ResolveFastbuildVariables(dep, configName);
+					if (!isSymbolic && singleOutput.empty())
+					{
+						singleOutput = dep;
+					}
 				}
 				if (isCustomTarget)
 				{
-					if (!isConfigDependant)
-					{
-						configWhy << " - is a CustomTarget that is always run, all outputs are SYMBOLIC\n";
-					}
-					isConfigDependant = true;
+					//if (!isConfigDependant)
+					//{
+					//	configWhy << " - is a CustomTarget that is always run, all outputs are SYMBOLIC\n";
+					//}
+					//isConfigDependant = true;
 				}
 			}
 			if (!isConfigDependant)
 			{
 				const std::string refConfigName = configs.front();
-				const std::string& refWorkingDirectory = mapCCWorkingDir[refConfigName][sourceFile];
-				const std::vector<std::string>& refInputs = mapCCInputs[refConfigName][sourceFile];
-				const std::vector<std::string>& refOutputs = mapCCOutputs[refConfigName][sourceFile];
+				const std::string& refWorkingDirectory = mapConfigCC[refConfigName].mapWorkingDirectory[sourceFile];
+				const std::vector<std::string>& refInputs = mapConfigCC[refConfigName].mapInputs[sourceFile];
+				const std::vector<std::string>& refOutputs = mapConfigCC[refConfigName].mapOutputs[sourceFile];
+
 				for (std::vector<std::string>::const_iterator cfIter = ++configs.begin(); cfIter != configs.end(); ++cfIter)
 				{
 					const std::string& configName = *cfIter;
-					const std::string& workingDirectory = mapCCWorkingDir[configName][sourceFile];
-					const std::vector<std::string>& inputs = mapCCInputs[configName][sourceFile];
-					const std::vector<std::string>& outputs = mapCCOutputs[configName][sourceFile];
+					const std::string& workingDirectory = mapConfigCC[configName].mapWorkingDirectory[sourceFile];
+					const std::vector<std::string>& inputs = mapConfigCC[configName].mapInputs[sourceFile];
+					const std::vector<std::string>& outputs = mapConfigCC[configName].mapOutputs[sourceFile];
 					if (workingDirectory != refWorkingDirectory || inputs.size() != refInputs.size() || outputs.size() != refOutputs.size())
 					{
 						configWhy << " - mismatch in workingDirectory (\"" << workingDirectory << "\"!=\"" << refWorkingDirectory
@@ -2386,143 +2483,148 @@ public:
 			{
 				context.fc.WriteCommentMultiLines(configWhy.str());
 				//cmSystemTools::Stdout(configWhy.str().c_str());
-				configCustomCommands.push_back(sourceFile);
+				//configCustomCommands.push_back(sourceFile);
+				setConfigDependant.insert(sourceFile);
 			}
 			else
 			{
 				std::stringstream configWhy2;
-				configWhy2 << "SourceFile " << sourceFilePath << " CustomCommand is shared between configs\n";
+				configWhy2 << "SourceFile " << sourceFilePath << " CustomCommand is shared between configs, AND NOT " << configWhy.str();
 				context.fc.WriteCommentMultiLines(configWhy2.str());
 				//cmSystemTools::Stdout(configWhy2.str().c_str());
-				commonCustomCommands.push_back(sourceFile);
+				//commonCustomCommands.push_back(sourceFile);
 			}
 		}
 
-		int firstCommandCount = 1;
 
-		// First iterate over configuration-independant custom commands
-		if (!commonCustomCommands.empty())
+		if (!allCustomCommands.empty())
 		{
-			context.fc.WriteVariable("CustomCommands_Common", "");
-			context.fc.WritePushScopeStruct();
-			context.fc.WriteCommand("Using", ".BaseConfig_Common");
-
-			const std::string refConfigName = configs.front(); // we need one config name to access computed maps
-			const std::map<const cmSourceFile*, std::string >& refWorkingDirectory = mapCCWorkingDir[refConfigName];
-			const std::map<const cmSourceFile*, std::vector<std::string> >& refInputs = mapCCInputs[refConfigName];
-			const std::map<const cmSourceFile*, std::vector<std::string> >& refOutputs = mapCCOutputs[refConfigName];
-			//if (!customCommands.empty())
-			{
-				// Presort the commands to adjust for dependencies
-				// In a number of cases, the commands inputs will be the outputs
-				// from another command. Need to sort the commands to output them in order.
-				Detection::DependencySorter::CustomCommandHelper ccHelper =
-				{ mapCCInputs[refConfigName], mapCCOutputs[refConfigName] };
-				//{ context.self, lg, "" };
-				Detection::DependencySorter::Sort(ccHelper, commonCustomCommands);
-
-				std::vector<std::string> customCommandTargets;
-
-				// Write the custom command build rules for each configuration
-				int commandCount = firstCommandCount;
-				// GetFilenameName is not unique, so we need to add the targetName as prefix
-				std::string customCommandNameBase = targetName + "-CustomCommand-Common-";
-				for (std::vector<cmSourceFile const*>::iterator ccIter = commonCustomCommands.begin();
-					ccIter != commonCustomCommands.end(); ++ccIter)
-				{
-					const cmSourceFile* sourceFile = *ccIter;
-
-					std::stringstream customCommandTargetName;
-					customCommandTargetName << customCommandNameBase << (commandCount++);
-					customCommandTargetName << "-" << cmSystemTools::GetFilenameName(sourceFile->GetFullPath());;
-
-					std::string customCommandTargetNameStr = customCommandTargetName.str();
-					WriteCustomCommand(context, sourceFile->GetCustomCommand(),
-						lg, target, refConfigName, customCommandTargetNameStr,
-						targetName, true);
-
-					customCommandTargets.push_back(customCommandTargetNameStr);
-				}
-
-				std::string customCommandGroupName = targetName + "-CustomCommands-" + "Common";
-
-				// Write an alias for this object group to group them all together
-				context.fc.WriteCommand("Alias", Quote(customCommandGroupName));
-				context.fc.WritePushScope();
-				context.fc.WriteArray("Targets",
-					Wrap(customCommandTargets, "'", "'"));
-				context.fc.WritePopScope();
-				/*
-				// Now make everything use this as prebuilt dependencies
-				std::vector<std::string> tmp;
-				tmp.push_back(customCommandGroupName);
-				context.fc.WriteArray("PreBuildDependencies",
-					Wrap(tmp),
-					"+");
-				*/
-				hasCommonCustomCommands = true;
-				firstCommandCount = commandCount;
-			}
-			context.fc.WritePopScope();
-		}
-
-		if (!configCustomCommands.empty())
-		{
+			bool firstConfig = true;
+			std::string firstConfigName = context.self->GetConfigurations().front();
+			const Detection::DependencySorter::CustomCommandHelper& cch0 = mapConfigCC[firstConfigName];
 			// Iterating over all configurations
 			std::vector<std::string>::const_iterator
 				iter = context.self->GetConfigurations().begin(),
 				end = context.self->GetConfigurations().end();
-			for (; iter != end; ++iter)
+			for (; iter != end; ++iter, firstConfig = false)
 			{
 				std::string configName = *iter;
+				Detection::DependencySorter::CustomCommandHelper& cch = mapConfigCC[configName];
 
-				context.fc.WriteVariable("CustomCommands_" + configName, "");
-				context.fc.WritePushScopeStruct();
-
-				context.fc.WriteCommand("Using", ".BaseConfig_" + configName);
+				std::vector<const cmSourceFile*>& configCustomCommands = cch.orderedCommands;
+				//configCustomCommands = allCustomCommands;
+				// copy the commands that could be shared between configs
+				for (std::vector<const cmSourceFile*>::const_iterator it = allCustomCommands.begin(); it != allCustomCommands.end(); ++it)
+				{
+					if (!setConfigDependant.count(*it))
+					{
+						configCustomCommands.push_back(*it);
+					}
+				}
+				// then the rest of the commands
+				for (std::vector<const cmSourceFile*>::const_iterator it = allCustomCommands.begin(); it != allCustomCommands.end(); ++it)
+				{
+					if (setConfigDependant.count(*it))
+					{
+						configCustomCommands.push_back(*it);
+					}
+				}
 
 				// Presort the commands to adjust for dependencies
 				// In a number of cases, the commands inputs will be the outputs
 				// from another command. Need to sort the commands to output them in order.
-				Detection::DependencySorter::CustomCommandHelper ccHelper =
-					{ mapCCInputs[configName], mapCCOutputs[configName] };
-				Detection::DependencySorter::Sort(ccHelper, configCustomCommands);
+				Detection::DependencySorter::Sort(cch, configCustomCommands);
 
 				std::vector<std::string> customCommandTargets;
 
-				// Write the custom command build rules for each configuration
-				int commandCount = firstCommandCount;
-				// GetFilenameName is not unique, so we need to add the targetName as prefix
-				std::string customCommandNameBase = targetName + "-CustomCommand-" + configName + "-";
-				for (std::vector<cmSourceFile const*>::iterator ccIter = configCustomCommands.begin();
-					ccIter != configCustomCommands.end(); ++ccIter)
+				unsigned int countCommonCommands = 0;
+
+				//if (firstConfig)
 				{
-					const cmSourceFile* sourceFile = *ccIter;
-
-					std::stringstream customCommandTargetName;
-					customCommandTargetName << customCommandNameBase << (commandCount++);
-					customCommandTargetName << "-" << cmSystemTools::GetFilenameName(sourceFile->GetFullPath());;
-					
-					std::string customCommandTargetNameStr = customCommandTargetName.str();
-					WriteCustomCommand(context, sourceFile->GetCustomCommand(),
-						lg, target, configName, customCommandTargetNameStr, 
-						targetName, false);
-
-					customCommandTargets.push_back(customCommandTargetNameStr);
+					for (std::vector<const cmSourceFile*>::const_iterator it = configCustomCommands.begin(); it != configCustomCommands.end(); ++it)
+					{
+						if (!setConfigDependant.count(*it))
+						{
+							++countCommonCommands;
+						}
+						else
+						{
+							break;
+						}
+					}
 				}
 
-				std::string customCommandGroupName = targetName + "-CustomCommands-" + configName;
+				std::string commandNameBase = targetName + "-CustomCommand-Common-";
+				std::string commandGroupName = targetName + "-CustomCommands-Common";
 
-				// Write an alias for this object group to group them all together
-				context.fc.WriteCommand("Alias", Quote(customCommandGroupName));
-				context.fc.WritePushScope();
-				context.fc.WriteArray("Targets",
-					Wrap(customCommandTargets, "'", "'"));
-				context.fc.WritePopScope();
-				context.fc.WritePopScope();
-				hasConfigCustomCommands = true;
+				for (unsigned int index = 0; index < configCustomCommands.size(); ++index)
+				{
+					const cmSourceFile* sourceFile = configCustomCommands[index];
+					bool isCommon = index < countCommonCommands;
+					std::string activeConfigName = (isCommon ? "Common" : configName);
+					if ((firstConfig && index == 0) || index == countCommonCommands) // begin a new block of commands
+					{
+						customCommandTargets.clear();
+						commandNameBase = targetName + "-CustomCommand-" + activeConfigName + "-";
+						commandGroupName = targetName + "-CustomCommands-" + activeConfigName;
+						context.fc.WriteVariable("CustomCommands_" + activeConfigName, "");
+						context.fc.WritePushScopeStruct();
+						context.fc.WriteCommand("Using", ".BaseConfig_" + activeConfigName);
+					}
+
+					if (!firstConfig && (isCommon || (!cch.mapSingleOutput.empty() && cch0.mapSingleOutput == cch.mapSingleOutput)))
+					{
+						// no need to output it again, just copy its ref
+						cch.mapRuleName[sourceFile] = cch0.mapRuleName.find(sourceFile)->second;
+						if (!isCommon)
+							customCommandTargets.push_back(cch.mapRuleName[sourceFile]);
+					}
+					else
+					{
+
+						// write the command
+						std::stringstream commandTargetName;
+						commandTargetName << commandNameBase << (index);
+						commandTargetName << "-" << cmSystemTools::GetFilenameName(sourceFile->GetFullPath());
+
+						std::string commandTargetNameStr = commandTargetName.str();
+						const std::vector<std::string> & inputs = cch.mapInputs[sourceFile];
+						const std::vector<const cmSourceFile*>& inputCmds = cch.mapInputCmds[sourceFile];
+						std::vector<std::string> commandDeps;
+						for (std::vector<const cmSourceFile*>::const_iterator it = inputCmds.begin(); it != inputCmds.end(); ++it)
+						{
+							context.fc.WriteComment("Input Dependency on command " + (*it)->GetFullPath());
+							std::string output0 = cch.mapSingleOutput[*it];
+							context.fc.WriteComment("  output : " + output0);
+							//if (std::find(inputs.begin(), inputs.end(), output0) == inputs.end())
+							{
+								std::string ruleName = cch.mapRuleName[*it];
+								context.fc.WriteComment("  rule : " + ruleName);
+								commandDeps.push_back(ruleName);
+							}
+						}
+						WriteCustomCommand(context, sourceFile->GetCustomCommand(),
+							lg, target, configName, commandTargetNameStr,
+							targetName, isCommon, commandDeps);
+						cch.mapRuleName[sourceFile] = commandTargetNameStr;
+						customCommandTargets.push_back(commandTargetNameStr);
+
+					}
+
+					if ((index >= countCommonCommands && index == configCustomCommands.size() - 1) || (firstConfig && index == countCommonCommands - 1)) // end of block of commands
+					{
+						// Write an alias for this object group to group them all together
+						context.fc.WriteCommand("Alias", Quote(commandGroupName));
+						context.fc.WritePushScope();
+						context.fc.WriteArray("Targets",
+							Wrap(customCommandTargets, "'", "'"));
+						context.fc.WritePopScope();
+						context.fc.WritePopScope();
+						if (isCommon) hasCommonCustomCommands = true;
+						else          hasConfigCustomCommands = true;
+					}
+				}
 			}
-
 		}
 
 		return std::make_pair(hasCommonCustomCommands, hasConfigCustomCommands);
@@ -2544,6 +2646,7 @@ public:
 		{
 			case cmState::INTERFACE_LIBRARY:
 				// We don't write out interface libraries.
+				//context.fc.WriteComment(std::string("Target definition: ") + target.GetName() + " (" + cmState::GetTargetTypeName(target.GetType()) + ") IGNORED");
 				return;
 			case cmState::EXECUTABLE:
 			{
@@ -2577,6 +2680,7 @@ public:
 			case cmState::UNKNOWN_LIBRARY:
 			{
 				// Ignoring this target generation...
+				//context.fc.WriteComment(std::string("Target definition: ") + target.GetName() + " (" + cmState::GetTargetTypeName(target.GetType()) + ") IGNORED");
 				return;
 			}
 		}
@@ -3031,7 +3135,10 @@ public:
 						&target,
 						false,
 						configName);
-					context.fc.WriteComment("Link Path: " + dummyLinkPath);
+					if (!dummyLinkPath.empty())
+					{
+						context.fc.WriteComment("Link Path: " + dummyLinkPath);
+					}
 
 					std::string linkPath;
 					Detection::DetectLinkerLibPaths(linkPath, lg, target, configName);
@@ -3119,6 +3226,14 @@ public:
 						context.fc.WriteArray("Libraries", 
 							Wrap(extraDependencies, "'", "'"),
 							"+");
+						std::vector<std::string> otherInputs;
+						Detection::DetectTargetLinkOtherInputs(lg, target, configName, otherInputs);
+						std::for_each(otherInputs.begin(), otherInputs.end(), Detection::UnescapeFastbuildVariables);
+						if (!otherInputs.empty())
+						{
+							context.fc.WriteArray("LinkerOtherInputs",
+								Wrap(otherInputs, "'", "'"));
+						}
 					}
 				
 					context.fc.WriteCommand(linkCommand, Quote(linkRuleName));
@@ -3314,6 +3429,7 @@ public:
 			++targetIter)
 		{
 			const cmGeneratorTarget* constTarget = (*targetIter);
+			//context.fc.WriteComment(std::string("Processing Target: ") + constTarget->GetName() + " (" + cmState::GetTargetTypeName(constTarget->GetType()) + ")");
 
 			if (constTarget->GetType() == cmState::GLOBAL_TARGET)
 			{
