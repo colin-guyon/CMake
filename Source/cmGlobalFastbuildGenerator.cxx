@@ -1077,6 +1077,70 @@ public:
 		}
 	}
 
+	static void DetectCustomCommandOutputs(
+		const cmCustomCommand* cc,
+		cmGlobalFastbuildGenerator *gg,
+		cmLocalFastbuildGenerator *lg,
+		cmGeneratorTarget& target,
+		const std::string& configName,
+		std::vector<std::string>& fileOutputs,
+		std::vector<std::string>& symbolicOutputs,
+		bool& isConfigDependant,
+		std::ostringstream* outDescription = NULL
+	)
+	{
+		cmCustomCommandGenerator ccg(*cc, configName, lg);
+		cmMakefile* makefile = lg->GetMakefile();
+		const std::vector<std::string> &ccOutputs = ccg.GetOutputs();
+		const std::vector<std::string> &byproducts = ccg.GetByproducts();
+		std::vector<std::string> outputs;
+		outputs.insert(outputs.end(), ccOutputs.begin(), ccOutputs.end());
+		outputs.insert(outputs.end(), byproducts.begin(), byproducts.end());
+		std::string workingDirectory = ccg.GetWorkingDirectory();
+		if (workingDirectory.empty())
+		{
+			workingDirectory = makefile->GetCurrentBinaryDirectory();
+		}
+		if (workingDirectory.back() != '/')
+		{
+			workingDirectory += "/";
+		}
+
+		// Check if the outputs don't depend on the config name, and if we have a real output
+		for (std::vector<std::string>::iterator iter = outputs.begin();
+			iter != outputs.end();
+			++iter)
+		{
+			std::string dep = *iter;
+			cmSourceFile* depSourceFile = makefile->GetSource(dep); // GetSource called before any filtering of the file path
+			bool isSymbolic = depSourceFile && depSourceFile->GetPropertyAsBool("SYMBOLIC");
+			cmTarget* depTarget = gg->FindTarget(dep);
+			if (depSourceFile && !depTarget)
+				dep = depSourceFile->GetFullPath();
+			else if (!depSourceFile && !depTarget)
+			{
+				if (!cmSystemTools::FileIsFullPath(dep.c_str()))
+				{
+					dep = workingDirectory + dep;
+				}
+			}
+			Detection::UnescapeFastbuildVariables(dep);
+			// Check if this file is symbolic and if it depends on config value (before resolving $ConfigName$)
+			bool isConfigDep = dep.find("$ConfigName$") != std::string::npos;
+			isConfigDependant = isConfigDependant || isConfigDep;
+			if (outDescription) (*outDescription) << "        - " << dep << (depTarget ? " (Target)" : "") << (depSourceFile ? " (SourceFile)" : "") << (isSymbolic ? " (SYMBOLIC)" : "") << (isConfigDep ? " (CONFIG)" : "") << "\n";
+			Detection::ResolveFastbuildVariables(dep, configName);
+			if (!isSymbolic)
+			{
+				fileOutputs.push_back(dep);
+			}
+			else
+			{
+				symbolicOutputs.push_back(dep);
+			}
+		}
+	}
+
 	struct DependencySorter
 	{
 		struct TargetHelper
@@ -1106,16 +1170,17 @@ public:
 		struct CustomCommandHelper
 		{
 			std::map<const cmSourceFile*, std::vector<std::string> > mapInputs;
-			std::map<const cmSourceFile*, std::vector<std::string> > mapOutputs;
+			std::map<const cmSourceFile*, std::vector<std::string> > mapFileOutputs;
+			std::map<const cmSourceFile*, std::vector<std::string> > mapSymbolicOutputs;
 			std::map<const cmSourceFile*, std::vector<const cmSourceFile*> > mapInputCmds;
 			std::map<const cmSourceFile*, std::string > mapWorkingDirectory;
-			std::map<const cmSourceFile*, std::string > mapSingleOutput;
 			std::map<const cmSourceFile*, std::string > mapRuleName;
 			std::vector<const cmSourceFile*> orderedCommands;
 
 			void GetOutputs(const cmSourceFile* entry, std::vector<std::string>& outputs)
 			{
-				outputs = mapOutputs[entry];
+				outputs = mapFileOutputs[entry];
+				outputs.insert(outputs.end(), mapSymbolicOutputs[entry].begin(), mapSymbolicOutputs[entry].end());
 			}
 
 			void GetInputs(const cmSourceFile* entry, std::vector<std::string>& inputs)
@@ -1323,40 +1388,6 @@ public:
 		orderedTargets.erase(
 			std::remove_if(orderedTargets.begin(), orderedTargets.end(), RemovalTest()),
 			orderedTargets.end());
-	}
-
-	static bool isConfigDependant(const cmCustomCommandGenerator& ccg)
-	{
-		typedef std::vector<std::string> StringVector;
-		StringVector outputs = ccg.GetOutputs();
-		StringVector byproducts = ccg.GetByproducts();
-
-		std::for_each(outputs.begin(), outputs.end(), &Detection::UnescapeFastbuildVariables);
-		std::for_each(byproducts.begin(), byproducts.end(), &Detection::UnescapeFastbuildVariables);
-		
-		// Make sure that the outputs don't depend on the config name
-		for (StringVector::const_iterator iter = outputs.begin();
-			iter != outputs.end();
-			++iter)
-		{
-			const std::string & str = *iter;
-			if (str.find("$ConfigName$") != std::string::npos)
-			{
-				return true;
-			}
-		}
-		for (StringVector::const_iterator iter = byproducts.begin();
-			iter != byproducts.end();
-			++iter)
-		{
-			const std::string & str = *iter;
-			if (str.find("$ConfigName$") != std::string::npos)
-			{
-				return true;
-			}
-		}
-
-		return false;
 	}
 
 	static void DetectCompilerExtraFiles(const std::string& compilerID,
@@ -1724,12 +1755,12 @@ public:
 		context.fc.WriteCommand("Settings");
 		context.fc.WritePushScope();
 
-		std::string cacheDir =
-			context.self->GetCMakeInstance()->GetHomeOutputDirectory();
-		cacheDir += "\\.fbuild.cache";
-		cmSystemTools::ConvertToOutputSlashes(cacheDir);
+		//std::string cacheDir =
+		//	context.self->GetCMakeInstance()->GetHomeOutputDirectory();
+		//cacheDir += "\\.fbuild.cache";
+		//cmSystemTools::ConvertToOutputSlashes(cacheDir);
 
-		context.fc.WriteVariable("CachePath", Quote(cacheDir));
+		//context.fc.WriteVariable("CachePath", Quote(cacheDir));
 		context.fc.WritePopScope();
 	}
 
@@ -1888,9 +1919,11 @@ public:
 		cmLocalFastbuildGenerator *lg,
 		cmGeneratorTarget& target,
 		const std::string& configName,
+		const std::vector<std::string>& fileOutputs,
+		const std::vector<std::string>& symbolicOutputs,
 		std::string& targetName,
 		const std::string& hostTargetName,
-		bool commonToAllConfig,
+		bool isConfigDependant,
 		const std::vector<std::string>& deps)
 	{
 		cmMakefile* makefile = lg->GetMakefile();
@@ -1903,8 +1936,6 @@ public:
 		std::string command0 = ccg.GetNumberOfCommands() > 0 ? ccg.GetCommand(0) : std::string();
 		Detection::UnescapeFastbuildVariables(command0);
 		const cmGeneratorTarget* command0target = ccg.GetNumberOfCommands() > 0 ? ccg.GetCommandTarget(0) : NULL;
-		const std::vector<std::string> &outputs = ccg.GetOutputs();
-		const std::vector<std::string> &byproducts = ccg.GetByproducts();
 		// Take the dependencies listed and split into targets and files.
 		std::vector<std::string> depends = ccg.GetDepends();
 
@@ -1920,74 +1951,55 @@ public:
 		context.fc.WriteComment(std::string("Command0:   ") + command0 + (command0target ? std::string(" ( ") + command0target->GetName() + std::string(" ) ") : std::string()));
 		context.fc.WriteCommentMultiLines(std::string("Depends: ") + Join(depends, "\n         "));
 
-		std::vector<std::string> mergedOutputsIn;
-		mergedOutputsIn.insert(mergedOutputsIn.end(), outputs.begin(), outputs.end());
-		mergedOutputsIn.insert(mergedOutputsIn.end(), byproducts.begin(), byproducts.end());
-		std::vector<std::string> mergedOutputs;
-
-		bool hasSymbolicOutput = false;
-		// Double check that none of the outputs are 'symbolic'
-		// In which case, FASTBuild won't want them treated as 
-		// outputs.
-		{
-			// Loop through all outputs, and attempt to find it in the 
-			// source files.
-			for (std::vector<std::string>::const_iterator iter = mergedOutputsIn.begin();
-				iter != mergedOutputsIn.end();
-				++iter)
-			{
-				const std::string& outputName = *iter;
-				std::string outputNameConv = outputName;
-				Detection::UnescapeFastbuildVariables(outputNameConv);
-				Detection::ResolveFastbuildVariables(outputNameConv, configName);
-
-				cmSourceFile* outputSourceFile = makefile->GetSource(outputName);
-				// Check if this file is symbolic
-				if (outputSourceFile && outputSourceFile->GetPropertyAsBool("SYMBOLIC"))
-				{
-					context.fc.WriteComment(outputNameConv + " is SYMBOLIC, dropping");
-					hasSymbolicOutput = true;
-				}
-				else
-				{
-					mergedOutputs.push_back(outputNameConv);
-				}
-			}
-		}
-		context.fc.WriteCommentMultiLines(std::string("Outputs: ") + Join(mergedOutputs, "\n         "));
+		bool hasSymbolicOutput = !symbolicOutputs.empty();
 
 		std::vector<std::string> inputs;
 		std::vector<std::string> orderDependencies = deps;
+
+		std::string firstOutputOrSymbolic;
+		if (!fileOutputs.empty())
+		{
+			firstOutputOrSymbolic = fileOutputs.front();
+		}
+		else if (!symbolicOutputs.empty())
+		{
+			firstOutputOrSymbolic = symbolicOutputs.front();
+			if (isConfigDependant) firstOutputOrSymbolic += "-" + configName;
+		}
 
 		// If this exec node always generates outputs,
 		// then we need to make sure we don't define outputs multiple times.
 		// but if the command should always run (i.e. post builds etc)
 		// then we will output a new one.
-		if (!mergedOutputs.empty())
+		if (!firstOutputOrSymbolic.empty())
 		{
 			// Check if this custom command has already been output.
 			// If it has then just drop an alias here to the original
-			CustomCommandAliasMap::iterator findResult = context.customCommandAliases.find(std::make_pair(cc, mergedOutputs[0]));
+			CustomCommandAliasMap::iterator findResult = context.customCommandAliases.find(std::make_pair(cc, firstOutputOrSymbolic));
 			if (findResult != context.customCommandAliases.end())
 			{
 				const std::vector<std::string>& aliases = findResult->second;
 				if (std::find(aliases.begin(), aliases.end(), targetName) != aliases.end())
 				{
+					context.fc.WriteComment(targetName + ": " + firstOutputOrSymbolic + " already defined");
 					// This target has already been generated
 					// with the correct name somewhere else.
 					return;
 				}
 				//if (!Detection::isConfigDependant(ccg))
+				if (!aliases.empty())
 				{
+					context.fc.WriteComment(targetName + ": " + firstOutputOrSymbolic + " already defined as " + aliases.front());
+					targetName = aliases.front();
 					// This command has already been generated.
 					// But under a different name so setup an alias to redirect
 					// No merged outputs, so this command must always be run.
 					// Make it's name unique to its host target
 					// This might create a dependency between different configurations (i.e. Debug target being compiled when asking for Release)
 					// TODO: We should output a warning about this here...
-					targetName += "-";
-					targetName += hostTargetName;
-
+					//targetName += "-";
+					//targetName += hostTargetName;
+/*
 					std::vector<std::string> targets;
 					targets.push_back(*findResult->second.begin());
 
@@ -1998,17 +2010,19 @@ public:
 							Wrap(targets));
 					}
 					context.fc.WritePopScope();
+*/
 					return;
 				}
 			}
-			context.customCommandAliases[std::make_pair(cc, mergedOutputs[0])].push_back(targetName);
+			context.customCommandAliases[std::make_pair(cc, firstOutputOrSymbolic)].push_back(targetName);
 		}
 		else
 		{
-			// No merged outputs, so this command must always be run.
+			// No output, so this command must always be run.
 			// Make it's name unique to its host target
-			targetName += "-";
-			targetName += hostTargetName;
+			// -> no longer necessary, the targetName is already prefixed by the actual target to eliminate duplicates when the same filename is present in different targets/subdirs
+			//targetName += "-";
+			//targetName += hostTargetName;
 		}
 		
 		// Take the dependencies listed and split into targets and files.
@@ -2131,18 +2145,23 @@ public:
 			}
 			context.fc.WriteArray("ExecInput", Wrap(inputs));
 
-			if (mergedOutputs.empty())
+			std::string output;
+			if (!fileOutputs.empty())
+			{
+				output = fileOutputs.front();
+			}
+			else
 			{
 				context.fc.WriteVariable("ExecUseStdOutAsOutput", "true");
 				hasSymbolicOutput = true;
 
 				std::string outputDir = target.Target->GetMakefile()->GetCurrentBinaryDirectory();
-				mergedOutputs.push_back(outputDir + "/dummy-out-" + targetName + ".txt");
+				output = outputDir + "/dummy-out-" + targetName + ".txt";
 			}
 			// Currently fastbuild doesn't support more than 1
 			// output for a custom command (soon to change hopefully).
 			// so only use the first one
-			context.fc.WriteVariable("ExecOutput", Quote(mergedOutputs[0]));
+			context.fc.WriteVariable("ExecOutput", Quote(output));
 			if (hasSymbolicOutput)
 			{
 				context.fc.WriteVariable("ExecAlwaysRun", "true"); // Requires modified version of FASTBuild (after 0.90)
@@ -2208,10 +2227,14 @@ public:
 
 				std::stringstream customCommandTargetName;
 				customCommandTargetName << baseName << "-" << (commandCount++);
-				
+
+				std::vector<std::string> fileOutputs, symbolicOutputs;
+				bool isConfigDependant = false;
+				Detection::DetectCustomCommandOutputs(&cc, context.self, lg, target, configName, fileOutputs, symbolicOutputs, isConfigDependant);
 				std::string customCommandTargetNameStr = customCommandTargetName.str();
-				WriteCustomCommand(context, &cc, lg, target, configName, customCommandTargetNameStr,
-					targetName, false, deps);
+				WriteCustomCommand(context, &cc, lg, target, configName,
+					fileOutputs, symbolicOutputs, customCommandTargetNameStr,
+					targetName, isConfigDependant, deps);
 				customCommandTargets.push_back(customCommandTargetNameStr);
 			}
 
@@ -2258,11 +2281,10 @@ public:
 
 			const cmCustomCommand* cc = sourceFile->GetCustomCommand();
 			bool isConfigDependant = (configs.size() <= 1);
-			std::stringstream configWhy;
-			configWhy << "SourceFile " << sourceFilePath << " CustomCommand is config dependant because:\n";
+			std::ostringstream description;
+			description << "CustomCommand " << sourceFilePath << ":\n";
 			if (sourceFilePath.find("$ConfigName$") != std::string::npos)
 			{
-				configWhy << " - source file \"" << sourceFilePath << "\" uses ConfigName\n";
 				isConfigDependant = true;
 			}
 			bool firstConfig = true;
@@ -2275,13 +2297,8 @@ public:
 
 				std::string& workingDirectory = mapConfigCC[configName].mapWorkingDirectory[sourceFile];
 				std::vector<std::string>& inputs = mapConfigCC[configName].mapInputs[sourceFile];
-				std::vector<std::string>& outputs = mapConfigCC[configName].mapOutputs[sourceFile];
-				std::string& singleOutput = mapConfigCC[configName].mapSingleOutput[sourceFile];
-
-				const std::vector<std::string> &ccOutputs = ccg.GetOutputs();
-				const std::vector<std::string> &byproducts = ccg.GetByproducts();
-				outputs.insert(outputs.end(), ccOutputs.begin(), ccOutputs.end());
-				outputs.insert(outputs.end(), byproducts.begin(), byproducts.end());
+				std::vector<std::string>& fileOutputs = mapConfigCC[configName].mapFileOutputs[sourceFile];
+				std::vector<std::string>& symbolicOutputs = mapConfigCC[configName].mapSymbolicOutputs[sourceFile];
 
 				workingDirectory = ccg.GetWorkingDirectory();
 				if (workingDirectory.empty())
@@ -2293,6 +2310,8 @@ public:
 					workingDirectory += "/";
 				}
 				Detection::UnescapeFastbuildVariables(workingDirectory);
+
+				if (firstConfig) description << "    Inputs:\n";
 
 				// Take the dependencies listed and split into targets and files.
 				const std::vector<std::string> &depends = ccg.GetDepends();
@@ -2306,26 +2325,24 @@ public:
 					if (depSourceFile && !depTarget)
 						dep = depSourceFile->GetFullPath();
 					Detection::UnescapeFastbuildVariables(dep);
-					if (firstConfig) configWhy << ">>> " << dep << (depTarget ? " (Target)" : "") << (depSourceFile ? " (SourceFile)" : "") << (isSymbolic ? " (SYMBOLIC)" : "") << "\n";
+					if (firstConfig) description << "        - " << dep
+						<< (depTarget ? std::string(" (Target") + cmState::GetTargetTypeName(depTarget->GetType()) + ")" : std::string())
+						<< (depSourceFile ? " (SourceFile)" : "") << (isSymbolic ? " (SYMBOLIC)" : "") << "\n";
 					if (depTarget != NULL)
 					{
 						//inputTargets.push_back(dep);
 						// FIX: disable this condition, as it breaks OutDir unit test (using a target executable to generate a header)
 						// instead we keep track of this list of target and add it as prebuilddeps
-						if (firstConfig) configWhy << " - dependency \"" << dep << "\" is a target " << cmState::GetTargetTypeName(depTarget->GetType()) << "\n";
 						// isConfigDependant = true;
 					}
 					else if (depSourceFile != NULL)
 					{
-						// Check if this file is symbolic
-						if (firstConfig) configWhy << " - dependency \"" << dep << "\" is a " << (isSymbolic ? "SYMBOLIC " : "" ) << "source file " << depSourceFile->GetFullPath() << "\n";
 						//if (!isSymbolic)
 						{
 							//dep = depSourceFile->GetFullPath();
 							//Detection::UnescapeFastbuildVariables(dep);
 							if (dep.find("$ConfigName$") != std::string::npos)
 							{
-								if (firstConfig) configWhy << " - input \"" << dep << "\" uses ConfigName\n";
 								isConfigDependant = true;
 							}
 							Detection::ResolveFastbuildVariables(dep, configName);
@@ -2346,7 +2363,6 @@ public:
 
 						if (dep.find("$ConfigName$") != std::string::npos)
 						{
-							if (firstConfig) configWhy << " - input \"" << dep << "\" uses ConfigName\n";
 							isConfigDependant = true;
 						}
 						Detection::ResolveFastbuildVariables(dep, configName);
@@ -2354,7 +2370,7 @@ public:
 					}
 				}
 
-
+				if (firstConfig) description << "    Commands:\n";
 				// Add dependencies from command executables
 				for (unsigned int ci = 0; ci < ccg.GetNumberOfCommands(); ++ci)
 				{
@@ -2364,7 +2380,7 @@ public:
 						//inputTargets.push_back(target->GetName() + "-" + configName);
 						if (!target->IsImported()) // we ignore imported targets as they are probably not dependant on config (such as Qt4::moc)
 						{
-							if (firstConfig) configWhy << " - command \"" << target->GetName() << "\" is a generated target " << cmState::GetTargetTypeName(target->GetType()) << "\n";
+							if (firstConfig) description << "        - command \"" << target->GetName() << "\" is a generated target " << cmState::GetTargetTypeName(target->GetType()) << "\n";
 							isConfigDependant = true;
 						}
 					}
@@ -2374,80 +2390,36 @@ public:
 						Detection::UnescapeFastbuildVariables(command);
 						if (command.find("$ConfigName$") != std::string::npos)
 						{
-							if (firstConfig) configWhy << " - command \"" << command << "\" uses ConfigName\n";
+							if (firstConfig) description << "        - command \"" << command << "\" uses ConfigName\n";
 							isConfigDependant = true;
 						}
 					}
 				}
 
-				// Check if the outputs don't depend on the config name, and if we have a real output
-
-				bool isCustomTarget = true;
-				for (std::vector<std::string>::iterator iter = outputs.begin();
-					iter != outputs.end();
-					++iter)
-				{
-					std::string& dep = *iter;
-					cmSourceFile* depSourceFile = makefile->GetSource(dep); // GetSource called before any filtering of the file path
-					bool isSymbolic = depSourceFile && depSourceFile->GetPropertyAsBool("SYMBOLIC");
-					cmTarget* depTarget = context.self->FindTarget(dep);
-					if (depSourceFile && !depTarget)
-						dep = depSourceFile->GetFullPath();
-					Detection::UnescapeFastbuildVariables(dep);
-					if (firstConfig) configWhy << "<<< " << dep << (depTarget ? " (Target)" : "") << (depSourceFile ? " (SourceFile)":"") << (isSymbolic ? " (SYMBOLIC)":"") << "\n";
-					// Check if this file is symbolic and if it depends on config value (before resolving $ConfigName$)
-					if (isSymbolic)
-					{
-						if (dep.find("$ConfigName$") != std::string::npos)
-						{
-							if (firstConfig) configWhy << " - output \"" << dep << "\" uses ConfigName\n";
-							isConfigDependant = true;
-						}
-					}
-					else
-					{
-						isCustomTarget = false;
-					}
-					if (!depSourceFile && !depTarget)
-					{
-						if (!cmSystemTools::FileIsFullPath(dep.c_str()))
-						{
-							dep = workingDirectory + dep;
-						}
-					}
-					Detection::ResolveFastbuildVariables(dep, configName);
-					if (!isSymbolic && singleOutput.empty())
-					{
-						singleOutput = dep;
-					}
-				}
-				if (isCustomTarget)
-				{
-					//if (!isConfigDependant)
-					//{
-					//	configWhy << " - is a CustomTarget that is always run, all outputs are SYMBOLIC\n";
-					//}
-					//isConfigDependant = true;
-				}
+				// Find outputs and see if they don't depend on the config name, and if we have a real output
+				if (firstConfig) description << "    Outputs:\n";
+				Detection::DetectCustomCommandOutputs(cc, context.self, lg, target, configName, fileOutputs, symbolicOutputs, isConfigDependant, firstConfig ? &description : NULL);
 			}
 			if (!isConfigDependant)
 			{
 				const std::string refConfigName = configs.front();
 				const std::string& refWorkingDirectory = mapConfigCC[refConfigName].mapWorkingDirectory[sourceFile];
 				const std::vector<std::string>& refInputs = mapConfigCC[refConfigName].mapInputs[sourceFile];
-				const std::vector<std::string>& refOutputs = mapConfigCC[refConfigName].mapOutputs[sourceFile];
+				const std::vector<std::string>& refFileOutputs = mapConfigCC[refConfigName].mapFileOutputs[sourceFile];
+				const std::vector<std::string>& refSymbolicOutputs = mapConfigCC[refConfigName].mapSymbolicOutputs[sourceFile];
 
 				for (std::vector<std::string>::const_iterator cfIter = ++configs.begin(); cfIter != configs.end(); ++cfIter)
 				{
 					const std::string& configName = *cfIter;
 					const std::string& workingDirectory = mapConfigCC[configName].mapWorkingDirectory[sourceFile];
 					const std::vector<std::string>& inputs = mapConfigCC[configName].mapInputs[sourceFile];
-					const std::vector<std::string>& outputs = mapConfigCC[configName].mapOutputs[sourceFile];
-					if (workingDirectory != refWorkingDirectory || inputs.size() != refInputs.size() || outputs.size() != refOutputs.size())
+					const std::vector<std::string>& fileOutputs = mapConfigCC[configName].mapFileOutputs[sourceFile];
+					const std::vector<std::string>& symbolicOutputs = mapConfigCC[configName].mapSymbolicOutputs[sourceFile];
+					if (workingDirectory != refWorkingDirectory || inputs.size() != refInputs.size() || fileOutputs.size() != refFileOutputs.size() || symbolicOutputs.size() != refSymbolicOutputs.size())
 					{
-						configWhy << " - mismatch in workingDirectory (\"" << workingDirectory << "\"!=\"" << refWorkingDirectory
+						description << " - mismatch in workingDirectory (\"" << workingDirectory << "\"!=\"" << refWorkingDirectory
 								  << "\") or number of inputs (" << inputs.size() << "!=" << refInputs.size()
-								  << ") or number of outputs (" << outputs.size() << "!=" << refOutputs.size() << ")\n";
+								  << ") or number of outputs (" << fileOutputs.size() << "!=" << refFileOutputs.size() << " or " << symbolicOutputs.size() << "!=" << refSymbolicOutputs.size() << ")\n";
 						isConfigDependant = true;
 						break;
 					}
@@ -2455,7 +2427,7 @@ public:
 					{
 						if (inputs[index] != refInputs[index])
 						{
-							configWhy << " - mismatch in an input (\"" << inputs[index] << "\"!=\"" << refInputs[index] << "\")\n";
+							description << " - mismatch in an input (\"" << inputs[index] << "\"!=\"" << refInputs[index] << "\")\n";
 							isConfigDependant = true;
 							break;
 						}
@@ -2464,11 +2436,24 @@ public:
 					{
 						break;
 					}
-					for (std::size_t index = 0; index < outputs.size(); ++index)
+					for (std::size_t index = 0; index < fileOutputs.size(); ++index)
 					{
-						if (outputs[index] != refOutputs[index])
+						if (fileOutputs[index] != refFileOutputs[index])
 						{
-							configWhy << " - mismatch in an output (\"" << outputs[index] << "\"!=\"" << refOutputs[index] << "\")\n";
+							description << " - mismatch in a file output (\"" << fileOutputs[index] << "\"!=\"" << refFileOutputs[index] << "\")\n";
+							isConfigDependant = true;
+							break;
+						}
+					}
+					if (isConfigDependant)
+					{
+						break;
+					}
+					for (std::size_t index = 0; index < symbolicOutputs.size(); ++index)
+					{
+						if (symbolicOutputs[index] != refSymbolicOutputs[index])
+						{
+							description << " - mismatch in a symbolic output (\"" << symbolicOutputs[index] << "\"!=\"" << refSymbolicOutputs[index] << "\")\n";
 							isConfigDependant = true;
 							break;
 						}
@@ -2481,21 +2466,16 @@ public:
 			}
 			if (isConfigDependant)
 			{
-				context.fc.WriteCommentMultiLines(configWhy.str());
-				//cmSystemTools::Stdout(configWhy.str().c_str());
+				context.fc.WriteCommentMultiLines("CONFIG " + description.str());
 				//configCustomCommands.push_back(sourceFile);
 				setConfigDependant.insert(sourceFile);
 			}
 			else
 			{
-				std::stringstream configWhy2;
-				configWhy2 << "SourceFile " << sourceFilePath << " CustomCommand is shared between configs, AND NOT " << configWhy.str();
-				context.fc.WriteCommentMultiLines(configWhy2.str());
-				//cmSystemTools::Stdout(configWhy2.str().c_str());
+				context.fc.WriteCommentMultiLines("COMMON " + description.str());
 				//commonCustomCommands.push_back(sourceFile);
 			}
 		}
-
 
 		if (!allCustomCommands.empty())
 		{
@@ -2572,40 +2552,38 @@ public:
 						context.fc.WriteCommand("Using", ".BaseConfig_" + activeConfigName);
 					}
 
-					if (!firstConfig && (isCommon || (!cch.mapSingleOutput.empty() && cch0.mapSingleOutput == cch.mapSingleOutput)))
+					if (!firstConfig && isCommon)
 					{
 						// no need to output it again, just copy its ref
 						cch.mapRuleName[sourceFile] = cch0.mapRuleName.find(sourceFile)->second;
-						if (!isCommon)
-							customCommandTargets.push_back(cch.mapRuleName[sourceFile]);
 					}
 					else
 					{
 
 						// write the command
 						std::stringstream commandTargetName;
-						commandTargetName << commandNameBase << (index);
+						commandTargetName << commandNameBase << (index+1);
 						commandTargetName << "-" << cmSystemTools::GetFilenameName(sourceFile->GetFullPath());
 
 						std::string commandTargetNameStr = commandTargetName.str();
 						const std::vector<std::string> & inputs = cch.mapInputs[sourceFile];
+						const std::vector<std::string> & fileOutputs = cch.mapFileOutputs[sourceFile];
+						const std::vector<std::string> & symbolicOutputs = cch.mapSymbolicOutputs[sourceFile];
 						const std::vector<const cmSourceFile*>& inputCmds = cch.mapInputCmds[sourceFile];
 						std::vector<std::string> commandDeps;
 						for (std::vector<const cmSourceFile*>::const_iterator it = inputCmds.begin(); it != inputCmds.end(); ++it)
 						{
-							context.fc.WriteComment("Input Dependency on command " + (*it)->GetFullPath());
-							std::string output0 = cch.mapSingleOutput[*it];
-							context.fc.WriteComment("  output : " + output0);
+							//context.fc.WriteComment("Input Dependency on command " + (*it)->GetFullPath());
 							//if (std::find(inputs.begin(), inputs.end(), output0) == inputs.end())
 							{
 								std::string ruleName = cch.mapRuleName[*it];
-								context.fc.WriteComment("  rule : " + ruleName);
+								//context.fc.WriteComment("  rule : " + ruleName);
 								commandDeps.push_back(ruleName);
 							}
 						}
 						WriteCustomCommand(context, sourceFile->GetCustomCommand(),
-							lg, target, configName, commandTargetNameStr,
-							targetName, isCommon, commandDeps);
+							lg, target, configName, fileOutputs, symbolicOutputs, commandTargetNameStr,
+							targetName, !isCommon, commandDeps);
 						cch.mapRuleName[sourceFile] = commandTargetNameStr;
 						customCommandTargets.push_back(commandTargetNameStr);
 
@@ -2701,6 +2679,10 @@ public:
 			target.GetType() != cmState::UTILITY &&
 			target.GetType() != cmState::GLOBAL_TARGET;
 
+		bool hasOutput =
+			target.GetType() != cmState::UTILITY &&
+			target.GetType() != cmState::GLOBAL_TARGET;
+
 		// Output common config (for custom commands that do not depend on current config
 		if (context.self->GetConfigurations().size() > 1)
 		{
@@ -2738,10 +2720,12 @@ public:
 
 			context.fc.WriteVariable("ConfigName", Quote(configName));
 
-			context.fc.WriteBlankLine();
-			context.fc.WriteComment("General output details:");
 			// Write out the output paths for the outcome of this target
+			if (hasOutput)
 			{
+				context.fc.WriteBlankLine();
+				context.fc.WriteComment("General output details:");
+
 				Detection::FastbuildTargetNames targetNames;
 				Detection::DetectOutput(targetNames, target, configName);
 
