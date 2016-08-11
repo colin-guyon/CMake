@@ -665,14 +665,17 @@ std::set<std::string> cmGlobalVisualStudio7Generator::IsPartOfDefaultBuild(
   // default build if another target depends on it
   int type = target->GetType();
   if (type == cmState::GLOBAL_TARGET) {
-    // check if INSTALL target is part of default build
-    if (target->GetName() == "INSTALL") {
-      // inspect CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD properties
+    // check if INSTALL or PACKAGE target is part of default build
+    // by inspect CMAKE_VS_INCLUDE_<Target>_TO_DEFAULT_BUILD properties
+    // (i.e. CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD for INSTALL)
+    if (target->GetName() == "INSTALL" ||
+        target->GetName() == "PACKAGE") {
+      std::string definitionName = "CMAKE_VS_INCLUDE_" + target->GetName() + "_TO_DEFAULT_BUILD";
       for (std::vector<std::string>::const_iterator i = configs.begin();
            i != configs.end(); ++i) {
         const char* propertyValue =
           target->Target->GetMakefile()->GetDefinition(
-            "CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD");
+            definitionName);
         cmGeneratorExpression ge;
         cmsys::auto_ptr<cmCompiledGeneratorExpression> cge =
           ge.Parse(propertyValue);
