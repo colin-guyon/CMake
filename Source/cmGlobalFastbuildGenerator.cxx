@@ -1724,19 +1724,21 @@ public:
 		WriteVSConfigurations( context );
 
 		// Sort targets
+		std::string buildTargetName;
+		std::string finalTargetName;
 
 		FBTRACE("WriteTargetDefinitions\n");
 		WriteTargetDefinitions( context, false );
 		FBTRACE("WriteAliases\n");
-		WriteAliases( context, false );
+		WriteAliases( context, false, "", buildTargetName);
 		FBTRACE("WriteTargetDefinitions (Global)\n");
 		WriteTargetDefinitions( context, true );
 		FBTRACE("WriteAliases (Global)\n");
-		WriteAliases( context, true );
+		WriteAliases( context, true, buildTargetName, finalTargetName );
 
 		// Write Visual Studio Solution
 		FBTRACE("WriteVSSolution\n");
-		WriteVSSolution(context);
+		WriteVSSolution( context, buildTargetName, finalTargetName );
 	}
 
 	static void WritePlaceholders(GenerationContext& context)
@@ -3467,11 +3469,40 @@ public:
 			}
 		}
 	}
-	
-	static void WriteAliases(GenerationContext& context,
-		bool outputGlobals)
+
+	static bool IsPartOfDefaultBuild(GenerationContext& context, cmGeneratorTarget* target, const std::string& configName)
 	{
-		context.fc.WriteSectionHeader("Aliases");
+		if (!context.self->IsExcluded(context.root, target))
+		{
+			return true;
+		}
+		if (target->GetType() == cmState::GLOBAL_TARGET)
+		{
+			// check if INSTALL or PACKAGE target is part of default build
+			// by inspect CMAKE_VS_INCLUDE_<Target>_TO_DEFAULT_BUILD properties
+			// (i.e. CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD for INSTALL)
+			if (target->GetName() == "INSTALL" ||
+				target->GetName() == "PACKAGE")
+			{
+				std::string definitionName = "CMAKE_VS_INCLUDE_" + target->GetName() + "_TO_DEFAULT_BUILD";
+				const char* propertyValue = target->Target->GetMakefile()->GetDefinition(definitionName);
+				cmGeneratorExpression ge;
+				cmsys::auto_ptr<cmCompiledGeneratorExpression> cge = ge.Parse(propertyValue);
+				if (cmSystemTools::IsOn(cge->Evaluate(target->GetLocalGenerator(), configName)))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	static void WriteAliases(GenerationContext& context,
+		bool outputGlobals,
+		const std::string& previousTargetName,
+		std::string& finalTargetName)
+	{
+		context.fc.WriteSectionHeader(outputGlobals ? "Global Aliases" : "Target Aliases");
 
 		// Write the following aliases:
 		// Per Target
@@ -3480,7 +3511,8 @@ public:
 
 		typedef std::map<std::string, std::vector<std::string> > TargetListMap;
 		TargetListMap perConfig;
-		TargetListMap perTarget;
+		std::vector<std::string> finalTargets;
+		std::vector<std::string> targets;
 
 		for (OrderedTargets::iterator targetIter = context.orderedTargets.begin(); 
 			targetIter != context.orderedTargets.end();
@@ -3517,7 +3549,8 @@ public:
 					continue;
 			}
 
-			// Define compile flags
+			targets.clear();
+			bool isFinalTarget = false;
 			std::vector<std::string>::const_iterator
 				iter = context.self->GetConfigurations().begin(),
 				end = context.self->GetConfigurations().end();
@@ -3526,62 +3559,108 @@ public:
 				const std::string & configName = *iter;
 				std::string aliasName = targetName + "-" + configName;
 
-				perTarget[targetName].push_back(aliasName);
+				targets.push_back(aliasName);
 
-				if (!context.self->IsExcluded(context.root, target))
+				if (IsPartOfDefaultBuild(context, target, configName))
 				{
 					perConfig[configName].push_back(aliasName);
+					isFinalTarget = true;
 				}
 			}
+			if (isFinalTarget)
+			{
+				finalTargets.push_back(targetName);
+			}
+
+			context.fc.WriteCommand("Alias", "'" + targetName + "'");
+			context.fc.WritePushScope();
+			context.fc.WriteArray("Targets",
+				Wrap(targets, "'", "'"));
+			context.fc.WritePopScope();
 		}
+
+		context.fc.WriteSectionHeader(outputGlobals ? "Final Aliases" : "Config Aliases");
 
 		if (!outputGlobals)
 		{
-			context.fc.WriteComment("Per config");
-			std::vector<std::string> aliasTargets;
-			for (TargetListMap::iterator iter = perConfig.begin();
-				iter != perConfig.end(); ++iter)
+			// alias of all non-global targets is ALL_BUILD
+			finalTargetName = "ALL_BUILD";
+		}
+		else
+		{
+			if (finalTargets.empty())
 			{
-				const std::string & configName = iter->first;
-				const std::vector<std::string> & targets = iter->second;
+				finalTargetName = previousTargetName; // no new default target added, keep the existing target
+			}
+			else
+			{
+				finalTargetName = "ALL";
+				std::set<std::string> allTargets;
+				for (TargetListMap::iterator iter = perConfig.begin();
+					iter != perConfig.end(); ++iter)
+				{
+					const std::string & configName = iter->first;
+					const std::vector<std::string> & targets = iter->second;
+					allTargets.insert(targets.begin(), targets.end());
+				}
+				for (std::set<std::string>::const_iterator iter = allTargets.begin();
+					iter != allTargets.end(); ++iter)
+				{
+					finalTargetName += "_" + *iter;
+				}
+			}
+		}
+		if (!previousTargetName.empty())
+		{
+			// Add previousTargetName (ALL_BUILD)
+			std::vector<std::string>::const_iterator
+				iter = context.self->GetConfigurations().begin(),
+				end = context.self->GetConfigurations().end();
+			for (; iter != end; ++iter)
+			{
+				const std::string & configName = *iter;
+				std::vector<std::string> & targets = perConfig[configName];
+				targets.insert(targets.begin(), previousTargetName + "-" + configName);
+			}
+		}
 
-				context.fc.WriteCommand("Alias", Quote(configName));
+		std::vector<std::string> aliasTargets;
+		std::vector<std::string>::const_iterator
+			iter = context.self->GetConfigurations().begin(),
+			end = context.self->GetConfigurations().end();
+		for (; iter != end; ++iter)
+		{
+			const std::string & configName = *iter;
+			const std::vector<std::string> & targets = perConfig[configName];
+
+			std::string aliasName = finalTargetName + '-' + configName;
+			if (finalTargetName != previousTargetName)
+			{
+				context.fc.WriteCommand("Alias", Quote(aliasName));
 				context.fc.WritePushScope();
-				context.fc.WriteArray("Targets", 
+				context.fc.WriteArray("Targets",
 					Wrap(targets, "'", "'"));
 				context.fc.WritePopScope();
+			}
 
+			if (outputGlobals)
+			{
 				aliasTargets.clear();
-				aliasTargets.push_back(configName);
-				context.fc.WriteCommand("Alias", Quote("ALL_BUILD-" + configName));
+				aliasTargets.push_back(aliasName);
+				context.fc.WriteCommand("Alias", Quote(configName));
 				context.fc.WritePushScope();
-				context.fc.WriteArray("Targets", 
+				context.fc.WriteArray("Targets",
 					Wrap(aliasTargets, "'", "'"));
 				context.fc.WritePopScope();
 			}
 		}
 
-		context.fc.WriteComment("Per targets");
-		for (TargetListMap::iterator iter = perTarget.begin();
-			iter != perTarget.end(); ++iter)
+		if (finalTargetName != previousTargetName)
 		{
-			const std::string & targetName = iter->first;
-			const std::vector<std::string> & targets = iter->second;
-
-			context.fc.WriteCommand("Alias", "'" + targetName + "'");
+			context.fc.WriteCommand("Alias", Quote(finalTargetName));
 			context.fc.WritePushScope();
 			context.fc.WriteArray("Targets", 
-				Wrap(targets, "'", "'"));
-			context.fc.WritePopScope();
-		}
-
-		if (!outputGlobals)
-		{
-			context.fc.WriteComment("All");
-			context.fc.WriteCommand("Alias", "'All'");
-			context.fc.WritePushScope();
-			context.fc.WriteArray("Targets", 
-				Wrap(context.self->GetConfigurations(), "'", "'"));
+				Wrap(context.self->GetConfigurations(), "'" + finalTargetName + "-", "'"));
 			context.fc.WritePopScope();
 		}
 	}
@@ -3706,7 +3785,9 @@ public:
 	}
 
 	static void WriteVSSolution(
-		GenerationContext& context)
+		GenerationContext& context,
+		const std::string& buildTargetName,
+		const std::string& finalTargetName)
 	{
 		context.fc.WriteSectionHeader("VisualStudio Solution Generation");
 
@@ -3718,26 +3799,43 @@ public:
 			rootDirectory += "/";
 		}
 
-		context.fc.WriteCommand("VCXProject", Quote("ALL_BUILD-project"));
+		context.fc.WriteCommand("VCXProject", Quote(buildTargetName + "-project"));
 		context.fc.WritePushScope();
-		context.fc.WriteVariable("ProjectOutput", Quote(rootDirectory + "ALL_BUILD.vcxproj"));
+		context.fc.WriteVariable("ProjectOutput", Quote(rootDirectory + buildTargetName + ".vcxproj"));
 		context.fc.WritePopScope();
+
+		if (finalTargetName != buildTargetName)
+		{
+			context.fc.WriteCommand("VCXProject", Quote(finalTargetName + "-project"));
+			context.fc.WritePushScope();
+			context.fc.WriteVariable("ProjectOutput", Quote(rootDirectory + finalTargetName + ".vcxproj"));
+			context.fc.WritePopScope();
+		}
 
 		context.fc.WriteCommand("VSSolution", Quote("solution"));
 		context.fc.WritePushScope();
 
 		std::string topLevelSlnName = rootDirectory;
 		topLevelSlnName += (mf != 0) ? context.root->GetProjectName() : context.self->GetName();
-		topLevelSlnName += ".sln";
+		topLevelSlnName += "-FASTBuild.sln";
 
 		context.fc.WriteVariable("SolutionOutput", Quote(topLevelSlnName));
 
 		//context.fc.WriteArray("SolutionConfigs", Wrap(context.self->GetConfigurations(), ".config_",""));
 		context.fc.WriteVariable("SolutionConfigs", ".ProjectConfigs");
 
-		std::vector<std::string> targetsInRoot;
+		bool useFolders = context.self->UseFolderProperty();
+
 		std::map<std::string,std::vector<std::string> > targetsInFolder;
-		targetsInRoot.push_back(Quote("ALL_BUILD-project"));
+
+		std::string predefinedFolderName;
+		if (useFolders) predefinedFolderName = context.self->GetPredefinedTargetsFolder();
+
+		targetsInFolder[predefinedFolderName].push_back(Quote(buildTargetName + "-project"));
+		if (finalTargetName != buildTargetName)
+		{
+			targetsInFolder[predefinedFolderName].push_back(Quote(finalTargetName + "-project"));
+		}
 
 		// Now iterate each target in order
 		for (OrderedTargets::iterator targetIter = context.orderedTargets.begin();
@@ -3764,16 +3862,21 @@ public:
 			cmLocalFastbuildGenerator* lg = findResult->second.lg;
 
 			std::string folder;
-			const char* p = target->GetProperty("FOLDER");
-			if (p)
+			if (useFolders)
 			{
-				folder = p;
+				const char* p = target->GetProperty("FOLDER");
+				if (p)
+				{
+					folder = p;
+				}
 			}
-			(folder.empty() ? targetsInRoot : targetsInFolder[folder]).push_back(Quote(target->GetName() + "-project"));
+			targetsInFolder[folder].push_back(Quote(target->GetName() + "-project"));
 		}
-		if (!targetsInRoot.empty())
+
+		if (targetsInFolder.find("") != targetsInFolder.end())
 		{
-			context.fc.WriteArray("SolutionProjects", targetsInRoot);
+			context.fc.WriteArray("SolutionProjects", targetsInFolder[""]);
+			targetsInFolder.erase("");
 		}
 
 		int folderCount = 1;
@@ -3805,7 +3908,7 @@ public:
 			context.fc.WriteArray("SolutionFolders", folders);
 		}
 
-		context.fc.WriteVariable("SolutionBuildProject", Quote("ALL_BUILD-project"));
+		context.fc.WriteVariable("SolutionBuildProject", Quote(finalTargetName + "-project"));
 
 		context.fc.WritePopScope();
 	}
