@@ -2168,10 +2168,10 @@ public:
 			{
 				context.fc.WriteVariable("ExecAlwaysRun", "true"); // Requires modified version of FASTBuild (after 0.90)
 			}
-			if (!orderDependencies.empty())
-			{
-				context.fc.WriteArray("PreBuildDependencies", Wrap(orderDependencies), "+"); // , (configName == "Common") ? "=" : "+");
-			}
+			// if (!orderDependencies.empty())
+			// {
+			// 	context.fc.WriteArray("PreBuildDependencies", Wrap(orderDependencies), "+"); // , (configName == "Common") ? "=" : "+");
+			// }
 			
 		}
 		context.fc.WritePopScope();
