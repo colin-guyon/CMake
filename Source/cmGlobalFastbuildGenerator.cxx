@@ -2030,10 +2030,10 @@ public:
 		// Take the dependencies listed and split into targets and files.
 		for (unsigned int ci = 0; ci < ccg.GetNumberOfCommands(); ++ci)
 		{
-			const cmGeneratorTarget* target = ccg.GetCommandTarget(ci);
-			if (target != NULL)
+			const cmGeneratorTarget* cmdtarget = ccg.GetCommandTarget(ci);
+			if (cmdtarget != NULL && !cmdtarget->IsImported() && cmdtarget->Target != target.Target)
 			{
-				orderDependencies.push_back(target->GetName() + "-" + configName);
+				orderDependencies.push_back(cmdtarget->GetName() + "-" + configName);
 			}
 		}
 		// Take the dependencies listed and split into targets and files.
@@ -2042,10 +2042,13 @@ public:
 		{
 			const std::string& dep = *iter;
 
-			bool isTarget = context.self->FindTarget(dep) != NULL;
-			if (isTarget)
+			const cmTarget* depTarget = context.self->FindTarget(dep);
+			if (depTarget != NULL)
 			{
-				orderDependencies.push_back(dep + "-" + configName);
+                if (!depTarget->IsImported() && depTarget != target.Target)
+                {
+                    orderDependencies.push_back(dep + "-" + configName);
+                }
 			}
 			else
 			{
@@ -2168,10 +2171,10 @@ public:
 			{
 				context.fc.WriteVariable("ExecAlwaysRun", "true"); // Requires modified version of FASTBuild (after 0.90)
 			}
-			// if (!orderDependencies.empty())
-			// {
-			// 	context.fc.WriteArray("PreBuildDependencies", Wrap(orderDependencies), "+"); // , (configName == "Common") ? "=" : "+");
-			// }
+			if (!orderDependencies.empty())
+			{
+				context.fc.WriteArray("PreBuildDependencies", Wrap(orderDependencies), "+"); // , (configName == "Common") ? "=" : "+");
+			}
 			
 		}
 		context.fc.WritePopScope();
@@ -3595,16 +3598,10 @@ public:
 			else
 			{
 				finalTargetName = "ALL";
-				std::set<std::string> allTargets;
-				for (TargetListMap::iterator iter = perConfig.begin();
-					iter != perConfig.end(); ++iter)
-				{
-					const std::string & configName = iter->first;
-					const std::vector<std::string> & targets = iter->second;
-					allTargets.insert(targets.begin(), targets.end());
-				}
-				for (std::set<std::string>::const_iterator iter = allTargets.begin();
-					iter != allTargets.end(); ++iter)
+				std::vector<std::string>::const_iterator
+					iter = finalTargets.begin(),
+					end = finalTargets.end();
+				for (; iter != end; ++iter)
 				{
 					finalTargetName += "_" + *iter;
 				}
@@ -3671,7 +3668,7 @@ public:
 
 		context.fc.WriteVariable("ProjectCommon", "");
 		context.fc.WritePushScopeStruct();
-		context.fc.WriteVariable("ProjectBuildCommand", Quote("cd ^$(SolutionDir) &amp; fbuild -vs -dist -cache ^$(ProjectName)-^$(Configuration)"));
+		context.fc.WriteVariable("ProjectBuildCommand", Quote("cd ^$(SolutionDir) &amp; fbuild -vs -dist -cache -monitor ^$(ProjectName)-^$(Configuration)"));
 		context.fc.WriteVariable("ProjectRebuildCommand", Quote("cd ^$(SolutionDir) &amp; fbuild -vs -dist -cache -clean ^$(ProjectName)-^$(Configuration)"));
 
 		// detect platform (only for MSVC)
@@ -3722,7 +3719,7 @@ public:
 		for (; iter != end; ++iter)
 		{
 			const std::string & configName = *iter;
-			context.fc.WriteVariable("Project_" + configName, "");
+			context.fc.WriteVariable("BaseProject_" + configName, "");
 			context.fc.WritePushScopeStruct();
 
 			// Using base config
@@ -3737,7 +3734,7 @@ public:
 
 		// Write out a list of all Visual Studio project configs
 		context.fc.WriteArray("ProjectConfigs",
-			Wrap(context.self->GetConfigurations(), ".Project_", ""));
+			Wrap(context.self->GetConfigurations(), ".BaseProject_", ""));
 	}
 
 	static void WriteVSProject(
@@ -3752,8 +3749,6 @@ public:
 
 		context.fc.WriteVariable("ProjectOutput", Quote(target.GetSupportDirectory() + "/" + targetName + ".vcxproj"));
 
-		//context.fc.WriteArray("ProjectConfigs", Wrap(context.self->GetConfigurations(), ".Project_",""));
-
 		std::vector<std::string> projectFiles;
 		std::vector<cmSourceFile*> sources;
 		for (std::vector<std::string>::const_iterator
@@ -3763,7 +3758,20 @@ public:
 		{
 			const std::string & configName = *iter;
 			target.GetSourceFiles(sources, configName);
+
+			context.fc.WriteVariable("Project_" + configName, "");
+			context.fc.WritePushScopeStruct();
+
+			// Using base config
+			context.fc.WriteCommand("Using", ".BaseProject_" + configName);
+
+			// Output platform (TODO: CURRENTLY ONLY HANDLED FOR WINDOWS)
+			context.fc.WriteVariable("Target", Quote(targetName + "-" + configName));
+
+			context.fc.WritePopScope();
 		}
+		context.fc.WriteArray("ProjectConfigs", Wrap(context.self->GetConfigurations(), ".Project_", ""));
+
 		std::vector<cmSourceFile*>::const_iterator sourcesEnd
 			= cmRemoveDuplicates(sources);
 		for (std::vector<cmSourceFile*>::const_iterator si = sources.begin();
