@@ -880,22 +880,6 @@ public:
 		lg->AddVisibilityPresetFlags(compileFlags, &target,
 			language);
 
-		std::vector<std::string> includes;
-		lg->GetIncludeDirectories(includes,
-			&target,
-			language,
-			configName);
-
-		// Add include directory flags.
-		std::string includeFlags = lg->GetIncludeFlags(includes, &target,
-			language,
-			language == "RC" ? true : false,  // full include paths for RC
-			// needed by cmcldeps
-			false,
-			configName);
-		
-		lg->AppendFlags(compileFlags, includeFlags);
-
 		// Append old-style preprocessor definition flags.
 		lg->AppendFlags(compileFlags,
 			lg->GetMakefile()->GetDefineFlags());
@@ -915,7 +899,8 @@ public:
 	static void DetectTargetCompileDependencies(
 		cmGlobalFastbuildGenerator* gg,
 		cmGeneratorTarget& target,
-		std::vector<std::string>& dependencies)
+		std::vector<std::string>& dependencies,
+		std::vector<std::string>& linkDependencies)
 	{
 		if (target.GetType() == cmState::GLOBAL_TARGET)
 		{
@@ -936,9 +921,14 @@ public:
 				{
 					continue;
 				}
-				dependencies.push_back(depTarget->GetName());
+				linkDependencies.push_back(depTarget->GetName());
 			}
 		}
+		// first sort entries by name, to make it deterministic between runs
+		// TODO: this should actually be fixed on CMake generic sorting side,
+		// which should not rely on pointer values to sort and iterate
+		std::sort(dependencies.begin(), dependencies.end());
+		std::sort(linkDependencies.begin(), linkDependencies.end());
 	}
 /*
 	static void DetectTargetLinkDependencies(
@@ -1147,6 +1137,11 @@ public:
 		{
 			cmGlobalFastbuildGenerator *gg;
 
+			std::string GetName(const cmGeneratorTarget* entry)
+			{
+				return entry->GetName();
+			}
+
 			void GetOutputs(const cmGeneratorTarget* entry, std::vector<std::string>& outputs)
 			{
 				outputs.push_back(entry->GetName());
@@ -1177,6 +1172,11 @@ public:
 			std::map<const cmSourceFile*, std::string > mapRuleName;
 			std::vector<const cmSourceFile*> orderedCommands;
 
+			std::string GetName(const cmSourceFile* entry)
+			{
+				return entry->GetFullPath();
+			}
+
 			void GetOutputs(const cmSourceFile* entry, std::vector<std::string>& outputs)
 			{
 				outputs = mapFileOutputs[entry];
@@ -1195,12 +1195,28 @@ public:
 		};
 
 		template <class TType, class TTypeHelper>
+		struct SorterFunctor
+		{
+			TTypeHelper* helper;
+			SorterFunctor(TTypeHelper* h) : helper(h) {}
+			int operator()(const TType* va, const TType* vb)
+			{
+				return helper->GetName(va) < helper->GetName(vb);
+			}
+		};
+
+		template <class TType, class TTypeHelper>
 		static void Sort(TTypeHelper& helper, std::vector<const TType*>& entries)
 		{
 			typedef unsigned int EntryIndex;
 			typedef std::vector<std::string> StringVector;
 			typedef std::vector<EntryIndex> OrderedEntrySet;
 			typedef std::map<std::string, EntryIndex> OutputMap;
+
+			// first sort entries by name, to make it deterministic between runs
+			// TODO: this should actually be fixed on CMake generic sorting side,
+			// which should not rely on pointer values to sort and iterate
+			std::sort(entries.begin(), entries.end(), SorterFunctor<TType,TTypeHelper>(&helper));
 
 			// Build up a map of outputNames to entries
 			OutputMap outputMap;
@@ -2167,7 +2183,7 @@ public:
 			// output for a custom command (soon to change hopefully).
 			// so only use the first one
 			context.fc.WriteVariable("ExecOutput", Quote(output));
-			if (hasSymbolicOutput)
+			if (hasSymbolicOutput && inputs.empty()) // TODO: probably not the best criteria, works in our use cases...
 			{
 				context.fc.WriteVariable("ExecAlwaysRun", "true"); // Requires modified version of FASTBuild (after 0.90)
 			}
@@ -2670,13 +2686,6 @@ public:
 
 		const std::string& targetName = target.GetName();
 
-		context.fc.WriteComment(std::string("Target definition: ")+targetName+" (" + linkCommand + ")");
-		context.fc.WritePushScope();
-
-		std::vector<std::string> dependencies;
-		Detection::DetectTargetCompileDependencies(context.self, target, dependencies);
-		context.fc.WriteComment(std::string("Target dependencies: ") + Join(dependencies," "));
-
 		// Object libraries do not have linker stages
 		// nor utilities
 		bool hasLinkerStage =
@@ -2687,6 +2696,17 @@ public:
 		bool hasOutput =
 			target.GetType() != cmState::UTILITY &&
 			target.GetType() != cmState::GLOBAL_TARGET;
+
+		context.fc.WriteComment(std::string("Target definition: ")+targetName+" (" + linkCommand + ")");
+		context.fc.WritePushScope();
+
+		std::vector<std::string> dependencies;
+		std::vector<std::string> linkDependencies;
+		Detection::DetectTargetCompileDependencies(context.self, target, dependencies, hasLinkerStage?linkDependencies:dependencies);
+		if (!dependencies.empty())
+			context.fc.WriteComment(std::string("Target dependencies: ") + Join(dependencies," "));
+		if (!linkDependencies.empty())
+			context.fc.WriteComment(std::string("Target link dependencies: ") + Join(linkDependencies, " "));
 
 		// Output common config (for custom commands that do not depend on current config
 		if (context.self->GetConfigurations().size() > 1)
@@ -2701,6 +2721,8 @@ public:
 			// Write the dependency list in here too
 			// So all dependant targets are built before this one is
 			// This is incase this target depends on code generated from previous ones
+			// CHANGE: now we distinguish dependancies for link, so that compile can be in parallel.
+			// Dependencies on generated codes should be explicit based on the files themselves
 			{
 				context.fc.WriteArray("PreBuildDependencies",
 					Wrap(dependencies, "'", "-" + configName + "'"));
@@ -2764,6 +2786,8 @@ public:
 			// Write the dependency list in here too
 			// So all dependant libraries are built before this one is
 			// This is incase this library depends on code generated from previous ones
+			// CHANGE: now we distinguish dependancies for link, so that compile can be in parallel.
+			// Dependencies on generated codes should be explicit based on the files themselves
 			{
 				context.fc.WriteArray("PreBuildDependencies",
 					Wrap(dependencies, "'", "-" + configName + "'"));
@@ -3104,6 +3128,11 @@ public:
 				context.fc.WritePushScopeStruct();
 
 				context.fc.WriteCommand("Using", ".BaseConfig_" + configName);
+				if (!linkDependencies.empty())
+				{
+					context.fc.WriteArray("PreBuildDependencies",
+						Wrap(linkDependencies, "'", "-" + configName + "'"), "+");
+				}
 
 				context.fc.WriteBlankLine();
 				context.fc.WriteComment("Linker options:");
@@ -3669,7 +3698,7 @@ public:
 		context.fc.WriteVariable("ProjectCommon", "");
 		context.fc.WritePushScopeStruct();
 		context.fc.WriteVariable("ProjectBuildCommand", Quote("cd ^$(SolutionDir) &amp; fbuild -vs -dist -cache -monitor ^$(ProjectName)-^$(Configuration)"));
-		context.fc.WriteVariable("ProjectRebuildCommand", Quote("cd ^$(SolutionDir) &amp; fbuild -vs -dist -cache -clean ^$(ProjectName)-^$(Configuration)"));
+		context.fc.WriteVariable("ProjectRebuildCommand", Quote("cd ^$(SolutionDir) &amp; fbuild -vs -dist -cache -monitor -clean ^$(ProjectName)-^$(Configuration)"));
 
 		// detect platform (only for MSVC)
 		std::string platformToolset;
