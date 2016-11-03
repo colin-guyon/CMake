@@ -115,6 +115,9 @@ The following tests FAILED:
 
 static const char fastbuildGeneratorName[] = "Fastbuild";
 
+static std::string VSDebugConfiguration = "VDebug";
+static std::string VSRelWithDebInfoConfiguration = "_RelWithDebInfo";
+
 // Simple trace to help debug unit tests
 #define FBTRACE(s)
 //#define FBTRACE(s) cmSystemTools::Stdout(s)
@@ -332,7 +335,7 @@ public:
 
 	static void DetectConfigurations(cmGlobalFastbuildGenerator * self,
 		cmMakefile* mf,
-		std::vector<std::string> & configurations)
+		std::vector<std::string> & configurations, std::map<std::string,std::string>& configAlias)
 	{
 		// process the configurations
 		const char* configList =
@@ -367,6 +370,17 @@ public:
 			configs += ";";
 			configs += configurations[i];
 		}
+
+        // Find aliases for generating visual studio solutions
+        configAlias.clear();
+        for (unsigned int i = 0; i < configurations.size(); ++i)
+        {
+            const std::string& s = configurations[i];
+            if (s == "Debug")
+                configAlias[s] = VSDebugConfiguration;
+            else if (s == "RelWithDebInfo")
+                configAlias[s] = VSRelWithDebInfoConfiguration;
+        }
 
 		// Add a cache definition
 		mf->AddCacheDefinition(
@@ -3741,6 +3755,8 @@ public:
 		}
 		context.fc.WritePopScope();
 
+        const std::map<std::string, std::string> configAlias = context.self->GetVSConfigAlias();
+
 		// Iterate over all configurations and define them:
 		std::vector<std::string>::const_iterator
 			iter = context.self->GetConfigurations().begin(),
@@ -3754,9 +3770,11 @@ public:
 			// Using base config
 			context.fc.WriteCommand("Using", ".ProjectCommon");
 
+            std::map<std::string, std::string>::const_iterator vsconfigIter = configAlias.find(configName);
+            const std::string& vsconfig = vsconfigIter == configAlias.end() ? configName : vsconfigIter->second;
 			// Output platform (TODO: CURRENTLY ONLY HANDLED FOR WINDOWS)
 			context.fc.WriteVariable("Platform", Quote(context.self->GetPlatformName()));
-			context.fc.WriteVariable("Config", Quote(configName));
+			context.fc.WriteVariable("Config", Quote(vsconfig));
 
 			context.fc.WritePopScope();
 		}
@@ -3766,11 +3784,32 @@ public:
 			Wrap(context.self->GetConfigurations(), ".BaseProject_", ""));
 	}
 
+    static void WriteVSConfigAlias(
+        GenerationContext& context, const std::string& targetName)
+    {
+        const std::map<std::string, std::string> configAlias = context.self->GetVSConfigAlias();
+        for (std::map<std::string, std::string>::const_iterator
+            iter = configAlias.begin(),
+            end = configAlias.end();
+            iter != end; ++iter)
+        {
+            std::vector<std::string> aliasTargets;
+            aliasTargets.push_back(targetName + "-" + iter->first);
+            context.fc.WriteCommand("Alias", Quote(targetName + "-" + iter->second));
+            context.fc.WritePushScope();
+            context.fc.WriteArray("Targets",
+                Wrap(aliasTargets, "'", "'"));
+            context.fc.WritePopScope();
+        }
+    }
+
 	static void WriteVSProject(
 		GenerationContext& context,
 		cmGeneratorTarget& target)
 	{
 		const std::string& targetName = target.GetName();
+
+        WriteVSConfigAlias(context, targetName);
 
 		context.fc.WriteCommand("VCXProject",
 			Quote(targetName + "-project"));
@@ -3836,13 +3875,15 @@ public:
 			rootDirectory += "/";
 		}
 
-		context.fc.WriteCommand("VCXProject", Quote(buildTargetName + "-project"));
+        WriteVSConfigAlias(context, buildTargetName);
+        context.fc.WriteCommand("VCXProject", Quote(buildTargetName + "-project"));
 		context.fc.WritePushScope();
 		context.fc.WriteVariable("ProjectOutput", Quote(rootDirectory + buildTargetName + ".vcxproj"));
 		context.fc.WritePopScope();
 
 		if (finalTargetName != buildTargetName)
 		{
+            WriteVSConfigAlias(context, finalTargetName);
 			context.fc.WriteCommand("VCXProject", Quote(finalTargetName + "-project"));
 			context.fc.WritePushScope();
 			context.fc.WriteVariable("ProjectOutput", Quote(rootDirectory + finalTargetName + ".vcxproj"));
@@ -4016,7 +4057,7 @@ void cmGlobalFastbuildGenerator::EnableLanguage(
 {
 	// Create list of configurations requested by user's cache, if any.
 	this->cmGlobalGenerator::EnableLanguage(lang, mf, optional);
-	Detail::Detection::DetectConfigurations(this, mf, this->Configurations);
+	Detail::Detection::DetectConfigurations(this, mf, this->Configurations,this->VSConfigAlias);
 }
 
 //----------------------------------------------------------------------------
@@ -4171,6 +4212,11 @@ void cmGlobalFastbuildGenerator::GetTargetSets(TargetDependSet& projectTargets,
 const std::vector<std::string> & cmGlobalFastbuildGenerator::GetConfigurations() const
 {
 	return Configurations;
+}
+
+const std::map<std::string,std::string> & cmGlobalFastbuildGenerator::GetVSConfigAlias() const
+{
+    return VSConfigAlias;
 }
 
 //----------------------------------------------------------------------------

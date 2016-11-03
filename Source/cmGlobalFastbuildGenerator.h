@@ -62,6 +62,7 @@ public:
 							   cmLocalGenerator* root, GeneratorVector const&);
 
 	const std::vector<std::string> & GetConfigurations() const;
+    const std::map<std::string,std::string> & GetVSConfigAlias() const;
 
     /** Set the generator-specific platform name.  Returns true if platform
     is supported and false otherwise.  */
@@ -83,6 +84,7 @@ private:
 	class Detail;
 
 	std::vector<std::string> Configurations;
+    std::map<std::string, std::string> VSConfigAlias;
     std::string DefaultPlatformName;
     std::string GeneratorPlatform;
 };
