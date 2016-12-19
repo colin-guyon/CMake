@@ -1,4 +1,3 @@
-
 /*============================================================================
 	CMake - Cross Platform Makefile Generator
 	Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
@@ -935,7 +934,14 @@ public:
 				{
 					continue;
 				}
-				linkDependencies.push_back(depTarget->GetName());
+				if (depTarget.IsUtil())
+				{
+					dependencies.push_back(depTarget->GetName());
+				}
+				else
+				{
+					linkDependencies.push_back(depTarget->GetName());
+				}
 			}
 		}
 		// first sort entries by name, to make it deterministic between runs
@@ -2722,7 +2728,7 @@ public:
 		if (!linkDependencies.empty())
 			context.fc.WriteComment(std::string("Target link dependencies: ") + Join(linkDependencies, " "));
 
-		// Output common config (for custom commands that do not depend on current config
+		// Output common config (for custom commands that do not depend on current config)
 		if (context.self->GetConfigurations().size() > 1)
 		{
 			const std::string configName = "Common";
@@ -2811,8 +2817,8 @@ public:
 		}
 
 		// Output the prebuild/Prelink commands
-		WriteCustomBuildSteps(context, lg, target, target.GetPreBuildCommands(), "PreBuild", dependencies);
-		WriteCustomBuildSteps(context, lg, target, target.GetPreLinkCommands(), "PreLink", dependencies);
+		WriteCustomBuildSteps(context, lg, target, target.GetPreBuildCommands(), "PreBuildCommands", dependencies);
+		WriteCustomBuildSteps(context, lg, target, target.GetPreLinkCommands(), "PreLinkCommands", dependencies);
 
 		// Output the ExportAll (Prelink) command if WINDOWS_EXPORT_ALL_SYMBOLS is on
 		bool addExportAll = false;
@@ -2844,11 +2850,37 @@ public:
 		}
 		if (!target.GetPreBuildCommands().empty())
 		{
-			preBuildSteps.push_back("PreBuild");
+			preBuildSteps.push_back("PreBuildCommands");
 		}
 		if (!target.GetPreLinkCommands().empty())
 		{
-			preBuildSteps.push_back("PreLink");
+			linkDependencies.push_back(targetName + "-PreLinkCommands");
+		}
+		bool hasPreBuildTargets = false;
+		// Add PreBuild per-config aliases to be able to add dependencies to all prebuild steps of linked targets
+		configIter = context.self->GetConfigurations().begin();
+		configEnd = context.self->GetConfigurations().end();
+		for (; configIter != configEnd; ++configIter)
+		{
+			const std::string & configName = *configIter;
+			std::vector<std::string> preBuildTargets;
+			for (std::vector<std::string>::const_iterator it = dependencies.begin(); it != dependencies.end(); ++it)
+				preBuildTargets.push_back(*it + "-" + configName);
+			for (std::vector<std::string>::const_iterator it = linkDependencies.begin(); it != linkDependencies.end(); ++it)
+				preBuildTargets.push_back(*it + "-PreBuild-" + configName);
+			for (std::vector<std::string>::const_iterator it = preBuildSteps.begin(); it != preBuildSteps.end(); ++it)
+				preBuildTargets.push_back(targetName + "-" + *it + "-" + configName);
+			if (hasCustomBuildRules.first)
+				preBuildTargets.push_back(targetName + "-CustomCommands-Common");
+			context.fc.WriteCommand("Alias", Quote(targetName + "-PreBuild-" + configName));
+			context.fc.WritePushScope();
+			context.fc.WriteArray("Targets",
+				Wrap(preBuildTargets, "'", "'"));
+			context.fc.WritePopScope();
+			if (!preBuildTargets.empty())
+			{
+				hasPreBuildTargets = true;
+			}
 		}
 
 		// Figure out the list of languages in use by this target
@@ -2872,14 +2904,12 @@ public:
 
 				// Add to the list of prebuild deps
 				// The prelink and prebuild commands
-				if (!preBuildSteps.empty() || hasCustomBuildRules.first)
+				if (hasPreBuildTargets)
 				{
-					std::vector<std::string> deps = Wrap(preBuildSteps, "'" + targetName + "-", "-" + configName + "'");
-					if (hasCustomBuildRules.first)
-						deps.push_back(std::string("'") + targetName + "-CustomCommands-Common'");
+					std::vector<std::string> deps;
+					deps.push_back(std::string("'") + targetName + "-PreBuild-" + configName + "'");
 					context.fc.WriteArray("PreBuildDependencies",
-						deps,
-						"+");
+						deps);
 				}
 
 				context.fc.WritePopScope();
