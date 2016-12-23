@@ -1,4 +1,5 @@
 cmake_minimum_required (VERSION 2.6)
+cmake_policy(SET CMP0054 NEW)
 project(Plugin)
 
 # Test per-target output directory properties.
@@ -31,8 +32,14 @@ set(CMAKE_CXX_STANDARD 98)
 # template support also need a flag to use the newer C++ library.
 if (CMAKE_CXX_COMPILER_ID STREQUAL HP AND
     CMAKE_CXX98_STANDARD_COMPILE_OPTION STREQUAL "+hpxstd98")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -AA")
+  string(APPEND CMAKE_CXX_FLAGS " -AA")
 endif ()
+
+# Clang/C2 in C++98 mode cannot properly handle some of MSVC headers
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
+    CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+  set(CMAKE_CXX_STANDARD 11)
+endif()
 
 # Create an executable that exports an API for use by plugins.
 add_executable(example_exe src/example_exe.cxx)
@@ -52,13 +59,8 @@ target_link_libraries(example_mod_1 example_exe)
 
 if(CMAKE_SHARED_LIBRARY_SONAME_C_FLAG AND
     "${CMAKE_C_CREATE_SHARED_MODULE}" MATCHES "SONAME_FLAG")
-  # Add a second plugin that should not have any soname.
-  add_library(example_mod_2 MODULE src/example_mod_1.c)
-  target_link_libraries(example_mod_2 example_exe)
-  set_property(TARGET example_mod_2 PROPERTY NO_SONAME 1)
-
   # Verify that targets export with proper IMPORTED SONAME properties.
-  export(TARGETS example_mod_1 example_mod_2 NAMESPACE exp_
+  export(TARGETS example_mod_1 NAMESPACE exp_
     FILE ${CMAKE_CURRENT_BINARY_DIR}/mods.cmake)
 
   include(ExternalProject)
@@ -68,7 +70,7 @@ if(CMAKE_SHARED_LIBRARY_SONAME_C_FLAG AND
     DOWNLOAD_COMMAND ""
     INSTALL_COMMAND ""
   )
-  add_dependencies(PluginTest example_mod_1 example_mod_2)
+  add_dependencies(PluginTest example_mod_1)
 endif()
 
 # TODO:

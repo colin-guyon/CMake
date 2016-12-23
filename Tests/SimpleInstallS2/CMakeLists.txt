@@ -209,9 +209,9 @@ else()
     ARCHIVE DESTINATION MyTest/lib/static
     OPTIONAL # for coverage...target should always exist
     )
-  install(FILES lib1.h DESTINATION MyTest/include/foo)
+  install(FILES lib1.h DESTINATION MyTest/include/$<1:foo>$<0:/wrong>)
   install(FILES lib2.h
-    DESTINATION MyTest/include/foo
+    DESTINATION $<1:MyTest/include/foo>$<0:/wrong>
     COMPONENT Development
     PERMISSIONS OWNER_READ OWNER_WRITE
     RENAME lib2renamed.h
@@ -252,7 +252,7 @@ else()
   file(REMOVE_RECURSE "${CMAKE_INSTALL_PREFIX}/MyTest/share/CVS")
   file(REMOVE_RECURSE "${CMAKE_INSTALL_PREFIX}/MyTest/share/TestSubDir/CVS")
   install(
-    DIRECTORY TestSubDir scripts/ DESTINATION MyTest/share
+    DIRECTORY TestSubDir $<1:scripts/>$<0:/wrong> DESTINATION $<1:MyTest/share>$<0:/wrong>
     FILE_PERMISSIONS OWNER_READ OWNER_WRITE
     DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
                           GROUP_READ GROUP_EXECUTE
@@ -263,14 +263,14 @@ else()
 
   # Alternate directory installation for coverage.
   install(
-    DIRECTORY scripts/ DESTINATION MyTest/share/alt
+    DIRECTORY $<1:scripts/>$<0:/wrong> DESTINATION $<1:MyTest/share/alt>$<0:/wrong>
     COMPONENT Development
     USE_SOURCE_PERMISSIONS
     PATTERN "CVS" EXCLUDE
     REGEX "\\.txt$" EXCLUDE
     )
   install(
-    DIRECTORY TestSubDir DESTINATION MyTest/share/alt
+    DIRECTORY TestSubDir DESTINATION $<1:MyTest/share/alt>$<0:/wrong>
     FILE_PERMISSIONS OWNER_READ OWNER_WRITE
     DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
                           GROUP_READ GROUP_EXECUTE
@@ -348,7 +348,7 @@ if(UNIX AND NOT APPLE)
   #    if(NOT SKIP_TZ)
   #      message("compress found and it was not a script")
   #      message("output from file command: [${output}]")
-  #      set(CPACK_GENERATOR "${CPACK_GENERATOR};TZ")
+  #      list(APPEND CPACK_GENERATOR "TZ")
   #    else()
   #      message("compress found, but it was a script so dont use it")
   #      message("output from file command: [${output}]")
@@ -357,13 +357,14 @@ if(UNIX AND NOT APPLE)
   find_program(found_bz2
     NAMES bzip2)
   if(found_bz2)
-    set(CPACK_GENERATOR "${CPACK_GENERATOR};TBZ2")
+    list(APPEND CPACK_GENERATOR "TBZ2")
   endif()
 endif()
 
 set(CPACK_PACKAGE_EXECUTABLES "SimpleInstall" "Simple Install")
 set(CMAKE_INSTALL_MFC_LIBRARIES 1)
 set(CMAKE_INSTALL_DEBUG_LIBRARIES 1)
+set(CMAKE_INSTALL_UCRT_LIBRARIES 1)
 include(InstallRequiredSystemLibraries)
 
 if(CTEST_TEST_CPACK)

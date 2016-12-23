@@ -9,8 +9,8 @@ Synopsis
 .. parsed-literal::
 
  cmake [<options>] (<path-to-source> | <path-to-existing-build>)
- cmake [(-D<var>=<value>)...] -P <cmake-script-file>
- cmake --build <dir> [<options>] [-- <build-tool-options>...]
+ cmake [(-D <var>=<value>)...] -P <cmake-script-file>
+ cmake --build <dir> [<options>...] [-- <build-tool-options>...]
  cmake -E <command> [<options>...]
  cmake --find-package <options>...
 
@@ -26,6 +26,8 @@ their build process with platform-independent CMake listfiles included
 in each directory of a source tree with the name CMakeLists.txt.
 Users build a project by using CMake to generate a build system for a
 native tool on their platform.
+
+.. _`CMake Options`:
 
 Options
 =======
@@ -47,22 +49,7 @@ Options
  display help for each variable.
 
 ``--build <dir>``
- Build a CMake-generated project binary tree.
-
- This abstracts a native build tool's command-line interface with the
- following options:
-
- ::
-
-   <dir>          = Project binary directory to be built.
-   --target <tgt> = Build <tgt> instead of default targets.
-   --config <cfg> = For multi-configuration tools, choose <cfg>.
-   --clean-first  = Build target 'clean' first, then build.
-                    (To clean only, use --target 'clean'.)
-   --use-stderr   = Ignored.  Behavior is default in CMake >= 3.0.
-   --             = Pass remaining options to the native tool.
-
- Run cmake --build with no options for quick help.
+ See `Build Tool Mode`_.
 
 ``-N``
  View mode only.
@@ -79,12 +66,7 @@ Options
  done before the -P argument.
 
 ``--find-package``
- Run in pkg-config like mode.
-
- Search a package using find_package() and print the resulting flags
- to stdout.  This can be used to use cmake instead of pkg-config to
- find installed libraries in plain Makefile-based projects or in
- autoconf-based projects (via share/aclocal/cmake.m4).
+ See `Find-Package Tool Mode`_.
 
 ``--graphviz=[file]``
  Generate graphviz of dependencies, see CMakeGraphVizOptions.cmake for more.
@@ -113,14 +95,23 @@ Options
 ``--debug-output``
  Put cmake in a debug mode.
 
- Print extra stuff during the cmake run like stack traces with
+ Print extra information during the cmake run like stack traces with
  message(send_error ) calls.
 
 ``--trace``
  Put cmake in trace mode.
 
- Print a trace of all calls made and from where with
- message(send_error ) calls.
+ Print a trace of all calls made and from where.
+
+``--trace-expand``
+ Put cmake in trace mode.
+
+ Like ``--trace``, but with variables expanded.
+
+``--trace-source=<file>``
+ Put cmake in trace mode, but output only lines of a specified file.
+
+ Multiple options are allowed.
 
 ``--warn-uninitialized``
  Warn about uninitialized values.
@@ -147,6 +138,38 @@ Options
 
 .. include:: OPTIONS_HELP.txt
 
+Build Tool Mode
+===============
+
+CMake provides a command-line signature to build an already-generated
+project binary tree::
+
+ cmake --build <dir> [<options>...] [-- <build-tool-options>...]
+
+This abstracts a native build tool's command-line interface with the
+following options:
+
+``--build <dir>``
+  Project binary directory to be built.  This is required and must be first.
+
+``--target <tgt>``
+  Build ``<tgt>`` instead of default targets.  May only be specified once.
+
+``--config <cfg>``
+  For multi-configuration tools, choose configuration ``<cfg>``.
+
+``--clean-first``
+  Build target ``clean`` first, then build.
+  (To clean only, use ``--target clean``.)
+
+``--use-stderr``
+  Ignored.  Behavior is default in CMake >= 3.0.
+
+``--``
+  Pass remaining options to the native tool.
+
+Run ``cmake --build`` with no options for quick help.
+
 Command-Line Tool Mode
 ======================
 
@@ -157,20 +180,64 @@ CMake provides builtin command-line tools through the signature::
 Run ``cmake -E`` or ``cmake -E help`` for a summary of commands.
 Available commands are:
 
+``capabilities``
+  Report cmake capabilities in JSON format. The output is a JSON object
+  with the following keys:
+
+  ``version``
+    A JSON object with version information. Keys are:
+
+    ``string``
+      The full version string as displayed by cmake ``--version``.
+    ``major``
+      The major version number in integer form.
+    ``minor``
+      The minor version number in integer form.
+    ``patch``
+      The patch level in integer form.
+    ``suffix``
+      The cmake version suffix string.
+    ``isDirty``
+      A bool that is set if the cmake build is from a dirty tree.
+
+  ``generators``
+    A list available generators. Each generator is a JSON object with the
+    following keys:
+
+    ``name``
+      A string containing the name of the generator.
+    ``toolsetSupport``
+      ``true`` if the generator supports toolsets and ``false`` otherwise.
+    ``platformSupport``
+      ``true`` if the generator supports platforms and ``false`` otherwise.
+    ``extraGenerators``
+      A list of strings with all the extra generators compatible with
+      the generator.
+
+  ``serverMode``
+    ``true`` if cmake supports server-mode and ``false`` otherwise.
+
 ``chdir <dir> <cmd> [<arg>...]``
   Change the current working directory and run a command.
 
 ``compare_files <file1> <file2>``
-  Check if file1 is same as file2.
+  Check if ``<file1>`` is same as ``<file2>``. If files are the same,
+  then returns 0, if not it returns 1.
 
-``copy <file> <destination>``
-  Copy file to destination (either file or directory).
+``copy <file>... <destination>``
+  Copy files to ``<destination>`` (either file or directory).
+  If multiple files are specified, the ``<destination>`` must be
+  directory and it must exist.
 
-``copy_directory <source> <destination>``
-  Copy directory 'source' content to directory 'destination'.
+``copy_directory <dir>... <destination>``
+  Copy directories to ``<destination>`` directory.
+  If ``<destination>`` directory does not exist it will be created.
 
-``copy_if_different <in-file> <out-file>``
-  Copy file if input has changed.
+``copy_if_different <file>... <destination>``
+  Copy files to ``<destination>`` (either file or directory) if
+  they have changed.
+  If multiple files are specified, the ``<destination>`` must be
+  directory and it must exist.
 
 ``echo [<string>...]``
   Displays arguments as text.
@@ -182,22 +249,32 @@ Available commands are:
   Run command in a modified environment.
 
 ``environment``
-  Display the current environment.
+  Display the current environment variables.
 
-``make_directory <dir>``
-  Create a directory.
+``make_directory <dir>...``
+  Create ``<dir>`` directories.  If necessary, create parent
+  directories too.  If a directory already exists it will be
+  silently ignored.
 
-``md5sum [<file>...]``
-  Compute md5sum of files.
+``md5sum <file>...``
+  Create MD5 checksum of files in ``md5sum`` compatible format::
 
-``remove [-f] [<file>...]``
-  Remove the file(s), use ``-f`` to force it.
+     351abe79cd3800b38cdfb25d45015a15  file1.txt
+     052f86c15bbde68af55c7f7b340ab639  file2.txt
+
+``remove [-f] <file>...``
+  Remove the file(s), use ``-f`` to force it.  If a file does
+  not exist it will be silently ignored.
 
 ``remove_directory <dir>``
-  Remove a directory and its contents.
+  Remove a directory and its contents.  If a directory does
+  not exist it will be silently ignored.
 
 ``rename <oldname> <newname>``
   Rename a file or directory (on one volume).
+
+``server``
+  Launch :manual:`cmake-server(7)` mode.
 
 ``sleep <number>...``
   Sleep for given number of seconds.
@@ -215,6 +292,10 @@ Available commands are:
     names start in ``-``.
   ``--mtime=<date>``
     Specify modification time recorded in tarball entries.
+  ``--format=<format>``
+    Specify the format of the archive to be created.
+    Supported formats are: ``7zip``, ``gnutar``, ``pax``,
+    ``paxr`` (restricted pax, default), and ``zip``.
 
 ``time <command> [<args>...]``
   Run command and return elapsed time.
@@ -223,7 +304,8 @@ Available commands are:
   Touch a file.
 
 ``touch_nocreate <file>``
-  Touch a file if it exists but do not create it.
+  Touch a file if it exists but do not create it.  If a file does
+  not exist it will be silently ignored.
 
 UNIX-specific Command-Line Tools
 --------------------------------
@@ -251,6 +333,24 @@ The following ``cmake -E`` commands are available only on Windows:
 
 ``write_regv <key> <value>``
   Write Windows registry value.
+
+Find-Package Tool Mode
+======================
+
+CMake provides a helper for Makefile-based projects with the signature::
+
+  cmake --find-package <options>...
+
+This runs in a pkg-config like mode.
+
+Search a package using :command:`find_package()` and print the resulting flags
+to stdout.  This can be used to use cmake instead of pkg-config to find
+installed libraries in plain Makefile-based projects or in autoconf-based
+projects (via ``share/aclocal/cmake.m4``).
+
+.. note::
+  This mode is not well-supported due to some technical limitations.
+  It is kept for compatibility but should not be used in new projects.
 
 See Also
 ========

@@ -68,7 +68,7 @@ The complete Config mode command signature is::
                [NO_CMAKE_PATH]
                [NO_SYSTEM_ENVIRONMENT_PATH]
                [NO_CMAKE_PACKAGE_REGISTRY]
-               [NO_CMAKE_BUILDS_PATH]
+               [NO_CMAKE_BUILDS_PATH] # Deprecated; does nothing.
                [NO_CMAKE_SYSTEM_PATH]
                [NO_CMAKE_SYSTEM_PACKAGE_REGISTRY]
                [CMAKE_FIND_ROOT_PATH_BOTH |
@@ -170,11 +170,21 @@ is acceptable the following variables are set:
 ``<package>_VERSION_COUNT``
   number of version components, 0 to 4
 
-and the corresponding package configuration file is loaded.  When
-multiple package configuration files are available whose version files
+and the corresponding package configuration file is loaded.
+When multiple package configuration files are available whose version files
 claim compatibility with the version requested it is unspecified which
-one is chosen.  No attempt is made to choose a highest or closest
-version number.
+one is chosen: unless the variable :variable:`CMAKE_FIND_PACKAGE_SORT_ORDER`
+is set no attempt is made to choose a highest or closest version number.
+
+To control the order in which ``find_package`` checks for compatibiliy use
+the two variables :variable:`CMAKE_FIND_PACKAGE_SORT_ORDER` and
+:variable:`CMAKE_FIND_PACKAGE_SORT_DIRECTION`.
+For instance in order to select the highest version one can set::
+
+  SET(CMAKE_FIND_PACKAGE_SORT_ORDER NATURAL)
+  SET(CMAKE_FIND_PACKAGE_SORT_DIRECTION DEC)
+
+before calling ``find_package``.
 
 Config mode provides an elaborate interface and search procedure.
 Much of the interface is provided for completeness and for use
@@ -194,13 +204,16 @@ configuration file.  The tables below show the directories searched.
 Each entry is meant for installation trees following Windows (W), UNIX
 (U), or Apple (A) conventions::
 
-  <prefix>/                                               (W)
-  <prefix>/(cmake|CMake)/                                 (W)
-  <prefix>/<name>*/                                       (W)
-  <prefix>/<name>*/(cmake|CMake)/                         (W)
-  <prefix>/(lib/<arch>|lib|share)/cmake/<name>*/          (U)
-  <prefix>/(lib/<arch>|lib|share)/<name>*/                (U)
-  <prefix>/(lib/<arch>|lib|share)/<name>*/(cmake|CMake)/  (U)
+  <prefix>/                                                       (W)
+  <prefix>/(cmake|CMake)/                                         (W)
+  <prefix>/<name>*/                                               (W)
+  <prefix>/<name>*/(cmake|CMake)/                                 (W)
+  <prefix>/(lib/<arch>|lib|share)/cmake/<name>*/                  (U)
+  <prefix>/(lib/<arch>|lib|share)/<name>*/                        (U)
+  <prefix>/(lib/<arch>|lib|share)/<name>*/(cmake|CMake)/          (U)
+  <prefix>/<name>*/(lib/<arch>|lib|share)/cmake/<name>*/          (W/U)
+  <prefix>/<name>*/(lib/<arch>|lib|share)/<name>*/                (W/U)
+  <prefix>/<name>*/(lib/<arch>|lib|share)/<name>*/(cmake|CMake)/  (W/U)
 
 On systems supporting OS X Frameworks and Application Bundles the
 following directories are searched for frameworks or bundles
@@ -228,9 +241,9 @@ installation directory.  Those marked with (U) are intended for
 installations on UNIX platforms where the prefix is shared by multiple
 packages.  This is merely a convention, so all (W) and (U) directories
 are still searched on all platforms.  Directories marked with (A) are
-intended for installations on Apple platforms.  The cmake variables
-``CMAKE_FIND_FRAMEWORK`` and ``CMAKE_FIND_APPBUNDLE``
-determine the order of preference as specified below.
+intended for installations on Apple platforms.  The
+:variable:`CMAKE_FIND_FRAMEWORK` and :variable:`CMAKE_FIND_APPBUNDLE`
+variables determine the order of preference.
 
 The set of installation prefixes is constructed using the following
 steps.  If ``NO_DEFAULT_PATH`` is specified all ``NO_*`` options are
@@ -265,20 +278,14 @@ enabled.
 
      PATH
 
-5. Search project build trees recently configured in a :manual:`cmake-gui(1)`.
-   This can be skipped if ``NO_CMAKE_BUILDS_PATH`` is passed.  It is intended
-   for the case when a user is building multiple dependent projects one
-   after another.
-   (This step is implemented only on Windows.)
-
-6. Search paths stored in the CMake :ref:`User Package Registry`.
+5. Search paths stored in the CMake :ref:`User Package Registry`.
    This can be skipped if ``NO_CMAKE_PACKAGE_REGISTRY`` is passed or by
    setting the :variable:`CMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY`
    to ``TRUE``.
    See the :manual:`cmake-packages(7)` manual for details on the user
    package registry.
 
-7. Search cmake variables defined in the Platform files for the
+6. Search cmake variables defined in the Platform files for the
    current system.  This can be skipped if ``NO_CMAKE_SYSTEM_PATH`` is
    passed::
 
@@ -286,14 +293,14 @@ enabled.
      CMAKE_SYSTEM_FRAMEWORK_PATH
      CMAKE_SYSTEM_APPBUNDLE_PATH
 
-8. Search paths stored in the CMake :ref:`System Package Registry`.
+7. Search paths stored in the CMake :ref:`System Package Registry`.
    This can be skipped if ``NO_CMAKE_SYSTEM_PACKAGE_REGISTRY`` is passed
    or by setting the
    :variable:`CMAKE_FIND_PACKAGE_NO_SYSTEM_PACKAGE_REGISTRY` to ``TRUE``.
    See the :manual:`cmake-packages(7)` manual for details on the system
    package registry.
 
-9. Search paths specified by the ``PATHS`` option.  These are typically
+8. Search paths specified by the ``PATHS`` option.  These are typically
    hard-coded guesses.
 
 .. |FIND_XXX| replace:: find_package
@@ -301,7 +308,6 @@ enabled.
 .. |CMAKE_FIND_ROOT_PATH_MODE_XXX| replace::
    :variable:`CMAKE_FIND_ROOT_PATH_MODE_PACKAGE`
 
-.. include:: FIND_XXX_MAC.txt
 .. include:: FIND_XXX_ROOT.txt
 .. include:: FIND_XXX_ORDER.txt
 

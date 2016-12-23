@@ -24,9 +24,10 @@ to build with such toolchains.
 std::auto_ptr
 -------------
 
-Some implementations have a ``std::auto_ptr`` which can not be used as a
-return value from a function. ``std::auto_ptr`` may not be used. Use
-``cmsys::auto_ptr`` instead.
+The ``std::auto_ptr`` template is deprecated in C++11.  We want to use it
+so we can build on C++98 compilers but we do not want to turn off compiler
+warnings about deprecated interfaces in general.  Use the ``CM_AUTO_PTR``
+macro instead.
 
 size_t
 ------
@@ -52,9 +53,9 @@ When adding the first supported feature to a particular CompilerId, it is
 necessary to list support for all features known to cmake (See
 :variable:`CMAKE_C_COMPILE_FEATURES` and
 :variable:`CMAKE_CXX_COMPILE_FEATURES` as appropriate), where available for
-the compiler.  Furthermore, set ``CMAKE_<LANG>_STANDARD_DEFAULT`` to the
-default language standard level the compiler uses, or to the empty string
-if the compiler has no notion of standard levels (such as ``MSVC``).
+the compiler.  Ensure that the ``CMAKE_<LANG>_STANDARD_DEFAULT`` is set to
+the computed internal variable ``CMAKE_<LANG>_STANDARD_COMPUTED_DEFAULT``
+for compiler versions which should be supported.
 
 It is sensible to record the features for the most recent version of a
 particular CompilerId first, and then work backwards.  It is sensible to
@@ -518,8 +519,16 @@ containing just the line::
 
 The ``cmake-module`` directive will scan the module file to extract
 reStructuredText markup from comment blocks that start in ``.rst:``.
-Add to the top of ``Modules/<module-name>.cmake`` a
-:ref:`Line Comment` block of the form:
+At the top of ``Modules/<module-name>.cmake``, begin with the following
+license notice:
+
+.. code-block:: cmake
+
+ # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+ # file Copyright.txt or https://cmake.org/licensing for details.
+
+After this notice, add a *BLANK* line.  Then, add documentation using
+a :ref:`Line Comment` block of the form:
 
 .. code-block:: cmake
 
@@ -551,6 +560,9 @@ For example, a ``Modules/Findxxx.cmake`` module may contain:
 
 .. code-block:: cmake
 
+ # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+ # file Copyright.txt or https://cmake.org/licensing for details.
+
  #.rst:
  # FindXxx
  # -------
@@ -578,25 +590,6 @@ For example, a ``Modules/Findxxx.cmake`` module may contain:
    <code>
  endmacro()
 
-After the top documentation block, leave a *BLANK* line, and then add a
-copyright and licence notice block like this one (change only the year
-range and name)
-
-.. code-block:: cmake
-
-  #=============================================================================
-  # Copyright 2009-2011 Your Name
-  #
-  # Distributed under the OSI-approved BSD License (the "License");
-  # see accompanying file Copyright.txt for details.
-  #
-  # This software is distributed WITHOUT ANY WARRANTY; without even the
-  # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  # See the License for more information.
-  #=============================================================================
-  # (To distribute this file outside of CMake, substitute the full
-  #  License text for the above reference.)
-
 Test the documentation formatting by running
 ``cmake --help-module <module-name>``, and also by enabling the
 ``SPHINX_HTML`` and ``SPHINX_MAN`` options to build the documentation.
@@ -605,6 +598,7 @@ have a .cmake file in this directory NOT show up in the modules
 documentation, simply leave out the ``Help/module/<module-name>.rst``
 file and the ``Help/manual/cmake-modules.7.rst`` toctree entry.
 
+.. _`Find Modules`:
 
 Find Modules
 ------------
@@ -717,7 +711,7 @@ same consideration applies to macros, functions and imported targets.
   If False, do not try to use the relevant CMake wrapping command.
 
 ``Xxx_Yy_FOUND``
-  If False, optional Yy part of Xxx sytem is not available.
+  If False, optional Yy part of Xxx system is not available.
 
 ``Xxx_FOUND``
   Set to false, or undefined, if we haven't found, or don't want to use
@@ -789,10 +783,17 @@ A Sample Find Module
 We will describe how to create a simple find module for a library
 ``Foo``.
 
-The first thing that is needed is documentation.  CMake's documentation
-system requires you to start the file with a documentation marker and
-the name of the module.  You should follow this with a simple statement
-of what the module does.
+The first thing that is needed is a license notice.
+
+.. code-block:: cmake
+
+ # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+ # file Copyright.txt or https://cmake.org/licensing for details.
+
+Next we need module documentation.  CMake's documentation system requires you
+to follow the license notice with a blank line and then with a documentation
+marker and the name of the module.  You should follow this with a simple
+statement of what the module does.
 
 .. code-block:: cmake
 
@@ -823,24 +824,6 @@ If the package provides any macros, they should be listed here, but can
 be documented where they are defined.  See the `Module
 Documentation`_ section above for more details.
 
-After the documentation, leave a blank line, and then add a copyright and
-licence notice block
-
-.. code-block:: cmake
-
-  #=============================================================================
-  # Copyright 2009-2011 Your Name
-  #
-  # Distributed under the OSI-approved BSD License (the "License");
-  # see accompanying file Copyright.txt for details.
-  #
-  # This software is distributed WITHOUT ANY WARRANTY; without even the
-  # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  # See the License for more information.
-  #=============================================================================
-  # (To distribute this file outside of CMake, substitute the full
-  #  License text for the above reference.)
-
 Now the actual libraries and so on have to be found.  The code here will
 obviously vary from module to module (dealing with that, after all, is the
 point of find modules), but there tends to be a common pattern for libraries.
@@ -866,7 +849,6 @@ look.
   find_path(Foo_INCLUDE_DIR
     NAMES foo.h
     PATHS ${PC_Foo_INCLUDE_DIRS}
-    # if you need to put #include <Foo/foo.h> in your code, add:
     PATH_SUFFIXES Foo
   )
   find_library(Foo_LIBRARY

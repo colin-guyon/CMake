@@ -1,35 +1,36 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmScriptGenerator_h
 #define cmScriptGenerator_h
 
-#include "cmStandardIncludes.h"
+#include <cmConfigure.h> // IWYU pragma: keep
+
+#include <ostream>
+#include <string>
+#include <vector>
 
 class cmScriptGeneratorIndent
 {
 public:
-  cmScriptGeneratorIndent(): Level(0) {}
-  cmScriptGeneratorIndent(int level): Level(level) {}
+  cmScriptGeneratorIndent()
+    : Level(0)
+  {
+  }
+  cmScriptGeneratorIndent(int level)
+    : Level(level)
+  {
+  }
   void Write(std::ostream& os) const
-    {
-    for(int i=0; i < this->Level; ++i)
-      {
+  {
+    for (int i = 0; i < this->Level; ++i) {
       os << " ";
-      }
     }
+  }
   cmScriptGeneratorIndent Next(int step = 2) const
-    {
+  {
     return cmScriptGeneratorIndent(this->Level + step);
-    }
+  }
+
 private:
   int Level;
 };
@@ -53,9 +54,6 @@ public:
 
   void Generate(std::ostream& os, const std::string& config,
                 std::vector<std::string> const& configurationTypes);
-
-  const std::vector<std::string>& GetConfigurations() const
-    { return this->Configurations; }
 
 protected:
   typedef cmScriptGeneratorIndent Indent;

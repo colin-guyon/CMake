@@ -1,14 +1,5 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCoreTryCompile_h
 #define cmCoreTryCompile_h
 
@@ -23,14 +14,13 @@
 class cmCoreTryCompile : public cmCommand
 {
 public:
-
-  protected:
+protected:
   /**
    * This is the core code for try compile. It is here so that other
    * commands, such as TryRun can access the same logic without
    * duplication.
    */
-  int TryCompileCode(std::vector<std::string> const& argv);
+  int TryCompileCode(std::vector<std::string> const& argv, bool isTryRun);
 
   /**
    * This deletes all the files created by TryCompileCode.
@@ -44,8 +34,8 @@ public:
   TryCompileCode. The result is stored in OutputFile. If nothing is found,
   the error message is stored in FindErrorMessage.
    */
-  void FindOutputFile(const std::string& targetName);
-
+  void FindOutputFile(const std::string& targetName,
+                      cmState::TargetType targetType);
 
   cmTypeMacro(cmCoreTryCompile, cmCommand);
 
@@ -53,8 +43,6 @@ public:
   std::string OutputFile;
   std::string FindErrorMessage;
   bool SrcFileSignature;
-
 };
-
 
 #endif

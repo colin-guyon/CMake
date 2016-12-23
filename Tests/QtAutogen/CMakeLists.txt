@@ -1,6 +1,13 @@
-cmake_minimum_required(VERSION 2.8.11)
+cmake_minimum_required(VERSION 3.1)
 
 project(QtAutogen)
+
+# Tell find_package(Qt5) where to find Qt.
+if(QT_QMAKE_EXECUTABLE)
+  get_filename_component(Qt_BIN_DIR "${QT_QMAKE_EXECUTABLE}" PATH)
+  get_filename_component(Qt_PREFIX_DIR "${Qt_BIN_DIR}" PATH)
+  set(CMAKE_PREFIX_PATH ${Qt_PREFIX_DIR})
+endif()
 
 if (QT_TEST_VERSION STREQUAL 4)
   find_package(Qt4 REQUIRED)
@@ -27,8 +34,8 @@ else()
   include_directories(${Qt5Widgets_INCLUDE_DIRS})
   set(QT_LIBRARIES Qt5::Widgets)
 
-  if(Qt5_POSITION_INDEPENDENT_CODE)
-    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+  if(Qt5_POSITION_INDEPENDENT_CODE AND CMAKE_CXX_COMPILE_OPTIONS_PIC)
+    add_definitions(${CMAKE_CXX_COMPILE_OPTIONS_PIC})
   endif()
 
   macro(qtx_wrap_cpp)
@@ -37,9 +44,15 @@ else()
 
 endif()
 
+# -- RCC only
 add_executable(rcconly rcconly.cpp second_resource.qrc)
 set_property(TARGET rcconly PROPERTY AUTORCC ON)
 target_link_libraries(rcconly ${QT_QTCORE_TARGET})
+
+# -- RCC empty
+add_executable(rcc_empty rcc_empty.cpp rcc_empty_resource.qrc)
+set_property(TARGET rcc_empty PROPERTY AUTORCC ON)
+target_link_libraries(rcc_empty ${QT_QTCORE_TARGET})
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
@@ -56,7 +69,15 @@ add_library(codeeditorLib STATIC codeeditor.cpp)
 
 add_library(privateSlot OBJECT private_slot.cpp)
 
+configure_file(generated_resource.qrc.in generated_resource.qrc @ONLY)
+add_custom_command(
+  OUTPUT generated.txt
+  COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/generated.txt.in" "${CMAKE_CURRENT_BINARY_DIR}/generated.txt"
+  DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/generated.txt.in"
+  )
+
 add_custom_target(generate_moc_input
+  DEPENDS generated.txt
   COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/myinterface.h.in" "${CMAKE_CURRENT_BINARY_DIR}"
   COMMAND ${CMAKE_COMMAND} -E rename "${CMAKE_CURRENT_BINARY_DIR}/myinterface.h.in" "${CMAKE_CURRENT_BINARY_DIR}/myinterface.h"
 )
@@ -67,10 +88,9 @@ add_custom_command(
   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/myotherinterface.h.in"
 )
 
-message("CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
-if (CMAKE_BUILD_TYPE MATCHES "[Dd][Ee][Bb][Uu][Gg]" AND NOT CMAKE_CONFIGURATION_TYPES)
+if (NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_GENERATOR STREQUAL Ninja)
   set(debug_srcs "$<$<CONFIG:Debug>:debug_class.cpp>" $<$<CONFIG:Debug>:debug_resource.qrc>)
-  add_definitions(-DTEST_DEBUG_CLASS)
+  set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS $<$<CONFIG:Debug>:TEST_DEBUG_CLASS>)
 endif()
 
 # The -no-protection option disables the generation of include guards.  Verify
@@ -83,10 +103,22 @@ add_executable(QtAutogen main.cpp calwidget.cpp second_widget.cpp foo.cpp blub.c
                multiplewidgets.cpp
                xyz.cpp yaf.cpp gadget.cpp $<TARGET_OBJECTS:privateSlot>
                test.qrc second_resource.qrc resourcetester.cpp generated.cpp ${debug_srcs}
+               ${CMAKE_CURRENT_BINARY_DIR}/generated_resource.qrc
 )
 set_property(TARGET QtAutogen APPEND PROPERTY AUTOGEN_TARGET_DEPENDS generate_moc_input "${CMAKE_CURRENT_BINARY_DIR}/myotherinterface.h")
 
-set_target_properties(QtAutogen codeeditorLib privateSlot PROPERTIES AUTOMOC TRUE)
+add_executable(targetObjectsTest targetObjectsTest.cpp $<TARGET_OBJECTS:privateSlot>)
+target_link_libraries(targetObjectsTest ${QT_LIBRARIES})
+
+set_target_properties(
+  QtAutogen codeeditorLib privateSlot targetObjectsTest
+  PROPERTIES
+  AUTOMOC TRUE
+)
+
+# Test AUTOMOC and AUTORCC on source files with the same name
+# but in different subdirectories
+add_subdirectory(sameName)
 
 include(GenerateExportHeader)
 # The order is relevant here. B depends on A, and B headers depend on A
@@ -125,6 +157,7 @@ try_compile(RCC_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/autorcc_depends"
   autorcc_depends
   CMAKE_FLAGS "-DQT_QMAKE_EXECUTABLE:FILEPATH=${QT_QMAKE_EXECUTABLE}" "-DQT_TEST_VERSION=${QT_TEST_VERSION}"
+              "-DCMAKE_PREFIX_PATH=${Qt_PREFIX_DIR}"
   OUTPUT_VARIABLE output
 )
 if (NOT RCC_DEPENDS)
@@ -140,7 +173,7 @@ set(timeformat "%Y%j%H%M%S")
 file(TIMESTAMP "${qrc_file1}" file1_before "${timeformat}")
 
 execute_process(COMMAND "${CMAKE_COMMAND}" -E sleep 1) # Ensure that the timestamp will change.
-execute_process(COMMAND "${CMAKE_COMMAND}" -E touch "${CMAKE_CURRENT_SOURCE_DIR}/autorcc_depends/res1_input.txt")
+execute_process(COMMAND "${CMAKE_COMMAND}" -E touch "${CMAKE_CURRENT_BINARY_DIR}/autorcc_depends/res1/input.txt")
 
 execute_process(COMMAND "${CMAKE_COMMAND}" --build .
   WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/autorcc_depends"
@@ -150,4 +183,27 @@ file(TIMESTAMP "${qrc_file1}" file1_step1 "${timeformat}")
 
 if (NOT file1_step1 GREATER file1_before)
   message(SEND_ERROR "file1 (${qrc_file1}) should have changed in the first step!")
+endif()
+
+#-----------------------------------------------------------------------------
+try_compile(MOC_RERUN
+  "${CMAKE_CURRENT_BINARY_DIR}/automoc_rerun"
+  "${CMAKE_CURRENT_SOURCE_DIR}/automoc_rerun"
+  automoc_rerun
+  CMAKE_FLAGS "-DQT_QMAKE_EXECUTABLE:FILEPATH=${QT_QMAKE_EXECUTABLE}" "-DQT_TEST_VERSION=${QT_TEST_VERSION}"
+              "-DCMAKE_PREFIX_PATH=${Qt_PREFIX_DIR}"
+  OUTPUT_VARIABLE output
+)
+if (NOT MOC_RERUN)
+  message(SEND_ERROR "Initial build of automoc_rerun failed. Output: ${output}")
+endif()
+
+configure_file(automoc_rerun/test1.h.in2 automoc_rerun/test1.h COPYONLY)
+
+execute_process(COMMAND "${CMAKE_COMMAND}" --build .
+  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/automoc_rerun"
+  RESULT_VARIABLE automoc_rerun_result
+  )
+if (automoc_rerun_result)
+  message(SEND_ERROR "Second build of automoc_rerun failed.")
 endif()

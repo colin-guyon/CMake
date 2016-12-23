@@ -1,16 +1,9 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmGraphAdjacencyList_h
 #define cmGraphAdjacencyList_h
+
+#include <cmConfigure.h>
 
 #include "cmStandardIncludes.h"
 
@@ -22,10 +15,26 @@
 class cmGraphEdge
 {
 public:
-  cmGraphEdge(): Dest(0), Strong(true) {}
-  cmGraphEdge(int n): Dest(n), Strong(true) {}
-  cmGraphEdge(int n, bool s): Dest(n), Strong(s) {}
-  cmGraphEdge(cmGraphEdge const& r): Dest(r.Dest), Strong(r.Strong) {}
+  cmGraphEdge()
+    : Dest(0)
+    , Strong(true)
+  {
+  }
+  cmGraphEdge(int n)
+    : Dest(n)
+    , Strong(true)
+  {
+  }
+  cmGraphEdge(int n, bool s)
+    : Dest(n)
+    , Strong(s)
+  {
+  }
+  cmGraphEdge(cmGraphEdge const& r)
+    : Dest(r.Dest)
+    , Strong(r.Strong)
+  {
+  }
   operator int() const { return this->Dest; }
 
   bool IsStrong() const { return this->Strong; }
@@ -33,8 +42,14 @@ private:
   int Dest;
   bool Strong;
 };
-struct cmGraphEdgeList: public std::vector<cmGraphEdge> {};
-struct cmGraphNodeList: public std::vector<int> {};
-struct cmGraphAdjacencyList: public std::vector<cmGraphEdgeList> {};
+struct cmGraphEdgeList : public std::vector<cmGraphEdge>
+{
+};
+struct cmGraphNodeList : public std::vector<int>
+{
+};
+struct cmGraphAdjacencyList : public std::vector<cmGraphEdgeList>
+{
+};
 
 #endif

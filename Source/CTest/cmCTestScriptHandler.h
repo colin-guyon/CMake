@@ -1,27 +1,21 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCTestScriptHandler_h
 #define cmCTestScriptHandler_h
 
+#include <cmConfigure.h>
 
 #include "cmCTestGenericHandler.h"
-#include "cmListFileCache.h"
+#include "cmTypeMacro.h"
 
-class cmMakefile;
-class cmLocalGenerator;
-class cmGlobalGenerator;
-class cmake;
+#include <string>
+#include <vector>
+
+class cmCTest;
 class cmCTestCommand;
+class cmGlobalGenerator;
+class cmMakefile;
+class cmake;
 
 /** \class cmCTestScriptHandler
  * \brief A class that handles ctest -S invocations
@@ -67,24 +61,24 @@ public:
   /**
    * Add a script to run, and if is should run in the current process
    */
-  void AddConfigurationScript(const char *, bool pscope);
+  void AddConfigurationScript(const char*, bool pscope);
 
   /**
    * Run a dashboard using a specified confiuration script
    */
-  int ProcessHandler();
+  int ProcessHandler() CM_OVERRIDE;
 
   /*
    * Run a script
    */
-  static bool RunScript(cmCTest* ctest, const char *script, bool InProcess,
-    int* returnValue);
+  static bool RunScript(cmCTest* ctest, const char* script, bool InProcess,
+                        int* returnValue);
   int RunCurrentScript();
 
   /*
    * Empty Binary Directory
    */
-  static bool EmptyBinaryDirectory(const char *dir);
+  static bool EmptyBinaryDirectory(const char* dir);
 
   /*
    * Write an initial CMakeCache.txt from the given contents.
@@ -105,12 +99,12 @@ public:
   double GetRemainingTimeAllowed();
 
   cmCTestScriptHandler();
-  ~cmCTestScriptHandler();
+  ~cmCTestScriptHandler() CM_OVERRIDE;
 
-  void Initialize();
+  void Initialize() CM_OVERRIDE;
 
   void CreateCMake();
-  cmake* GetCMake() { return this->CMake;}
+  cmake* GetCMake() { return this->CMake; }
 private:
   // reads in a script
   int ReadInScript(const std::string& total_script_arg);
@@ -165,10 +159,9 @@ private:
   // what time in seconds did this script start running
   double ScriptStartTime;
 
-  cmMakefile *Makefile;
-  cmLocalGenerator *LocalGenerator;
-  cmGlobalGenerator *GlobalGenerator;
-  cmake *CMake;
+  cmMakefile* Makefile;
+  cmGlobalGenerator* GlobalGenerator;
+  cmake* CMake;
 };
 
 #endif

@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # BundleUtilities
 # ---------------
@@ -52,6 +55,9 @@
 # Then clear all the keys and call verify_app on the final bundle to
 # ensure that it is truly standalone.
 #
+# As an optional parameter (IGNORE_ITEM) a list of file names can be passed,
+# which are then ignored (e.g. IGNORE_ITEM "vcredist_x86.exe;vcredist_x64.exe")
+#
 # ::
 #
 #   COPY_AND_FIXUP_BUNDLE(<src> <dst> <libs> <dirs>)
@@ -66,6 +72,9 @@
 # Verifies that an application <app> appears valid based on running
 # analysis tools on it.  Calls "message(FATAL_ERROR" if the application
 # is not verified.
+#
+# As an optional parameter (IGNORE_ITEM) a list of file names can be passed,
+# which are then ignored (e.g. IGNORE_ITEM "vcredist_x86.exe;vcredist_x64.exe")
 #
 # ::
 #
@@ -140,6 +149,9 @@
 # all of them and copy prerequisite libs into the bundle and then do
 # appropriate install_name_tool fixups.
 #
+# As an optional parameter (IGNORE_ITEM) a list of file names can be passed,
+# which are then ignored (e.g. IGNORE_ITEM "vcredist_x86.exe;vcredist_x64.exe")
+#
 # ::
 #
 #   COPY_RESOLVED_ITEM_INTO_BUNDLE(<resolved_item> <resolved_embedded_item>)
@@ -196,6 +208,9 @@
 # bundle are contained within the bundle or are "system" libraries,
 # presumed to exist everywhere.
 #
+# As an optional parameter (IGNORE_ITEM) a list of file names can be passed,
+# which are then ignored (e.g. IGNORE_ITEM "vcredist_x86.exe;vcredist_x64.exe")
+#
 # ::
 #
 #   VERIFY_BUNDLE_SYMLINKS(<bundle> <result_var> <info_var>)
@@ -203,19 +218,6 @@
 # Verifies that any symlinks found in the bundle point to other files
 # that are already also in the bundle...  Anything that points to an
 # external file causes this function to fail the verification.
-
-#=============================================================================
-# Copyright 2008-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 # The functions defined in this file depend on the get_prerequisites function
 # (and possibly others) found in:
@@ -424,7 +426,9 @@ function(get_item_rpaths item rpaths_var)
     string(REGEX MATCHALL "rpath [^\n]+" load_cmds_ov "${load_cmds_ov}")
     string(REGEX REPLACE "rpath " "" load_cmds_ov "${load_cmds_ov}")
     if(load_cmds_ov)
-      gp_append_unique(${rpaths_var} "${load_cmds_ov}")
+      foreach(rpath ${load_cmds_ov})
+        gp_append_unique(${rpaths_var} "${rpath}")
+      endforeach()
     endif()
   endif()
 
@@ -477,7 +481,7 @@ function(set_bundle_key_values keys_var context item exepath dirs copyflag)
 
     get_item_rpaths("${resolved_item}" item_rpaths)
 
-    if(item MATCHES "[^/]+\\.framework/")
+    if((NOT item MATCHES "\\.dylib$") AND (item MATCHES "[^/]+\\.framework/"))
       # For frameworks, construct the name under the embedded path from the
       # opening "${item_name}.framework/" to the closing "/${item_name}":
       #
@@ -523,6 +527,11 @@ endfunction()
 function(get_bundle_keys app libs dirs keys_var)
   set(${keys_var} PARENT_SCOPE)
 
+  set(options)
+  set(oneValueArgs)
+  set(multiValueArgs IGNORE_ITEM)
+  cmake_parse_arguments(CFG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
+
   get_bundle_and_executable("${app}" bundle executable valid)
   if(valid)
     # Always use the exepath of the main bundle executable for @executable_path
@@ -552,10 +561,24 @@ function(get_bundle_keys app libs dirs keys_var)
       set_bundle_key_values(${keys_var} "${lib}" "${lib}" "${exepath}" "${dirs}" 0 "${main_rpaths}")
 
       set(prereqs "")
-      get_prerequisites("${lib}" prereqs 1 1 "${exepath}" "${dirs}" "${main_rpaths}")
-      foreach(pr ${prereqs})
-        set_bundle_key_values(${keys_var} "${lib}" "${pr}" "${exepath}" "${dirs}" 1 "${main_rpaths}")
-      endforeach()
+      set(ignoreFile FALSE)
+      get_filename_component(prereq_filename ${lib} NAME)
+      if(NOT "${CFG_IGNORE_ITEM}" STREQUAL "" )
+        foreach(item ${CFG_IGNORE_ITEM})
+            if("${item}" STREQUAL "${prereq_filename}")
+              set(ignoreFile TRUE)
+            endif()
+        endforeach()
+      endif()
+
+      if(NOT ignoreFile)
+        get_prerequisites("${lib}" prereqs 1 1 "${exepath}" "${dirs}" "${main_rpaths}")
+        foreach(pr ${prereqs})
+          set_bundle_key_values(${keys_var} "${lib}" "${pr}" "${exepath}" "${dirs}" 1 "${main_rpaths}")
+        endforeach()
+      else()
+        message(STATUS "Ignoring file: ${prereq_filename}")
+      endif()
     endforeach()
 
     # For each executable found in the bundle, accumulate keys as we go.
@@ -581,10 +604,24 @@ function(get_bundle_keys app libs dirs keys_var)
       # Add each prerequisite to the keys:
       #
       set(prereqs "")
-      get_prerequisites("${exe}" prereqs 1 1 "${exepath}" "${dirs}" "${exe_rpaths}")
-      foreach(pr ${prereqs})
-        set_bundle_key_values(${keys_var} "${exe}" "${pr}" "${exepath}" "${dirs}" 1 "${exe_rpaths}")
-      endforeach()
+      set(ignoreFile FALSE)
+      get_filename_component(prereq_filename ${exe} NAME)
+      if(NOT "${CFG_IGNORE_ITEM}" STREQUAL "" )
+        foreach(item ${CFG_IGNORE_ITEM})
+            if("${item}" STREQUAL "${prereq_filename}")
+              set(ignoreFile TRUE)
+            endif()
+        endforeach()
+      endif()
+
+      if(NOT ignoreFile)
+        get_prerequisites("${exe}" prereqs 1 1 "${exepath}" "${dirs}" "${exe_rpaths}")
+        foreach(pr ${prereqs})
+          set_bundle_key_values(${keys_var} "${exe}" "${pr}" "${exepath}" "${dirs}" 1 "${exe_rpaths}")
+        endforeach()
+      else()
+        message(STATUS "Ignoring file: ${prereq_filename}")
+      endif()
     endforeach()
 
     # Propagate values to caller's scope:
@@ -796,12 +833,19 @@ function(fixup_bundle app libs dirs)
   message(STATUS "  libs='${libs}'")
   message(STATUS "  dirs='${dirs}'")
 
+  set(options)
+  set(oneValueArgs)
+  set(multiValueArgs IGNORE_ITEM)
+  cmake_parse_arguments(CFG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
+
+  message(STATUS "  ignoreItems='${CFG_IGNORE_ITEM}'")
+
   get_bundle_and_executable("${app}" bundle executable valid)
   if(valid)
     get_filename_component(exepath "${executable}" PATH)
 
     message(STATUS "fixup_bundle: preparing...")
-    get_bundle_keys("${app}" "${libs}" "${dirs}" keys)
+    get_bundle_keys("${app}" "${libs}" "${dirs}" keys IGNORE_ITEM "${CFG_IGNORE_ITEM}")
 
     message(STATUS "fixup_bundle: copying...")
     list(LENGTH keys n)
@@ -855,7 +899,7 @@ function(fixup_bundle app libs dirs)
     clear_bundle_keys(keys)
 
     message(STATUS "fixup_bundle: verifying...")
-    verify_app("${app}")
+    verify_app("${app}" IGNORE_ITEM "${CFG_IGNORE_ITEM}")
   else()
     message(SEND_ERROR "error: fixup_bundle: not a valid bundle")
   endif()
@@ -875,6 +919,11 @@ function(verify_bundle_prerequisites bundle result_var info_var)
   set(info "")
   set(count 0)
 
+  set(options)
+  set(oneValueArgs)
+  set(multiValueArgs IGNORE_ITEM)
+  cmake_parse_arguments(CFG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
+
   get_bundle_main_executable("${bundle}" main_bundle_exe)
 
   get_bundle_all_executables("${bundle}" file_list)
@@ -885,37 +934,53 @@ function(verify_bundle_prerequisites bundle result_var info_var)
       message(STATUS "executable file ${count}: ${f}")
 
       set(prereqs "")
-      get_prerequisites("${f}" prereqs 1 1 "${exepath}" "")
+      set(ignoreFile FALSE)
+      get_filename_component(prereq_filename ${f} NAME)
 
-      # On the Mac,
-      # "embedded" and "system" prerequisites are fine... anything else means
-      # the bundle's prerequisites are not verified (i.e., the bundle is not
-      # really "standalone")
-      #
-      # On Windows (and others? Linux/Unix/...?)
-      # "local" and "system" prereqs are fine...
-      #
-      set(external_prereqs "")
+      if(NOT "${CFG_IGNORE_ITEM}" STREQUAL "" )
+        foreach(item ${CFG_IGNORE_ITEM})
+            if("${item}" STREQUAL "${prereq_filename}")
+              set(ignoreFile TRUE)
+            endif()
+        endforeach()
+      endif()
 
-      foreach(p ${prereqs})
-        set(p_type "")
-        gp_file_type("${f}" "${p}" p_type)
+      if(NOT ignoreFile)
+        get_prerequisites("${f}" prereqs 1 1 "${exepath}" "")
 
-        if(APPLE)
-          if(NOT "${p_type}" STREQUAL "embedded" AND NOT "${p_type}" STREQUAL "system")
-            set(external_prereqs ${external_prereqs} "${p}")
+        # On the Mac,
+        # "embedded" and "system" prerequisites are fine... anything else means
+        # the bundle's prerequisites are not verified (i.e., the bundle is not
+        # really "standalone")
+        #
+        # On Windows (and others? Linux/Unix/...?)
+        # "local" and "system" prereqs are fine...
+        #
+
+        set(external_prereqs "")
+
+        foreach(p ${prereqs})
+          set(p_type "")
+          gp_file_type("${f}" "${p}" p_type)
+
+          if(APPLE)
+            if(NOT "${p_type}" STREQUAL "embedded" AND NOT "${p_type}" STREQUAL "system")
+              set(external_prereqs ${external_prereqs} "${p}")
+            endif()
+          else()
+            if(NOT "${p_type}" STREQUAL "local" AND NOT "${p_type}" STREQUAL "system")
+              set(external_prereqs ${external_prereqs} "${p}")
+            endif()
           endif()
-        else()
-          if(NOT "${p_type}" STREQUAL "local" AND NOT "${p_type}" STREQUAL "system")
-            set(external_prereqs ${external_prereqs} "${p}")
-          endif()
+        endforeach()
+
+        if(external_prereqs)
+          # Found non-system/somehow-unacceptable prerequisites:
+          set(result 0)
+          set(info ${info} "external prerequisites found:\nf='${f}'\nexternal_prereqs='${external_prereqs}'\n")
         endif()
-      endforeach()
-
-      if(external_prereqs)
-        # Found non-system/somehow-unacceptable prerequisites:
-        set(result 0)
-        set(info ${info} "external prerequisites found:\nf='${f}'\nexternal_prereqs='${external_prereqs}'\n")
+      else()
+        message(STATUS "Ignoring file: ${prereq_filename}")
       endif()
   endforeach()
 
@@ -945,6 +1010,11 @@ function(verify_app app)
   set(verified 0)
   set(info "")
 
+  set(options)
+  set(oneValueArgs)
+  set(multiValueArgs IGNORE_ITEM)
+  cmake_parse_arguments(CFG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
+
   get_bundle_and_executable("${app}" bundle executable valid)
 
   message(STATUS "===========================================================================")
@@ -955,7 +1025,7 @@ function(verify_app app)
 
   # Verify that the bundle does not have any "external" prerequisites:
   #
-  verify_bundle_prerequisites("${bundle}" verified info)
+  verify_bundle_prerequisites("${bundle}" verified info IGNORE_ITEM "${CFG_IGNORE_ITEM}")
   message(STATUS "verified='${verified}'")
   message(STATUS "info='${info}'")
   message(STATUS "")

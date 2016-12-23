@@ -1,8 +1,8 @@
 #
 # Create exe.
 #
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTEST_CXX_FLAGS")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DTEST_C_FLAGS")
+string(APPEND CMAKE_CXX_FLAGS " -DTEST_CXX_FLAGS")
+string(APPEND CMAKE_C_FLAGS " -DTEST_C_FLAGS")
 
 # Create an imported target for if(TARGET) test below.
 add_library(ExeImportedTarget UNKNOWN IMPORTED)
@@ -146,7 +146,8 @@ add_dependencies(notInAllCustom notInAllExe)
 #
 add_subdirectory(Temp)
 
-if(CMAKE_COMPILER_IS_GNUCXX AND CMAKE_INCLUDE_SYSTEM_FLAG_CXX)
+if(CMAKE_COMPILER_IS_GNUCXX AND CMAKE_INCLUDE_SYSTEM_FLAG_CXX
+   AND NOT XCODE) # XCODE is excluded due to #15687
   add_executable(testSystemDir testSystemDir.cxx)
   set_target_properties(testSystemDir PROPERTIES COMPILE_FLAGS "-Werror")
 endif()

@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 2.8.11)
+cmake_policy(SET CMP0054 NEW)
 project(AliasTarget)
 
 set(CMAKE_CXX_STANDARD 98)
@@ -7,8 +8,14 @@ set(CMAKE_CXX_STANDARD 98)
 # template support also need a flag to use the newer C++ library.
 if (CMAKE_CXX_COMPILER_ID STREQUAL HP AND
     CMAKE_CXX98_STANDARD_COMPILE_OPTION STREQUAL "+hpxstd98")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -AA")
+  string(APPEND CMAKE_CXX_FLAGS " -AA")
 endif ()
+
+# Clang/C2 in C++98 mode cannot properly handle some of MSVC headers
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
+    CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+  set(CMAKE_CXX_STANDARD 11)
+endif()
 
 add_library(foo SHARED empty.cpp)
 add_library(PREFIX::Foo ALIAS foo)
@@ -37,7 +44,9 @@ target_include_directories(bat PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 add_executable(targetgenerator targetgenerator.cpp)
 add_executable(Generator::Target ALIAS targetgenerator)
 
-add_custom_target(usealias Generator::Target)
+add_subdirectory(subdir)
+
+add_custom_target(usealias Generator::Target $<TARGET_FILE:Sub::tgt>)
 add_dependencies(bat usealias)
 
 if (NOT TARGET Another::Alias)
@@ -57,6 +66,11 @@ endif()
 add_library(iface INTERFACE)
 add_library(Alias::Iface ALIAS iface)
 
+get_property(_aliased_target_set TARGET foo PROPERTY ALIASED_TARGET SET)
+if(_aliased_target_set)
+  message(SEND_ERROR "ALIASED_TARGET is set for target foo")
+endif()
+
 get_target_property(_notAlias1 foo ALIASED_TARGET)
 if (NOT DEFINED _notAlias1)
   message(SEND_ERROR "_notAlias1 is not defined")
@@ -69,12 +83,6 @@ if (NOT _notAlias1 STREQUAL _notAlias1-NOTFOUND)
 endif()
 
 get_property(_notAlias2 TARGET foo PROPERTY ALIASED_TARGET)
-if (NOT DEFINED _notAlias2)
-  message(SEND_ERROR "_notAlias2 is not defined")
-endif()
 if (_notAlias2)
-  message(SEND_ERROR "_notAlias2 is defined, but foo is not an ALIAS")
-endif()
-if (NOT _notAlias2 STREQUAL _notAlias2-NOTFOUND)
-  message(SEND_ERROR "_notAlias2 not defined to a -NOTFOUND variant")
+  message(SEND_ERROR "_notAlias2 evaluates to true, but foo is not an ALIAS")
 endif()

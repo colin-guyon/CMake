@@ -1,19 +1,12 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmVisualStudioTargetGenerator_h
 #define cmVisualStudioTargetGenerator_h
+
+#include <cmConfigure.h>
+
 #include "cmStandardIncludes.h"
 
-class cmTarget;
 class cmMakefile;
 class cmGeneratorTarget;
 class cmGeneratedFileStream;
@@ -29,19 +22,14 @@ struct cmIDEFlagTable;
 class cmVisualStudio10TargetGenerator
 {
 public:
-  cmVisualStudio10TargetGenerator(cmTarget* target,
+  cmVisualStudio10TargetGenerator(cmGeneratorTarget* target,
                                   cmGlobalVisualStudio10Generator* gg);
   ~cmVisualStudio10TargetGenerator();
   void Generate();
   // used by cmVisualStudioGeneratorOptions
-  void WritePlatformConfigTag(
-    const char* tag,
-    const std::string& config,
-    int indentLevel,
-    const char* attribute = 0,
-    const char* end = 0,
-    std::ostream* strm = 0
-    );
+  void WritePlatformConfigTag(const char* tag, const std::string& config,
+                              int indentLevel, const char* attribute = 0,
+                              const char* end = 0, std::ostream* strm = 0);
 
 private:
   struct ToolSource
@@ -49,7 +37,9 @@ private:
     cmSourceFile const* SourceFile;
     bool RelativePath;
   };
-  struct ToolSources: public std::vector<ToolSource> {};
+  struct ToolSources : public std::vector<ToolSource>
+  {
+  };
 
   std::string ConvertPath(std::string const& path, bool forceRelative);
   void ConvertToWindowsSlash(std::string& s);
@@ -69,6 +59,7 @@ private:
   void WriteEmbeddedResourceGroup();
   void WriteWinRTReferences();
   void WriteWinRTPackageCertificateKeyFile();
+  void WriteXamlFilesGroup();
   void WritePathAndIncrementalLinkOptions();
   void WriteItemDefinitionGroups();
   void VerifyNecessaryFiles();
@@ -77,17 +68,24 @@ private:
   void WriteMissingFilesWP81();
   void WriteMissingFilesWS80();
   void WriteMissingFilesWS81();
+  void WriteMissingFilesWS10_0();
+  void WritePlatformExtensions();
+  void WriteSinglePlatformExtension(std::string const& extension,
+                                    std::string const& version);
+  void WriteSDKReferences();
+  void WriteSingleSDKReference(std::string const& extension,
+                               std::string const& version);
   void WriteCommonMissingFiles(const std::string& manifestFile);
   void WriteTargetSpecificReferences();
 
   bool ComputeClOptions();
   bool ComputeClOptions(std::string const& configName);
   void WriteClOptions(std::string const& config,
-                      std::vector<std::string> const & includes);
+                      std::vector<std::string> const& includes);
   bool ComputeRcOptions();
   bool ComputeRcOptions(std::string const& config);
   void WriteRCOptions(std::string const& config,
-                      std::vector<std::string> const & includes);
+                      std::vector<std::string> const& includes);
   bool ComputeMasmOptions();
   bool ComputeMasmOptions(std::string const& config);
   void WriteMasmOptions(std::string const& config,
@@ -96,11 +94,11 @@ private:
   bool ComputeLinkOptions(std::string const& config);
   void WriteLinkOptions(std::string const& config);
   void WriteMidlOptions(std::string const& config,
-                        std::vector<std::string> const & includes);
+                        std::vector<std::string> const& includes);
   void WriteAntBuildOptions(std::string const& config);
   void OutputLinkIncremental(std::string const& configName);
   void WriteCustomRule(cmSourceFile const* source,
-                       cmCustomCommand const & command);
+                       cmCustomCommand const& command);
   void WriteCustomCommands();
   void WriteCustomCommand(cmSourceFile const* sf);
   void WriteGroups();
@@ -110,21 +108,26 @@ private:
   void AddLibraries(cmComputeLinkInformation& cli,
                     std::vector<std::string>& libVec);
   void WriteLibOptions(std::string const& config);
+  void WriteManifestOptions(std::string const& config);
   void WriteEvents(std::string const& configName);
   void WriteEvent(const char* name,
                   std::vector<cmCustomCommand> const& commands,
                   std::string const& configName);
   void WriteGroupSources(const char* name, ToolSources const& sources,
-                         std::vector<cmSourceGroup>& );
+                         std::vector<cmSourceGroup>&);
   void AddMissingSourceGroups(std::set<cmSourceGroup*>& groupsUsed,
                               const std::vector<cmSourceGroup>& allGroups);
   bool IsResxHeader(const std::string& headerFile);
+  bool IsXamlHeader(const std::string& headerFile);
+  bool IsXamlSource(const std::string& headerFile);
 
   cmIDEFlagTable const* GetClFlagTable() const;
   cmIDEFlagTable const* GetRcFlagTable() const;
   cmIDEFlagTable const* GetLibFlagTable() const;
   cmIDEFlagTable const* GetLinkFlagTable() const;
   cmIDEFlagTable const* GetMasmFlagTable() const;
+
+  bool ForceOld(const std::string& source) const;
 
 private:
   typedef cmVisualStudioGeneratorOptions Options;
@@ -134,7 +137,7 @@ private:
   OptionsMap MasmOptions;
   OptionsMap LinkOptions;
   std::string PathToVcxproj;
-  cmTarget* Target;
+  std::vector<std::string> Configurations;
   cmGeneratorTarget* GeneratorTarget;
   cmMakefile* Makefile;
   std::string Platform;
@@ -142,7 +145,7 @@ private:
   std::string Name;
   bool MSTools;
   bool NsightTegra;
-  int  NsightTegraVersion[4];
+  int NsightTegraVersion[4];
   bool TargetCompileAsWinRT;
   cmGlobalVisualStudio10Generator* GlobalGenerator;
   cmGeneratedFileStream* BuildFileStream;

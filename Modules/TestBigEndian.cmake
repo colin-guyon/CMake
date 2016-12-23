@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # TestBigEndian
 # -------------
@@ -10,19 +13,6 @@
 #
 #   TEST_BIG_ENDIAN(VARIABLE)
 #   VARIABLE - variable to store the result to
-
-#=============================================================================
-# Copyright 2002-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 macro(TEST_BIG_ENDIAN VARIABLE)
   if(NOT DEFINED HAVE_${VARIABLE})
@@ -104,7 +94,7 @@ macro(TEST_BIG_ENDIAN VARIABLE)
           message(SEND_ERROR "TEST_BIG_ENDIAN found no result!")
         endif()
 
-        file(APPEND ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeError.log
+        file(APPEND ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeOutput.log
           "Determining if the system is big endian passed with the following output:\n${OUTPUT}\nTestEndianess.c:\n${TEST_ENDIANESS_FILE_CONTENT}\n\n")
 
       else()

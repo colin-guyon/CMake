@@ -1,14 +1,5 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmVariableRequiresCommand_h
 #define cmVariableRequiresCommand_h
 
@@ -18,12 +9,10 @@ class cmVariableRequiresCommand : public cmCommand
 {
 public:
   cmTypeMacro(cmVariableRequiresCommand, cmCommand);
-  virtual cmCommand* Clone() { return new cmVariableRequiresCommand; }
-  virtual bool InitialPass(std::vector<std::string> const& args,
-                           cmExecutionStatus &status);
-  virtual std::string GetName() const { return "variable_requires";}
-  virtual bool IsDiscouraged() const { return true; }
+  cmCommand* Clone() CM_OVERRIDE { return new cmVariableRequiresCommand; }
+  bool InitialPass(std::vector<std::string> const& args,
+                   cmExecutionStatus& status) CM_OVERRIDE;
+  std::string GetName() const CM_OVERRIDE { return "variable_requires"; }
 };
-
 
 #endif

@@ -51,16 +51,31 @@ function(run_cmake test)
   if(APPLE)
     list(APPEND RunCMake_TEST_OPTIONS -DCMAKE_POLICY_DEFAULT_CMP0025=NEW)
   endif()
+  if(RunCMake_GENERATOR STREQUAL "Visual Studio 7 .NET 2003" AND NOT RunCMake_WARN_VS71)
+    list(APPEND RunCMake_TEST_OPTIONS -DCMAKE_WARN_VS71=OFF)
+  endif()
   if(RunCMake_MAKE_PROGRAM)
     list(APPEND RunCMake_TEST_OPTIONS "-DCMAKE_MAKE_PROGRAM=${RunCMake_MAKE_PROGRAM}")
+  endif()
+  if(RunCMake_TEST_OUTPUT_MERGE)
+    set(actual_stderr_var actual_stdout)
+    set(actual_stderr "")
+  else()
+    set(actual_stderr_var actual_stderr)
+  endif()
+  if(DEFINED RunCMake_TEST_TIMEOUT)
+    set(maybe_timeout TIMEOUT ${RunCMake_TEST_TIMEOUT})
+  else()
+    set(maybe_timeout "")
   endif()
   if(RunCMake_TEST_COMMAND)
     execute_process(
       COMMAND ${RunCMake_TEST_COMMAND}
       WORKING_DIRECTORY "${RunCMake_TEST_BINARY_DIR}"
       OUTPUT_VARIABLE actual_stdout
-      ERROR_VARIABLE actual_stderr
+      ERROR_VARIABLE ${actual_stderr_var}
       RESULT_VARIABLE actual_result
+      ${maybe_timeout}
       )
   else()
     execute_process(
@@ -73,17 +88,18 @@ function(run_cmake test)
                 ${RunCMake_TEST_OPTIONS}
       WORKING_DIRECTORY "${RunCMake_TEST_BINARY_DIR}"
       OUTPUT_VARIABLE actual_stdout
-      ERROR_VARIABLE actual_stderr
+      ERROR_VARIABLE ${actual_stderr_var}
       RESULT_VARIABLE actual_result
+      ${maybe_timeout}
       )
   endif()
   set(msg "")
   if(NOT "${actual_result}" MATCHES "${expect_result}")
-    set(msg "${msg}Result is [${actual_result}], not [${expect_result}].\n")
+    string(APPEND msg "Result is [${actual_result}], not [${expect_result}].\n")
   endif()
   foreach(o out err)
     string(REGEX REPLACE "\r\n" "\n" actual_std${o} "${actual_std${o}}")
-    string(REGEX REPLACE "(^|\n)((==[0-9]+==|BullseyeCoverage|[a-z]+\\([0-9]+\\) malloc:|Error kstat returned)[^\n]*\n)+" "\\1" actual_std${o} "${actual_std${o}}")
+    string(REGEX REPLACE "(^|\n)((==[0-9]+==|BullseyeCoverage|[a-z]+\\([0-9]+\\) malloc:|Error kstat returned|[^\n]*from Time Machine by path|[^\n]*Bullseye Testing Technology)[^\n]*\n)+" "\\1" actual_std${o} "${actual_std${o}}")
     string(REGEX REPLACE "\n+$" "" actual_std${o} "${actual_std${o}}")
     set(expect_${o} "")
     if(DEFINED expect_std${o})
@@ -91,18 +107,22 @@ function(run_cmake test)
         string(REGEX REPLACE "\n" "\n expect-${o}> " expect_${o}
           " expect-${o}> ${expect_std${o}}")
         set(expect_${o} "Expected std${o} to match:\n${expect_${o}}\n")
-        set(msg "${msg}std${o} does not match that expected.\n")
+        string(APPEND msg "std${o} does not match that expected.\n")
       endif()
     endif()
   endforeach()
   unset(RunCMake_TEST_FAILED)
-  include(${top_src}/${test}-check.cmake OPTIONAL)
+  if(RunCMake-check-file AND EXISTS ${top_src}/${RunCMake-check-file})
+    include(${top_src}/${RunCMake-check-file})
+  else()
+    include(${top_src}/${test}-check.cmake OPTIONAL)
+  endif()
   if(RunCMake_TEST_FAILED)
     set(msg "${RunCMake_TEST_FAILED}\n${msg}")
   endif()
   if(msg AND RunCMake_TEST_COMMAND)
     string(REPLACE ";" "\" \"" command "\"${RunCMake_TEST_COMMAND}\"")
-    set(msg "${msg}Command was:\n command> ${command}\n")
+    string(APPEND msg "Command was:\n command> ${command}\n")
   endif()
   if(msg)
     string(REGEX REPLACE "\n" "\n actual-out> " actual_out " actual-out> ${actual_stdout}")
@@ -123,3 +143,6 @@ function(run_cmake_command test)
   set(RunCMake_TEST_COMMAND "${ARGN}")
   run_cmake(${test})
 endfunction()
+
+# Protect RunCMake tests from calling environment.
+unset(ENV{MAKEFLAGS})

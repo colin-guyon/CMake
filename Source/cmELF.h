@@ -1,19 +1,15 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmELF_h
 #define cmELF_h
 
+#include <cmConfigure.h>
+
+#include <iosfwd>
+#include <string>
+
 #if !defined(CMAKE_USE_ELF_PARSER)
-# error "This file may be included only if CMAKE_USE_ELF_PARSER is enabled."
+#error "This file may be included only if CMAKE_USE_ELF_PARSER is enabled."
 #endif
 
 class cmELFInternal;
@@ -31,10 +27,7 @@ public:
   ~cmELF();
 
   /** Get the error message if any.  */
-  std::string const& GetErrorMessage() const
-    {
-    return this->ErrorMessage;
-    }
+  std::string const& GetErrorMessage() const { return this->ErrorMessage; }
 
   /** Boolean conversion.  True if the ELF file is valid.  */
   operator bool() const { return this->Valid(); }

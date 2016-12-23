@@ -1,41 +1,39 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCPackIFWPackage.h"
 
+#include "CPack/cmCPackComponentGroup.h"
+#include "CPack/cmCPackGenerator.h"
+#include "CPack/cmCPackLog.h"
 #include "cmCPackIFWGenerator.h"
+#include "cmCPackIFWInstaller.h"
+#include "cmGeneratedFileStream.h"
+#include "cmSystemTools.h"
+#include "cmTimestamp.h"
+#include "cmXMLWriter.h"
 
-#include <CPack/cmCPackLog.h>
-
-#include <cmGeneratedFileStream.h>
-#include <cmTimestamp.h>
+#include <cmConfigure.h>
+#include <map>
+#include <sstream>
+#include <stddef.h>
 
 //----------------------------------------------------------------- Logger ---
 #ifdef cmCPackLogger
-# undef cmCPackLogger
+#undef cmCPackLogger
 #endif
-#define cmCPackLogger(logType, msg)                                     \
-  do {                                                                  \
-  std::ostringstream cmCPackLog_msg;                                    \
-  cmCPackLog_msg << msg;                                                \
-  if(Generator) {                                                       \
-  Generator->Logger->Log(logType, __FILE__, __LINE__,                   \
-                         cmCPackLog_msg.str().c_str());                 \
-  }                                                                     \
-  } while ( 0 )
+#define cmCPackLogger(logType, msg)                                           \
+  do {                                                                        \
+    std::ostringstream cmCPackLog_msg;                                        \
+    cmCPackLog_msg << msg;                                                    \
+    if (Generator) {                                                          \
+      Generator->Logger->Log(logType, __FILE__, __LINE__,                     \
+                             cmCPackLog_msg.str().c_str());                   \
+    }                                                                         \
+  } while (0)
 
 //---------------------------------------------------------- CompareStruct ---
-cmCPackIFWPackage::CompareStruct::CompareStruct() :
-  Type(CompareNone)
+cmCPackIFWPackage::CompareStruct::CompareStruct()
+  : Type(CompareNone)
 {
 }
 
@@ -44,67 +42,49 @@ cmCPackIFWPackage::DependenceStruct::DependenceStruct()
 {
 }
 
-//----------------------------------------------------------------------------
 cmCPackIFWPackage::DependenceStruct::DependenceStruct(
-  const std::string &dependence)
+  const std::string& dependence)
 {
   // Search compare section
   size_t pos = std::string::npos;
-  if((pos = dependence.find("<=")) != std::string::npos)
-    {
+  if ((pos = dependence.find("<=")) != std::string::npos) {
     Compare.Type = CompareLessOrEqual;
     Compare.Value = dependence.substr(pos + 2);
-    }
-  else if((pos = dependence.find(">=")) != std::string::npos)
-    {
+  } else if ((pos = dependence.find(">=")) != std::string::npos) {
     Compare.Type = CompareGreaterOrEqual;
     Compare.Value = dependence.substr(pos + 2);
-    }
-  else if((pos = dependence.find("<")) != std::string::npos)
-    {
+  } else if ((pos = dependence.find('<')) != std::string::npos) {
     Compare.Type = CompareLess;
     Compare.Value = dependence.substr(pos + 1);
-    }
-  else if((pos = dependence.find("=")) != std::string::npos)
-    {
+  } else if ((pos = dependence.find('=')) != std::string::npos) {
     Compare.Type = CompareEqual;
     Compare.Value = dependence.substr(pos + 1);
-    }
-  else if((pos = dependence.find(">")) != std::string::npos)
-    {
+  } else if ((pos = dependence.find('>')) != std::string::npos) {
     Compare.Type = CompareGreater;
     Compare.Value = dependence.substr(pos + 1);
-    }
+  }
   Name = pos == std::string::npos ? dependence : dependence.substr(0, pos);
 }
 
-//----------------------------------------------------------------------------
 std::string cmCPackIFWPackage::DependenceStruct::NameWithCompare() const
 {
-  if (Compare.Type == CompareNone) return Name;
+  if (Compare.Type == CompareNone) {
+    return Name;
+  }
 
   std::string result = Name;
 
-  if (Compare.Type == CompareLessOrEqual)
-    {
+  if (Compare.Type == CompareLessOrEqual) {
     result += "<=";
-    }
-  else if (Compare.Type == CompareGreaterOrEqual)
-    {
+  } else if (Compare.Type == CompareGreaterOrEqual) {
     result += ">=";
-    }
-  else if (Compare.Type == CompareLess)
-    {
+  } else if (Compare.Type == CompareLess) {
     result += "<";
-    }
-  else if (Compare.Type == CompareEqual)
-    {
+  } else if (Compare.Type == CompareEqual) {
     result += "=";
-    }
-  else if (Compare.Type == CompareGreater)
-    {
+  } else if (Compare.Type == CompareGreater) {
     result += ">";
-    }
+  }
 
   result += Compare.Value;
 
@@ -112,37 +92,49 @@ std::string cmCPackIFWPackage::DependenceStruct::NameWithCompare() const
 }
 
 //------------------------------------------------------ cmCPackIFWPackage ---
-cmCPackIFWPackage::cmCPackIFWPackage() :
-  Generator(0),
-  Installer(0)
+cmCPackIFWPackage::cmCPackIFWPackage()
+  : Generator(CM_NULLPTR)
+  , Installer(CM_NULLPTR)
 {
 }
 
-//----------------------------------------------------------------------------
-const char *cmCPackIFWPackage::GetOption(const std::string &op) const
+const char* cmCPackIFWPackage::GetOption(const std::string& op) const
 {
-  const char *option = Generator ? Generator->GetOption(op) : 0;
-  return option && *option ? option : 0;
+  const char* option = Generator ? Generator->GetOption(op) : CM_NULLPTR;
+  return option && *option ? option : CM_NULLPTR;
 }
 
-//----------------------------------------------------------------------------
-bool cmCPackIFWPackage::IsOn(const std::string &op) const
+bool cmCPackIFWPackage::IsOn(const std::string& op) const
 {
   return Generator ? Generator->IsOn(op) : false;
 }
 
-//----------------------------------------------------------------------------
-std::string cmCPackIFWPackage::GetComponentName(cmCPackComponent *component)
+bool cmCPackIFWPackage::IsVersionLess(const char* version)
 {
-  if (!component) return "";
-  const char* option = GetOption(
-    "CPACK_IFW_COMPONENT_"
-    + cmsys::SystemTools::UpperCase(component->Name)
-    + "_NAME");
+  return Generator ? Generator->IsVersionLess(version) : false;
+}
+
+bool cmCPackIFWPackage::IsVersionGreater(const char* version)
+{
+  return Generator ? Generator->IsVersionGreater(version) : false;
+}
+
+bool cmCPackIFWPackage::IsVersionEqual(const char* version)
+{
+  return Generator ? Generator->IsVersionEqual(version) : false;
+}
+
+std::string cmCPackIFWPackage::GetComponentName(cmCPackComponent* component)
+{
+  if (!component) {
+    return "";
+  }
+  const char* option =
+    GetOption("CPACK_IFW_COMPONENT_" +
+              cmsys::SystemTools::UpperCase(component->Name) + "_NAME");
   return option ? option : component->Name;
 }
 
-//----------------------------------------------------------------------------
 void cmCPackIFWPackage::DefaultConfiguration()
 {
   DisplayName = "";
@@ -151,13 +143,14 @@ void cmCPackIFWPackage::DefaultConfiguration()
   ReleaseDate = "";
   Script = "";
   Licenses.clear();
+  UserInterfaces.clear();
   SortingPriority = "";
   Default = "";
+  Essential = "";
   Virtual = "";
   ForcedInstallation = "";
 }
 
-//----------------------------------------------------------------------------
 // Defaul configuration (all in one package)
 int cmCPackIFWPackage::ConfigureFromOptions()
 {
@@ -168,52 +161,43 @@ int cmCPackIFWPackage::ConfigureFromOptions()
   Name = Generator->GetRootPackageName();
 
   // Display name
-  if (const char *option = this->GetOption("CPACK_PACKAGE_NAME"))
-    {
+  if (const char* option = this->GetOption("CPACK_PACKAGE_NAME")) {
     DisplayName = option;
-    }
-  else
-    {
+  } else {
     DisplayName = "Your package";
-    }
+  }
 
   // Description
   if (const char* option =
-      this->GetOption("CPACK_PACKAGE_DESCRIPTION_SUMMARY"))
-    {
+        this->GetOption("CPACK_PACKAGE_DESCRIPTION_SUMMARY")) {
     Description = option;
-    }
-  else
-    {
+  } else {
     Description = "Your package description";
-    }
+  }
 
   // Version
-  if(const char* option = GetOption("CPACK_PACKAGE_VERSION"))
-    {
+  if (const char* option = GetOption("CPACK_PACKAGE_VERSION")) {
     Version = option;
-    }
-  else
-    {
+  } else {
     Version = "1.0.0";
-    }
+  }
 
   ForcedInstallation = "true";
 
   return 1;
 }
 
-//----------------------------------------------------------------------------
-int cmCPackIFWPackage::ConfigureFromComponent(cmCPackComponent *component)
+int cmCPackIFWPackage::ConfigureFromComponent(cmCPackComponent* component)
 {
-  if(!component) return 0;
+  if (!component) {
+    return 0;
+  }
 
   // Restore defaul configuration
   DefaultConfiguration();
 
-  std::string prefix = "CPACK_IFW_COMPONENT_"
-    + cmsys::SystemTools::UpperCase(component->Name)
-    + "_";
+  std::string prefix = "CPACK_IFW_COMPONENT_" +
+    cmsys::SystemTools::UpperCase(component->Name) + "_";
 
   // Display name
   DisplayName = component->DisplayName;
@@ -222,84 +206,79 @@ int cmCPackIFWPackage::ConfigureFromComponent(cmCPackComponent *component)
   Description = component->Description;
 
   // Version
-  if(const char* optVERSION = GetOption(prefix + "VERSION"))
-    {
+  if (const char* optVERSION = GetOption(prefix + "VERSION")) {
     Version = optVERSION;
-    }
-  else if(const char* optPACKAGE_VERSION =
-          GetOption("CPACK_PACKAGE_VERSION"))
-    {
+  } else if (const char* optPACKAGE_VERSION =
+               GetOption("CPACK_PACKAGE_VERSION")) {
     Version = optPACKAGE_VERSION;
-    }
-  else
-    {
+  } else {
     Version = "1.0.0";
-    }
+  }
 
   // Script
-  if (const char* option = GetOption(prefix + "SCRIPT"))
-    {
+  if (const char* option = GetOption(prefix + "SCRIPT")) {
     Script = option;
-    }
+  }
+
+  // User interfaces
+  if (const char* option = this->GetOption(prefix + "USER_INTERFACES")) {
+    UserInterfaces.clear();
+    cmSystemTools::ExpandListArgument(option, UserInterfaces);
+  }
 
   // CMake dependencies
-  if (!component->Dependencies.empty())
-    {
+  if (!component->Dependencies.empty()) {
     std::vector<cmCPackComponent*>::iterator dit;
-    for(dit = component->Dependencies.begin();
-        dit != component->Dependencies.end();
-        ++dit)
-      {
+    for (dit = component->Dependencies.begin();
+         dit != component->Dependencies.end(); ++dit) {
       Dependencies.insert(Generator->ComponentPackages[*dit]);
-      }
     }
+  }
 
   // QtIFW dependencies
-  if(const char* option = this->GetOption(prefix + "DEPENDS"))
-    {
+  if (const char* option = this->GetOption(prefix + "DEPENDS")) {
     std::vector<std::string> deps;
-    cmSystemTools::ExpandListArgument(option,
-                                      deps);
-    for(std::vector<std::string>::iterator
-          dit = deps.begin(); dit != deps.end(); ++dit)
-      {
+    cmSystemTools::ExpandListArgument(option, deps);
+    for (std::vector<std::string>::iterator dit = deps.begin();
+         dit != deps.end(); ++dit) {
       DependenceStruct dep(*dit);
-      if (!Generator->Packages.count(dep.Name))
-        {
+      if (!Generator->Packages.count(dep.Name)) {
         bool hasDep = Generator->DependentPackages.count(dep.Name) > 0;
-        DependenceStruct &depRef =
-          Generator->DependentPackages[dep.Name];
-        if(!hasDep)
-          {
+        DependenceStruct& depRef = Generator->DependentPackages[dep.Name];
+        if (!hasDep) {
           depRef = dep;
-          }
-        AlienDependencies.insert(&depRef);
         }
+        AlienDependencies.insert(&depRef);
       }
     }
+  }
 
   // Licenses
-  if (const char* option = this->GetOption(prefix + "LICENSES"))
-    {
+  if (const char* option = this->GetOption(prefix + "LICENSES")) {
     Licenses.clear();
-    cmSystemTools::ExpandListArgument( option, Licenses );
-    if ( Licenses.size() % 2 != 0 )
-      {
-      cmCPackLogger(cmCPackLog::LOG_WARNING, prefix << "LICENSES"
-        << " should contain pairs of <display_name> and <file_path>."
-        << std::endl);
+    cmSystemTools::ExpandListArgument(option, Licenses);
+    if (Licenses.size() % 2 != 0) {
+      cmCPackLogger(
+        cmCPackLog::LOG_WARNING, prefix
+          << "LICENSES"
+          << " should contain pairs of <display_name> and <file_path>."
+          << std::endl);
       Licenses.clear();
-      }
     }
+  }
 
   // Priority
-  if(const char* option = this->GetOption(prefix + "PRIORITY"))
-    {
+  if (const char* option = this->GetOption(prefix + "PRIORITY")) {
     SortingPriority = option;
-    }
+  }
 
   // Default
   Default = component->IsDisabledByDefault ? "false" : "true";
+
+  // Essential
+  if (this->IsOn(prefix + "ESSENTIAL")) {
+    Essential = "true";
+  }
 
   // Virtual
   Virtual = component->IsHidden ? "true" : "";
@@ -310,89 +289,81 @@ int cmCPackIFWPackage::ConfigureFromComponent(cmCPackComponent *component)
   return 1;
 }
 
-//----------------------------------------------------------------------------
-int
-cmCPackIFWPackage::ConfigureFromGroup(cmCPackComponentGroup *group)
+int cmCPackIFWPackage::ConfigureFromGroup(cmCPackComponentGroup* group)
 {
-  if(!group) return 0;
+  if (!group) {
+    return 0;
+  }
 
   // Restore defaul configuration
   DefaultConfiguration();
 
-  std::string prefix = "CPACK_IFW_COMPONENT_GROUP_"
-    + cmsys::SystemTools::UpperCase(group->Name)
-    + "_";
+  std::string prefix = "CPACK_IFW_COMPONENT_GROUP_" +
+    cmsys::SystemTools::UpperCase(group->Name) + "_";
 
   DisplayName = group->DisplayName;
   Description = group->Description;
 
   // Version
-  if(const char* optVERSION = GetOption(prefix + "VERSION"))
-    {
+  if (const char* optVERSION = GetOption(prefix + "VERSION")) {
     Version = optVERSION;
-    }
-  else if(const char* optPACKAGE_VERSION =
-          GetOption("CPACK_PACKAGE_VERSION"))
-    {
+  } else if (const char* optPACKAGE_VERSION =
+               GetOption("CPACK_PACKAGE_VERSION")) {
     Version = optPACKAGE_VERSION;
-    }
-  else
-    {
+  } else {
     Version = "1.0.0";
-    }
+  }
 
   // Script
-  if (const char* option = GetOption(prefix + "SCRIPT"))
-    {
+  if (const char* option = GetOption(prefix + "SCRIPT")) {
     Script = option;
-    }
+  }
+
+  // User interfaces
+  if (const char* option = this->GetOption(prefix + "USER_INTERFACES")) {
+    UserInterfaces.clear();
+    cmSystemTools::ExpandListArgument(option, UserInterfaces);
+  }
 
   // Licenses
-  if (const char* option = this->GetOption(prefix + "LICENSES"))
-    {
+  if (const char* option = this->GetOption(prefix + "LICENSES")) {
     Licenses.clear();
-    cmSystemTools::ExpandListArgument( option, Licenses );
-    if ( Licenses.size() % 2 != 0 )
-      {
-      cmCPackLogger(cmCPackLog::LOG_WARNING, prefix << "LICENSES"
-        << " should contain pairs of <display_name> and <file_path>."
-        << std::endl);
+    cmSystemTools::ExpandListArgument(option, Licenses);
+    if (Licenses.size() % 2 != 0) {
+      cmCPackLogger(
+        cmCPackLog::LOG_WARNING, prefix
+          << "LICENSES"
+          << " should contain pairs of <display_name> and <file_path>."
+          << std::endl);
       Licenses.clear();
-      }
     }
+  }
 
   // Priority
-  if(const char* option = this->GetOption(prefix + "PRIORITY"))
-    {
+  if (const char* option = this->GetOption(prefix + "PRIORITY")) {
     SortingPriority = option;
-    }
+  }
 
   return 1;
 }
 
-//----------------------------------------------------------------------------
-int cmCPackIFWPackage::ConfigureFromGroup(const std::string &groupName)
+int cmCPackIFWPackage::ConfigureFromGroup(const std::string& groupName)
 {
   // Group configuration
 
   cmCPackComponentGroup group;
-  std::string prefix = "CPACK_COMPONENT_GROUP_"
-      + cmsys::SystemTools::UpperCase(groupName)
-      + "_";
+  std::string prefix =
+    "CPACK_COMPONENT_GROUP_" + cmsys::SystemTools::UpperCase(groupName) + "_";
 
-  if (const char *option = GetOption(prefix + "DISPLAY_NAME"))
-    {
+  if (const char* option = GetOption(prefix + "DISPLAY_NAME")) {
     group.DisplayName = option;
-    }
-  else
-    {
+  } else {
     group.DisplayName = group.Name;
-    }
+  }
 
-  if (const char* option = GetOption(prefix + "DESCRIPTION"))
-    {
+  if (const char* option = GetOption(prefix + "DESCRIPTION")) {
     group.Description = option;
-    }
+  }
   group.IsBold = IsOn(prefix + "BOLD_TITLE");
   group.IsExpandedByDefault = IsOn(prefix + "EXPANDED");
 
@@ -400,141 +371,141 @@ int cmCPackIFWPackage::ConfigureFromGroup(const std::string &groupName)
 
   group.Name = groupName;
 
-  if(Generator)
-    {
+  if (Generator) {
     Name = Generator->GetGroupPackageName(&group);
-    }
-  else
-    {
+  } else {
     Name = group.Name;
-    }
+  }
 
   return ConfigureFromGroup(&group);
 }
 
-//----------------------------------------------------------------------------
 void cmCPackIFWPackage::GeneratePackageFile()
 {
   // Lazy directory initialization
-  if (Directory.empty())
-    {
-    if(Installer)
-      {
+  if (Directory.empty()) {
+    if (Installer) {
       Directory = Installer->Directory + "/packages/" + Name;
-      }
-    else if (Generator)
-      {
+    } else if (Generator) {
       Directory = Generator->toplevel + "/packages/" + Name;
-      }
     }
+  }
 
   // Output stream
-  cmGeneratedFileStream xout((Directory + "/meta/package.xml").data());
+  cmGeneratedFileStream fout((Directory + "/meta/package.xml").data());
+  cmXMLWriter xout(fout);
 
-  xout << "<?xml version=\"1.0\"?>" << std::endl;
-  xout << "<Package>" << std::endl;
+  xout.StartDocument();
 
-  xout << "    <DisplayName>" << DisplayName
-       << "</DisplayName>" << std::endl;
+  WriteGeneratedByToStrim(xout);
 
-  xout << "    <Description>" << Description
-       << "</Description>" << std::endl;
+  xout.StartElement("Package");
 
-  xout << "    <Name>" << Name << "</Name>" << std::endl;
+  xout.Element("DisplayName", DisplayName);
+  xout.Element("Description", Description);
+  xout.Element("Name", Name);
+  xout.Element("Version", Version);
 
-  xout << "    <Version>" <<  Version
-       << "</Version>" << std::endl;
-
-  xout << "    <ReleaseDate>";
-  if(ReleaseDate.empty())
-    {
-    xout << cmTimestamp().CurrentTime("%Y-%m-%d", true);
-    }
-  else
-    {
-    xout << ReleaseDate;
-    }
-  xout << "</ReleaseDate>" << std::endl;
+  if (!ReleaseDate.empty()) {
+    xout.Element("ReleaseDate", ReleaseDate);
+  } else {
+    xout.Element("ReleaseDate", cmTimestamp().CurrentTime("%Y-%m-%d", true));
+  }
 
   // Script (copy to meta dir)
-  if(!Script.empty())
-    {
+  if (!Script.empty()) {
     std::string name = cmSystemTools::GetFilenameName(Script);
     std::string path = Directory + "/meta/" + name;
     cmsys::SystemTools::CopyFileIfDifferent(Script.data(), path.data());
-    xout << "    <Script>" << name << "</Script>" << std::endl;
+    xout.Element("Script", name);
+  }
+
+  // User Interfaces (copy to meta dir)
+  std::vector<std::string> userInterfaces = UserInterfaces;
+  for (size_t i = 0; i < userInterfaces.size(); i++) {
+    std::string name = cmSystemTools::GetFilenameName(userInterfaces[i]);
+    std::string path = Directory + "/meta/" + name;
+    cmsys::SystemTools::CopyFileIfDifferent(userInterfaces[i].data(),
+                                            path.data());
+    userInterfaces[i] = name;
+  }
+  if (!userInterfaces.empty()) {
+    xout.StartElement("UserInterfaces");
+    for (size_t i = 0; i < userInterfaces.size(); i++) {
+      xout.Element("UserInterface", userInterfaces[i]);
     }
+    xout.EndElement();
+  }
 
   // Dependencies
   std::set<DependenceStruct> compDepSet;
-  for(std::set<DependenceStruct*>::iterator ait = AlienDependencies.begin();
-      ait != AlienDependencies.end(); ++ait)
-    {
+  for (std::set<DependenceStruct*>::iterator ait = AlienDependencies.begin();
+       ait != AlienDependencies.end(); ++ait) {
     compDepSet.insert(*(*ait));
-    }
-  for(std::set<cmCPackIFWPackage*>::iterator it = Dependencies.begin();
-      it != Dependencies.end(); ++it)
-    {
+  }
+  for (std::set<cmCPackIFWPackage*>::iterator it = Dependencies.begin();
+       it != Dependencies.end(); ++it) {
     compDepSet.insert(DependenceStruct((*it)->Name));
-    }
+  }
   // Write dependencies
-  if  (!compDepSet.empty())
-    {
-    xout << "    <Dependencies>";
+  if (!compDepSet.empty()) {
+    std::ostringstream dependencies;
     std::set<DependenceStruct>::iterator it = compDepSet.begin();
-    xout << it->NameWithCompare();
+    dependencies << it->NameWithCompare();
     ++it;
-    while(it != compDepSet.end())
-      {
-      xout << "," << it->NameWithCompare();
+    while (it != compDepSet.end()) {
+      dependencies << "," << it->NameWithCompare();
       ++it;
-      }
-    xout << "</Dependencies>" << std::endl;
     }
+    xout.Element("Dependencies", dependencies.str());
+  }
 
   // Licenses (copy to meta dir)
   std::vector<std::string> licenses = Licenses;
-  for(size_t i = 1; i < licenses.size(); i += 2)
-    {
+  for (size_t i = 1; i < licenses.size(); i += 2) {
     std::string name = cmSystemTools::GetFilenameName(licenses[i]);
     std::string path = Directory + "/meta/" + name;
     cmsys::SystemTools::CopyFileIfDifferent(licenses[i].data(), path.data());
     licenses[i] = name;
+  }
+  if (!licenses.empty()) {
+    xout.StartElement("Licenses");
+    for (size_t i = 0; i < licenses.size(); i += 2) {
+      xout.StartElement("License");
+      xout.Attribute("name", licenses[i]);
+      xout.Attribute("file", licenses[i + 1]);
+      xout.EndElement();
     }
-  if(!licenses.empty())
-    {
-    xout << "    <Licenses>" << std::endl;
-    for(size_t i = 0; i < licenses.size(); i += 2)
-      {
-      xout << "        <License "
-           << "name=\"" << licenses[i] << "\" "
-           << "file=\"" << licenses[i + 1] << "\" "
-           << "/>" <<std::endl;
-      }
-    xout << "    </Licenses>" << std::endl;
-    }
+    xout.EndElement();
+  }
 
-  if (!ForcedInstallation.empty())
-    {
-    xout << "    <ForcedInstallation>" << ForcedInstallation
-         << "</ForcedInstallation>" << std::endl;
-    }
+  if (!ForcedInstallation.empty()) {
+    xout.Element("ForcedInstallation", ForcedInstallation);
+  }
 
-  if (!Virtual.empty())
-    {
-    xout << "    <Virtual>" << Virtual << "</Virtual>" << std::endl;
-    }
-  else if (!Default.empty())
-    {
-    xout << "    <Default>" << Default << "</Default>" << std::endl;
-    }
+  if (!Virtual.empty()) {
+    xout.Element("Virtual", Virtual);
+  } else if (!Default.empty()) {
+    xout.Element("Default", Default);
+  }
+
+  // Essential
+  if (!Essential.empty()) {
+    xout.Element("Essential", Essential);
+  }
 
   // Priority
-  if(!SortingPriority.empty())
-    {
-    xout << "    <SortingPriority>" << SortingPriority
-         << "</SortingPriority>" << std::endl;
-    }
+  if (!SortingPriority.empty()) {
+    xout.Element("SortingPriority", SortingPriority);
+  }
 
-  xout << "</Package>" << std::endl;
+  xout.EndElement();
+  xout.EndDocument();
+}
+
+void cmCPackIFWPackage::WriteGeneratedByToStrim(cmXMLWriter& xout)
+{
+  if (Generator) {
+    Generator->WriteGeneratedByToStrim(xout);
+  }
 }

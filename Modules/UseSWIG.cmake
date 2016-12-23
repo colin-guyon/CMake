@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # UseSWIG
 # -------
@@ -43,20 +46,6 @@
 #
 #    set_source_files_properties( ${swig_generated_file_fullname}
 #                                 PROPERTIES COMPILE_FLAGS "-bla")
-
-#=============================================================================
-# Copyright 2004-2009 Kitware, Inc.
-# Copyright 2009 Mathieu Malaterre <mathieu.malaterre@gmail.com>
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 set(SWIG_CXX_EXTENSION "cxx")
 set(SWIG_EXTRA_LIBRARIES "")
@@ -153,23 +142,25 @@ macro(SWIG_ADD_SOURCE_TO_MODULE name outfiles infile)
   else()
     set(swig_outdir ${CMAKE_CURRENT_BINARY_DIR})
   endif()
-  SWIG_GET_EXTRA_OUTPUT_FILES(${SWIG_MODULE_${name}_LANGUAGE}
-    swig_extra_generated_files
-    "${swig_outdir}"
-    "${infile}")
+  if (NOT SWIG_MODULE_${name}_NOPROXY)
+    SWIG_GET_EXTRA_OUTPUT_FILES(${SWIG_MODULE_${name}_LANGUAGE}
+      swig_extra_generated_files
+      "${swig_outdir}"
+      "${swig_source_file_fullname}")
+  endif()
   set(swig_generated_file_fullname
     "${swig_outdir}/${swig_source_file_name_we}")
   # add the language into the name of the file (i.e. TCL_wrap)
   # this allows for the same .i file to be wrapped into different languages
-  set(swig_generated_file_fullname
-    "${swig_generated_file_fullname}${SWIG_MODULE_${name}_LANGUAGE}_wrap")
+  string(APPEND swig_generated_file_fullname
+    "${SWIG_MODULE_${name}_LANGUAGE}_wrap")
 
   if(swig_source_file_cplusplus)
-    set(swig_generated_file_fullname
-      "${swig_generated_file_fullname}.${SWIG_CXX_EXTENSION}")
+    string(APPEND swig_generated_file_fullname
+      ".${SWIG_CXX_EXTENSION}")
   else()
-    set(swig_generated_file_fullname
-      "${swig_generated_file_fullname}.c")
+    string(APPEND swig_generated_file_fullname
+      ".c")
   endif()
 
   #message("Full path to source file: ${swig_source_file_fullname}")

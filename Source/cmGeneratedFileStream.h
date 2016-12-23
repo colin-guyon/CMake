@@ -1,19 +1,12 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmGeneratedFileStream_h
 #define cmGeneratedFileStream_h
 
-#include "cmStandardIncludes.h"
+#include <cmConfigure.h>
+
 #include <cmsys/FStream.hxx>
+#include <string>
 
 // This is the first base class of cmGeneratedFileStream.  It will be
 // created before and destroyed after the ofstream portion and can
@@ -56,10 +49,10 @@ protected:
   // Whether the real file stream was valid when it was closed.
   bool Okay;
 
-  // Whether the destionation file is compressed
+  // Whether the destination file is compressed
   bool Compress;
 
-  // Whether the destionation file is compressed
+  // Whether the destination file is compressed
   bool CompressExtraExtension;
 };
 
@@ -73,8 +66,8 @@ protected:
  * contents have changed to prevent the file modification time from
  * being updated.
  */
-class cmGeneratedFileStream: private cmGeneratedFileStreamBase,
-                             public cmsys::ofstream
+class cmGeneratedFileStream : private cmGeneratedFileStreamBase,
+                              public cmsys::ofstream
 {
 public:
   typedef cmsys::ofstream Stream;
@@ -91,14 +84,14 @@ public:
    * file cannot be opened an error message is produced unless the
    * second argument is set to true.
    */
-  cmGeneratedFileStream(const char* name, bool quiet=false);
+  cmGeneratedFileStream(const char* name, bool quiet = false);
 
   /**
    * The destructor checks the stream status to be sure the temporary
    * file was successfully written before allowing the original to be
    * replaced.
    */
-  ~cmGeneratedFileStream();
+  ~cmGeneratedFileStream() CM_OVERRIDE;
 
   /**
    * Open an output file by name.  This should be used only with a
@@ -106,8 +99,8 @@ public:
    * temporary file.  If the file cannot be opened an error message is
    * produced unless the second argument is set to true.
    */
-  cmGeneratedFileStream& Open(const char* name, bool quiet=false,
-    bool binaryFlag=false);
+  cmGeneratedFileStream& Open(const char* name, bool quiet = false,
+                              bool binaryFlag = false);
 
   /**
    * Close the output file.  This should be used only with an open

@@ -1,20 +1,11 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmFindCommon_h
 #define cmFindCommon_h
 
 #include "cmCommand.h"
-#include "cmSearchPath.h"
 #include "cmPathLabel.h"
+#include "cmSearchPath.h"
 
 /** \class cmFindCommon
  * \brief Base class for FIND_XXX implementations.
@@ -27,7 +18,7 @@ class cmFindCommon : public cmCommand
 {
 public:
   cmFindCommon();
-  ~cmFindCommon();
+  ~cmFindCommon() CM_OVERRIDE;
   cmTypeMacro(cmFindCommon, cmCommand);
 
 protected:
@@ -38,8 +29,12 @@ protected:
   {
   protected:
     PathGroup();
+
   public:
-    PathGroup(const std::string& label) : cmPathLabel(label) { }
+    PathGroup(const std::string& label)
+      : cmPathLabel(label)
+    {
+    }
     static PathGroup All;
   };
 
@@ -48,8 +43,12 @@ protected:
   {
   protected:
     PathLabel();
+
   public:
-    PathLabel(const std::string& label) : cmPathLabel(label) { }
+    PathLabel(const std::string& label)
+      : cmPathLabel(label)
+    {
+    }
     static PathLabel CMake;
     static PathLabel CMakeEnvironment;
     static PathLabel Hints;
@@ -58,9 +57,12 @@ protected:
     static PathLabel Guess;
   };
 
-  enum RootPathMode { RootPathModeNever,
-                      RootPathModeOnly,
-                      RootPathModeBoth };
+  enum RootPathMode
+  {
+    RootPathModeNever,
+    RootPathModeOnly,
+    RootPathModeBoth
+  };
 
   /** Construct the various path groups and labels */
   void InitializeSearchPathGroups();

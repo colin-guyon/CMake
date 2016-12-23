@@ -1,14 +1,24 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindPNG
 # -------
 #
-# Find the native PNG includes and library
+# Find libpng, the official reference library for the PNG image format.
 #
+# Imported targets
+# ^^^^^^^^^^^^^^^^
 #
+# This module defines the following :prop_tgt:`IMPORTED` target:
 #
-# This module searches libpng, the library for working with PNG images.
+# ``PNG::PNG``
+#   The libpng library, if found.
 #
-# It defines the following variables
+# Result variables
+# ^^^^^^^^^^^^^^^^
+#
+# This module will set the following variables in your project:
 #
 # ``PNG_INCLUDE_DIRS``
 #   where to find png.h, etc.
@@ -22,29 +32,18 @@
 # ``PNG_VERSION_STRING``
 #   the version of the PNG library found (since CMake 2.8.8)
 #
-# Also defined, but not for general use are
+# Obsolete variables
+# ^^^^^^^^^^^^^^^^^^
+#
+# The following variables may also be set, for backwards compatibility:
 #
 # ``PNG_LIBRARY``
 #   where to find the PNG library.
-#
-# For backward compatiblity the variable PNG_INCLUDE_DIR is also set.
-# It has the same value as PNG_INCLUDE_DIRS.
+# ``PNG_INCLUDE_DIR``
+#   where to find the PNG headers (same as PNG_INCLUDE_DIRS)
 #
 # Since PNG depends on the ZLib compression library, none of the above
 # will be defined unless ZLib can be found.
-
-#=============================================================================
-# Copyright 2002-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 if(PNG_FIND_QUIETLY)
   set(_FIND_ZLIB_ARG QUIET)
@@ -75,7 +74,7 @@ if(ZLIB_FOUND)
     list(APPEND PNG_NAMES_DEBUG png${v}d libpng${v}d)
   endforeach()
   unset(_PNG_VERSION_SUFFIXES)
-  # For compatiblity with versions prior to this multi-config search, honor
+  # For compatibility with versions prior to this multi-config search, honor
   # any PNG_LIBRARY that is already specified and skip the search.
   if(NOT PNG_LIBRARY)
     find_library(PNG_LIBRARY_RELEASE NAMES ${PNG_NAMES})
@@ -94,7 +93,7 @@ if(ZLIB_FOUND)
   if (PNG_LIBRARY AND PNG_PNG_INCLUDE_DIR)
       # png.h includes zlib.h. Sigh.
       set(PNG_INCLUDE_DIRS ${PNG_PNG_INCLUDE_DIR} ${ZLIB_INCLUDE_DIR} )
-      set(PNG_INCLUDE_DIR ${PNG_INCLUDE_DIRS} ) # for backward compatiblity
+      set(PNG_INCLUDE_DIR ${PNG_INCLUDE_DIRS} ) # for backward compatibility
       set(PNG_LIBRARIES ${PNG_LIBRARY} ${ZLIB_LIBRARY})
 
       if (CYGWIN)
@@ -105,6 +104,32 @@ if(ZLIB_FOUND)
         endif()
       endif ()
 
+      if(NOT TARGET PNG::PNG)
+        add_library(PNG::PNG UNKNOWN IMPORTED)
+        set_target_properties(PNG::PNG PROPERTIES
+          INTERFACE_COMPILE_DEFINITIONS "${PNG_DEFINITIONS}"
+          INTERFACE_INCLUDE_DIRECTORIES "${PNG_INCLUDE_DIRS}"
+          INTERFACE_LINK_LIBRARIES ZLIB::ZLIB)
+        if(EXISTS "${PNG_LIBRARY}")
+          set_target_properties(PNG::PNG PROPERTIES
+            IMPORTED_LINK_INTERFACE_LANGUAGES "C"
+            IMPORTED_LOCATION "${PNG_LIBRARY}")
+        endif()
+        if(EXISTS "${PNG_LIBRARY_RELEASE}")
+          set_property(TARGET PNG::PNG APPEND PROPERTY
+            IMPORTED_CONFIGURATIONS RELEASE)
+          set_target_properties(PNG::PNG PROPERTIES
+            IMPORTED_LINK_INTERFACE_LANGUAGES_RELEASE "C"
+            IMPORTED_LOCATION_RELEASE "${PNG_LIBRARY_RELEASE}")
+        endif()
+        if(EXISTS "${PNG_LIBRARY_DEBUG}")
+          set_property(TARGET PNG::PNG APPEND PROPERTY
+            IMPORTED_CONFIGURATIONS DEBUG)
+          set_target_properties(PNG::PNG PROPERTIES
+            IMPORTED_LINK_INTERFACE_LANGUAGES_DEBUG "C"
+            IMPORTED_LOCATION_DEBUG "${PNG_LIBRARY_DEBUG}")
+        endif()
+      endif()
   endif ()
 
   if (PNG_PNG_INCLUDE_DIR AND EXISTS "${PNG_PNG_INCLUDE_DIR}/png.h")

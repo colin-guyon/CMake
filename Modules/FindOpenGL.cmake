@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindOpenGL
 # ----------
@@ -35,19 +38,6 @@
 # OPENGL_gl_LIBRARY to use OpenGL with X11 on OSX.
 
 
-#=============================================================================
-# Copyright 2001-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
-
 set(_OpenGL_REQUIRED_VARS OPENGL_gl_LIBRARY)
 
 if (CYGWIN)
@@ -71,9 +61,11 @@ elseif (WIN32)
 
 elseif (APPLE)
 
-  find_library(OPENGL_gl_LIBRARY OpenGL DOC "OpenGL lib for OSX")
-  find_library(OPENGL_glu_LIBRARY AGL DOC "AGL lib for OSX")
-  find_path(OPENGL_INCLUDE_DIR OpenGL/gl.h DOC "Include for OpenGL on OSX")
+  # The OpenGL.framework provides both gl and glu
+  find_library(OPENGL_gl_LIBRARY OpenGL DOC "OpenGL library for OS X")
+  find_library(OPENGL_glu_LIBRARY OpenGL DOC
+    "GLU library for OS X (usually same as OpenGL library)")
+  find_path(OPENGL_INCLUDE_DIR OpenGL/gl.h DOC "Include for OpenGL on OS X")
   list(APPEND _OpenGL_REQUIRED_VARS OPENGL_INCLUDE_DIR)
 
 else()
@@ -149,7 +141,9 @@ if(OPENGL_gl_LIBRARY)
     set( OPENGL_LIBRARIES  ${OPENGL_gl_LIBRARY} ${OPENGL_LIBRARIES})
     if(OPENGL_glu_LIBRARY)
       set( OPENGL_GLU_FOUND "YES" )
-      set( OPENGL_LIBRARIES ${OPENGL_glu_LIBRARY} ${OPENGL_LIBRARIES} )
+      if(NOT "${OPENGL_glu_LIBRARY}" STREQUAL "${OPENGL_gl_LIBRARY}")
+        set( OPENGL_LIBRARIES ${OPENGL_glu_LIBRARY} ${OPENGL_LIBRARIES} )
+      endif()
     else()
       set( OPENGL_GLU_FOUND "NO" )
     endif()

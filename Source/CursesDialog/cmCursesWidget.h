@@ -1,19 +1,14 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCursesWidget_h
 #define cmCursesWidget_h
 
-#include "../cmCacheManager.h"
+#include <cmConfigure.h> // IWYU pragma: keep
+
 #include "cmCursesStandardIncludes.h"
+#include "cmState.h"
+
+#include <string>
 
 class cmCursesMainForm;
 
@@ -46,30 +41,20 @@ public:
   /**
    * Get the type of the widget (STRING, PATH etc...)
    */
-  cmCacheManager::CacheEntryType GetType()
-    { return this->Type; }
+  cmState::CacheEntryType GetType() { return this->Type; }
 
   /**
    * If there are any, print the widget specific commands
    * in the toolbar and return true. Otherwise, return false
    * and the parent widget will print.
    */
-  virtual bool PrintKeys()
-    {
-      return false;
-    }
+  virtual bool PrintKeys() { return false; }
 
   /**
    * Set/Get the page this widget is in.
    */
-  void SetPage(int page)
-    {
-      this->Page = page;
-    }
-  int GetPage()
-    {
-      return this->Page;
-    }
+  void SetPage(int page) { this->Page = page; }
+  int GetPage() { return this->Page; }
 
   friend class cmCursesMainForm;
 
@@ -77,7 +62,7 @@ protected:
   cmCursesWidget(const cmCursesWidget& from);
   void operator=(const cmCursesWidget&);
 
-  cmCacheManager::CacheEntryType Type;
+  cmState::CacheEntryType Type;
   std::string Value;
   FIELD* Field;
   // The page in the main form this widget is in

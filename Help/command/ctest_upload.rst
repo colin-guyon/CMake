@@ -1,14 +1,22 @@
 ctest_upload
 ------------
 
-Upload files to a dashboard server.
+Upload files to a dashboard server as a :ref:`Dashboard Client`.
 
 ::
 
-  ctest_upload(FILES ... [QUIET])
+  ctest_upload(FILES <file>... [QUIET] [CAPTURE_CMAKE_ERROR <result-var>])
 
-Pass a list of files to be sent along with the build results to the
-dashboard server.
+The options are:
 
-The QUIET option suppresses any CTest-specific non-error output
-that would have been printed to the console otherwise.
+``FILES <file>...``
+  Specify a list of files to be sent along with the build results to the
+  dashboard server.
+
+``QUIET``
+  Suppress any CTest-specific non-error output that would have been
+  printed to the console otherwise.
+
+``CAPTURE_CMAKE_ERROR <result-var>``
+  Store in the ``<result-var>`` variable -1 if there are any errors running
+  the command and prevent ctest from returning non-zero if an error occurs.

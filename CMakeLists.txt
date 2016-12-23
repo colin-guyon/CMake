@@ -1,19 +1,18 @@
-#=============================================================================
-# CMake - Cross Platform Makefile Generator
-# Copyright 2000-2012 Kitware, Inc., Insight Software Consortium
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-cmake_minimum_required(VERSION 2.8.4 FATAL_ERROR)
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
+cmake_minimum_required(VERSION 2.8.12.2 FATAL_ERROR)
 if(POLICY CMP0025)
   cmake_policy(SET CMP0025 NEW)
 endif()
+if(POLICY CMP0053)
+  cmake_policy(SET CMP0053 NEW)
+endif()
 project(CMake)
+
+# Make sure we can find internal find_package modules only used for
+# building CMake and not for shipping externally
+list(INSERT CMAKE_MODULE_PATH 0 ${CMake_SOURCE_DIR}/Source/Modules)
 
 if(CMAKE_BOOTSTRAP)
   # Running from bootstrap script.  Set local variable and remove from cache.
@@ -23,6 +22,16 @@ endif()
 
 if(NOT CMake_TEST_EXTERNAL_CMAKE)
   set(CMake_BIN_DIR ${CMake_BINARY_DIR}/bin)
+endif()
+
+if(CMake_GUI_DISTRIBUTE_WITH_Qt_LGPL)
+  if(CMake_GUI_DISTRIBUTE_WITH_Qt_LGPL MATCHES "^3|2\\.1$")
+    set(USE_LGPL "${CMake_GUI_DISTRIBUTE_WITH_Qt_LGPL}")
+  else()
+    set(USE_LGPL "2.1")
+  endif()
+else()
+  set(USE_LGPL "")
 endif()
 
 if("${CMake_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
@@ -37,11 +46,24 @@ if("${CMake_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
 endif()
 
 # Use most-recent available language dialects with GNU and Clang
-if(NOT DEFINED CMAKE_C_STANDARD)
-  set(CMAKE_C_STANDARD 11)
+if(NOT DEFINED CMAKE_C_STANDARD AND NOT CMake_NO_C_STANDARD)
+  include(${CMake_SOURCE_DIR}/Source/Checks/cm_c11_thread_local.cmake)
+  if(NOT CMake_C11_THREAD_LOCAL_BROKEN)
+    set(CMAKE_C_STANDARD 11)
+  else()
+    set(CMAKE_C_STANDARD 99)
+  endif()
 endif()
-if(NOT DEFINED CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
+if(NOT DEFINED CMAKE_CXX_STANDARD AND NOT CMake_NO_CXX_STANDARD)
+  include(${CMake_SOURCE_DIR}/Source/Checks/cm_cxx14_cstdio.cmake)
+  if(NOT CMake_CXX14_CSTDIO_BROKEN)
+    set(CMAKE_CXX_STANDARD 14)
+  else()
+    set(CMAKE_CXX_STANDARD 11)
+  endif()
+endif()
+if(NOT CMake_TEST_EXTERNAL_CMAKE)
+  include(${CMake_SOURCE_DIR}/Source/Checks/cm_cxx_features.cmake)
 endif()
 
 # option to set the internal encoding of CMake to UTF-8
@@ -50,6 +72,27 @@ mark_as_advanced(CMAKE_ENCODING_UTF8)
 if(CMAKE_ENCODING_UTF8)
   set(KWSYS_ENCODING_DEFAULT_CODEPAGE CP_UTF8)
 endif()
+
+# option to use COMPONENT with install command
+option(CMake_INSTALL_COMPONENTS "Using components when installing" OFF)
+mark_as_advanced(CMake_INSTALL_COMPONENTS)
+macro(CMake_OPTIONAL_COMPONENT NAME)
+  if(CMake_INSTALL_COMPONENTS)
+    set(COMPONENT COMPONENT ${NAME})
+  else()
+    set(COMPONENT)
+  endif()
+endmacro()
+
+# option to disable installing 3rd-party dependencies
+option(CMake_INSTALL_DEPENDENCIES
+  "Whether to install 3rd-party runtime dependencies" OFF)
+mark_as_advanced(CMake_INSTALL_DEPENDENCIES)
+
+# option to build reference for CMake developers
+option(CMake_BUILD_DEVELOPER_REFERENCE
+  "Build CMake Developer Reference" OFF)
+mark_as_advanced(CMake_BUILD_DEVELOPER_REFERENCE)
 
 #-----------------------------------------------------------------------
 # a macro to deal with system libraries, implemented as a macro
@@ -65,7 +108,7 @@ macro(CMAKE_HANDLE_SYSTEM_LIBRARIES)
 
   # Allow the user to enable/disable all system utility library options by
   # defining CMAKE_USE_SYSTEM_LIBRARIES or CMAKE_USE_SYSTEM_LIBRARY_${util}.
-  set(UTILITIES BZIP2 CURL EXPAT FORM JSONCPP LIBARCHIVE LIBLZMA ZLIB)
+  set(UTILITIES BZIP2 CURL EXPAT FORM JSONCPP LIBARCHIVE LIBLZMA LIBUV ZLIB)
   foreach(util ${UTILITIES})
     if(NOT DEFINED CMAKE_USE_SYSTEM_LIBRARY_${util}
         AND DEFINED CMAKE_USE_SYSTEM_LIBRARIES)
@@ -105,9 +148,15 @@ macro(CMAKE_HANDLE_SYSTEM_LIBRARIES)
     "${CMAKE_USE_SYSTEM_LIBRARY_LIBLZMA}" "NOT CMAKE_USE_SYSTEM_LIBARCHIVE" ON)
   option(CMAKE_USE_SYSTEM_FORM "Use system-installed libform" "${CMAKE_USE_SYSTEM_LIBRARY_FORM}")
   option(CMAKE_USE_SYSTEM_JSONCPP "Use system-installed jsoncpp" "${CMAKE_USE_SYSTEM_LIBRARY_JSONCPP}")
+  option(CMAKE_USE_SYSTEM_LIBUV "Use system-installed libuv" "${CMAKE_USE_SYSTEM_LIBRARY_LIBUV}")
+
+  # For now use system KWIML only if explicitly requested rather
+  # than activating via the general system libs options.
+  option(CMAKE_USE_SYSTEM_KWIML "Use system-installed KWIML" OFF)
+  mark_as_advanced(CMAKE_USE_SYSTEM_KWIML)
 
   # Mention to the user what system libraries are being used.
-  foreach(util ${UTILITIES})
+  foreach(util ${UTILITIES} KWIML)
     if(CMAKE_USE_SYSTEM_${util})
       message(STATUS "Using system-installed ${util}")
     endif()
@@ -119,17 +168,6 @@ macro(CMAKE_HANDLE_SYSTEM_LIBRARIES)
     @ONLY)
 
 endmacro()
-
-
-
-
-if(NOT CMake_TEST_EXTERNAL_CMAKE)
-  set(CMAKE_BUILD_ON_VISUAL_STUDIO 0)
-  if(WIN32 AND NOT UNIX AND NOT MINGW)
-    set(CMAKE_BUILD_ON_VISUAL_STUDIO 1)
-  endif()
-endif()
-
 
 #-----------------------------------------------------------------------
 # a macro to determine the generator and ctest executable to use
@@ -249,6 +287,20 @@ macro (CMAKE_BUILD_UTILITIES)
   # (a macro defined in this file)
   CMAKE_HANDLE_SYSTEM_LIBRARIES()
 
+  if(CMAKE_USE_SYSTEM_KWIML)
+    find_package(KWIML 1.0)
+    if(NOT KWIML_FOUND)
+      message(FATAL_ERROR "CMAKE_USE_SYSTEM_KWIML is ON but KWIML is not found!")
+    endif()
+    set(CMake_KWIML_LIBRARIES kwiml::kwiml)
+  else()
+    set(CMake_KWIML_LIBRARIES "")
+    if(BUILD_TESTING)
+      set(KWIML_TEST_ENABLE 1)
+    endif()
+    add_subdirectory(Utilities/KWIML)
+  endif()
+
   #---------------------------------------------------------------------
   # Build zlib library for Curl, CMake, and CTest.
   set(CMAKE_ZLIB_HEADER "cm_zlib.h")
@@ -287,7 +339,15 @@ macro (CMAKE_BUILD_UTILITIES)
     if(CMAKE_TESTS_CDASH_SERVER)
       set(CMAKE_CURL_TEST_URL "${CMAKE_TESTS_CDASH_SERVER}/user.php")
     endif()
-    option(CMAKE_USE_OPENSSL "Use OpenSSL." OFF)
+    set(_CMAKE_USE_OPENSSL_DEFAULT OFF)
+    if(NOT DEFINED CMAKE_USE_OPENSSL AND NOT WIN32 AND NOT APPLE
+        AND CMAKE_SYSTEM_NAME MATCHES "(Linux|FreeBSD)")
+      find_package(OpenSSL QUIET)
+      if(OPENSSL_FOUND)
+        set(_CMAKE_USE_OPENSSL_DEFAULT ON)
+      endif()
+    endif()
+    option(CMAKE_USE_OPENSSL "Use OpenSSL." ${_CMAKE_USE_OPENSSL_DEFAULT})
     mark_as_advanced(CMAKE_USE_OPENSSL)
     if(CMAKE_USE_OPENSSL)
       set(CURL_CA_BUNDLE "" CACHE FILEPATH "Path to SSL CA Certificate Bundle")
@@ -351,12 +411,14 @@ macro (CMAKE_BUILD_UTILITIES)
     set(ENABLE_LZMA ON CACHE INTERNAL "Enable the use of the system found LZMA library if found")
     set(ENABLE_ZLIB ON CACHE INTERNAL "Enable the use of the system found ZLIB library if found")
     set(ENABLE_BZip2 ON CACHE INTERNAL "Enable the use of the system found BZip2 library if found")
+    set(ENABLE_LIBXML2 OFF CACHE INTERNAL "Enable the use of the system found libxml2 library if found")
     set(ENABLE_EXPAT OFF CACHE INTERNAL "Enable the use of the system found EXPAT library if found")
     set(ENABLE_PCREPOSIX OFF CACHE INTERNAL "Enable the use of the system found PCREPOSIX library if found")
     set(ENABLE_LibGCC OFF CACHE INTERNAL "Enable the use of the system found LibGCC library if found")
     set(ENABLE_XATTR OFF CACHE INTERNAL "Enable extended attribute support")
     set(ENABLE_ACL OFF CACHE INTERNAL "Enable ACL support")
     set(ENABLE_ICONV OFF CACHE INTERNAL "Enable iconv support")
+    set(ENABLE_CNG OFF CACHE INTERNAL "Enable the use of CNG(Crypto Next Generation)")
     add_subdirectory(Utilities/cmlibarchive)
     CMAKE_SET_TARGET_FOLDER(cmlibarchive "Utilities/3rdParty")
     set(CMAKE_TAR_LIBRARIES cmlibarchive ${BZIP2_LIBRARIES})
@@ -383,7 +445,7 @@ macro (CMAKE_BUILD_UTILITIES)
   # Build jsoncpp library.
   if(CMAKE_USE_SYSTEM_JSONCPP)
     if(NOT CMAKE_VERSION VERSION_LESS 3.0)
-      include(${CMake_SOURCE_DIR}/Source/Modules/FindJsonCpp.cmake)
+      find_package(JsonCpp)
     else()
       message(FATAL_ERROR "CMAKE_USE_SYSTEM_JSONCPP requires CMake >= 3.0")
     endif()
@@ -396,6 +458,55 @@ macro (CMAKE_BUILD_UTILITIES)
     set(CMAKE_JSONCPP_LIBRARIES cmjsoncpp)
     add_subdirectory(Utilities/cmjsoncpp)
     CMAKE_SET_TARGET_FOLDER(cmjsoncpp "Utilities/3rdParty")
+  endif()
+
+  #---------------------------------------------------------------------
+  # Build libuv library.
+  if(NOT DEFINED CMAKE_USE_LIBUV)
+    set(CMAKE_USE_LIBUV 1)
+    if(APPLE)
+      include(CheckCSourceCompiles)
+      check_c_source_compiles("
+#include <CoreServices/CoreServices.h>
+#include <AvailabilityMacros.h>
+#ifndef MAC_OS_X_VERSION_10_5
+#error \"MAC_OS_X_VERSION_10_5 is not defined\"
+#endif
+int main(void) { return 0; }
+" HAVE_CoreServices_OS_X_10_5)
+      if(NOT HAVE_CoreServices_OS_X_10_5)
+        set(CMAKE_USE_LIBUV 0)
+      endif()
+    elseif(CYGWIN)
+      # libuv does not support Cygwin
+      set(CMAKE_USE_LIBUV 0)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "HP-UX")
+      # Disable until it can be ported.
+      set(CMAKE_USE_LIBUV 0)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "sparc")
+      # Disable until it can be ported.
+      set(CMAKE_USE_LIBUV 0)
+    endif()
+  endif()
+  if(CMAKE_USE_LIBUV)
+    if(CMAKE_USE_SYSTEM_LIBUV)
+      if(NOT CMAKE_VERSION VERSION_LESS 3.0)
+        find_package(LibUV 1.0.0)
+      else()
+        message(FATAL_ERROR "CMAKE_USE_SYSTEM_LIBUV requires CMake >= 3.0")
+      endif()
+      if(NOT LIBUV_FOUND)
+        message(FATAL_ERROR
+          "CMAKE_USE_SYSTEM_LIBUV is ON but a libuv is not found!")
+      endif()
+      set(CMAKE_LIBUV_LIBRARIES LibUV::LibUV)
+    else()
+      set(CMAKE_LIBUV_LIBRARIES cmlibuv)
+      add_subdirectory(Utilities/cmlibuv)
+      CMAKE_SET_TARGET_FOLDER(cmlibuv "Utilities/3rdParty")
+    endif()
+  else()
+    set(CMAKE_LIBUV_LIBRARIES)
   endif()
 
   #---------------------------------------------------------------------
@@ -515,10 +626,10 @@ if("x${CMAKE_TESTS_CDASH_SERVER}" STREQUAL "x")
   set(CMAKE_TESTS_CDASH_SERVER "http://open.cdash.org")
 endif()
 
-# Create the KWIML library for CMake.
-set(KWIML cmIML)
-set(KWIML_HEADER_ROOT ${CMake_BINARY_DIR}/Utilities)
-add_subdirectory(Utilities/KWIML)
+if(CMake_TEST_EXTERNAL_CMAKE)
+  set(KWIML_TEST_ENABLE 1)
+  add_subdirectory(Utilities/KWIML)
+endif()
 
 if(NOT CMake_TEST_EXTERNAL_CMAKE)
   # build the utilities (a macro defined in this file)
@@ -543,10 +654,7 @@ if(NOT CMake_TEST_EXTERNAL_CMAKE)
         "${CMake_VERSION_MAJOR}.${CMake_VERSION_MINOR}.${CMake_VERSION_PATCH}")
       set(CMAKE_BUNDLE_LOCATION "${CMAKE_INSTALL_PREFIX}")
       # make sure CMAKE_INSTALL_PREFIX ends in /
-      string(LENGTH "${CMAKE_INSTALL_PREFIX}" LEN)
-      math(EXPR LEN "${LEN} -1" )
-      string(SUBSTRING "${CMAKE_INSTALL_PREFIX}" ${LEN} 1 ENDCH)
-      if(NOT "${ENDCH}" STREQUAL "/")
+      if(NOT CMAKE_INSTALL_PREFIX MATCHES "/$")
         set(CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}/")
       endif()
       set(CMAKE_INSTALL_PREFIX
@@ -589,6 +697,31 @@ endif()
 
 # setup some Testing support (a macro defined in this file)
 CMAKE_SETUP_TESTING()
+
+# Check whether to build server mode or not:
+if(NOT CMake_TEST_EXTERNAL_CMAKE)
+  if(NOT DEFINED CMake_ENABLE_SERVER_MODE)
+    list(FIND CMAKE_CXX_COMPILE_FEATURES cxx_auto_type CMake_HAVE_CXX_AUTO_TYPE)
+    list(FIND CMAKE_CXX_COMPILE_FEATURES cxx_range_for CMake_HAVE_CXX_RANGE_FOR)
+    if(CMAKE_USE_LIBUV
+        AND CMake_HAVE_CXX_AUTO_TYPE
+        AND CMake_HAVE_CXX_MAKE_UNIQUE
+        AND CMake_HAVE_CXX_RANGE_FOR
+        )
+      set(CMake_ENABLE_SERVER_MODE 1)
+    else()
+      set(CMake_ENABLE_SERVER_MODE 0)
+    endif()
+  endif()
+  if(CMake_ENABLE_SERVER_MODE AND NOT CMAKE_USE_LIBUV)
+    message(FATAL_ERROR "The server mode requires libuv!")
+  endif()
+else()
+  set(CMake_ENABLE_SERVER_MODE 0)
+endif()
+if(NOT DEFINED CMake_TEST_SERVER_MODE)
+  set(CMake_TEST_SERVER_MODE ${CMake_ENABLE_SERVER_MODE})
+endif()
 
 if(NOT CMake_TEST_EXTERNAL_CMAKE)
   if(NOT CMake_VERSION_IS_RELEASE)

@@ -40,10 +40,6 @@ otherwise expands to nothing.
 
 Available logical expressions are:
 
-``$<0:...>``
-  Empty string (ignores ``...``)
-``$<1:...>``
-  Content of ``...``
 ``$<BOOL:...>``
   ``1`` if the ``...`` is true, else ``0``
 ``$<AND:?[,?]...>``
@@ -70,12 +66,16 @@ Available logical expressions are:
   ``1`` if the CMake-id of the C compiler matches ``comp``, otherwise ``0``.
 ``$<CXX_COMPILER_ID:comp>``
   ``1`` if the CMake-id of the CXX compiler matches ``comp``, otherwise ``0``.
-``$<VERSION_GREATER:v1,v2>``
-  ``1`` if ``v1`` is a version greater than ``v2``, else ``0``.
 ``$<VERSION_LESS:v1,v2>``
   ``1`` if ``v1`` is a version less than ``v2``, else ``0``.
+``$<VERSION_GREATER:v1,v2>``
+  ``1`` if ``v1`` is a version greater than ``v2``, else ``0``.
 ``$<VERSION_EQUAL:v1,v2>``
   ``1`` if ``v1`` is the same version as ``v2``, else ``0``.
+``$<VERSION_LESS_EQUAL:v1,v2>``
+  ``1`` if ``v1`` is a version less than or equal to ``v2``, else ``0``.
+``$<VERSION_GREATER_EQUAL:v1,v2>``
+  ``1`` if ``v1`` is a version greater than or equal to ``v2``, else ``0``.
 ``$<C_COMPILER_VERSION:ver>``
   ``1`` if the version of the C compiler matches ``ver``, otherwise ``0``.
 ``$<CXX_COMPILER_VERSION:ver>``
@@ -92,7 +92,7 @@ Available logical expressions are:
   increases the required :prop_tgt:`C_STANDARD` or :prop_tgt:`CXX_STANDARD`
   for the 'head' target, an error is reported.  See the
   :manual:`cmake-compile-features(7)` manual for information on
-  compile features.
+  compile features and a list of supported compilers.
 ``$<COMPILE_LANGUAGE:lang>``
   ``1`` when the language used for compilation unit matches ``lang``,
   otherwise ``0``.  This expression used to specify compile options for
@@ -229,7 +229,7 @@ comparison::
   -I$<JOIN:$<TARGET_PROPERTY:INCLUDE_DIRECTORIES>, -I>
 
 generates a string of the entries in the :prop_tgt:`INCLUDE_DIRECTORIES` target
-property with each entry preceeded by ``-I``. Note that a more-complete use
+property with each entry preceded by ``-I``. Note that a more-complete use
 in this situation would require first checking if the INCLUDE_DIRECTORIES
 property is non-empty::
 
@@ -241,6 +241,10 @@ where ``${prop}`` refers to a helper variable::
 
 Available output expressions are:
 
+``$<0:...>``
+  Empty string (ignores ``...``)
+``$<1:...>``
+  Content of ``...``
 ``$<JOIN:list,...>``
   Joins the list with the content of ``...``
 ``$<ANGLE-R>``
@@ -278,3 +282,7 @@ Available output expressions are:
   object of type ``OBJECT_LIBRARY``.  This expression may only be used in
   the sources of :command:`add_library` and :command:`add_executable`
   commands.
+``$<SHELL_PATH:...>``
+  Content of ``...`` converted to shell path style. For example, slashes are
+  converted to backslashes in Windows shells and drive letters are converted
+  to posix paths in MSYS shells. The ``...`` must be an absolute path.

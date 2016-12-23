@@ -6,11 +6,11 @@
  *                             \___|\___/|_| \_\_____|
  *
  * Copyright (C) 2010, DirecTV, Contact: Eric Hu, <ehu@directv.com>.
- * Copyright (C) 2010 - 2014, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) 2010 - 2016, Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
- * are also available at http://curl.haxx.se/docs/copyright.html.
+ * are also available at https://curl.haxx.se/docs/copyright.html.
  *
  * You may opt to use, copy, modify, merge, publish, distribute and/or sell
  * copies of the Software, and permit persons to whom the Software is
@@ -29,6 +29,7 @@
 #include "curl_setup.h"
 
 #ifdef USE_AXTLS
+#include <axTLS/config.h>
 #include <axTLS/ssl.h>
 #include "axtls.h"
 
@@ -38,13 +39,13 @@
 #include "parsedate.h"
 #include "connect.h" /* for the connect timeout */
 #include "select.h"
-#define _MPRINTF_REPLACE /* use our functions only */
-#include <curl/mprintf.h>
-#include "curl_memory.h"
-#include <unistd.h>
-/* The last #include file should be: */
-#include "memdebug.h"
+#include "curl_printf.h"
 #include "hostcheck.h"
+#include <unistd.h>
+
+/* The last #include files should be: */
+#include "curl_memory.h"
+#include "memdebug.h"
 
 
 /* Global axTLS init, called from Curl_ssl_init() */
@@ -136,14 +137,12 @@ static void free_ssl_structs(struct ssl_connect_data *connssl)
  */
 static CURLcode connect_prep(struct connectdata *conn, int sockindex)
 {
-  struct SessionHandle *data = conn->data;
+  struct Curl_easy *data = conn->data;
   SSL_CTX *ssl_ctx;
   SSL *ssl = NULL;
   int cert_types[] = {SSL_OBJ_X509_CERT, SSL_OBJ_PKCS12, 0};
   int key_types[] = {SSL_OBJ_RSA_KEY, SSL_OBJ_PKCS8, SSL_OBJ_PKCS12, 0};
   int i, ssl_fcn_return;
-  const uint8_t *ssl_sessionid;
-  size_t ssl_idsize;
 
   /* Assuming users will not compile in custom key/cert to axTLS.
   *  Also, even for blocking connects, use axTLS non-blocking feature.
@@ -257,14 +256,22 @@ static CURLcode connect_prep(struct connectdata *conn, int sockindex)
    * 2) setting up callbacks.  these seem gnutls specific
    */
 
-  /* In axTLS, handshaking happens inside ssl_client_new. */
-  if(!Curl_ssl_getsessionid(conn, (void **) &ssl_sessionid, &ssl_idsize)) {
-    /* we got a session id, use it! */
-    infof (data, "SSL re-using session ID\n");
-    ssl = ssl_client_new(ssl_ctx, conn->sock[sockindex],
-                         ssl_sessionid, (uint8_t)ssl_idsize);
+  if(conn->ssl_config.sessionid) {
+    const uint8_t *ssl_sessionid;
+    size_t ssl_idsize;
+
+    /* In axTLS, handshaking happens inside ssl_client_new. */
+    Curl_ssl_sessionid_lock(conn);
+    if(!Curl_ssl_getsessionid(conn, (void **) &ssl_sessionid, &ssl_idsize)) {
+      /* we got a session id, use it! */
+      infof (data, "SSL re-using session ID\n");
+      ssl = ssl_client_new(ssl_ctx, conn->sock[sockindex],
+                           ssl_sessionid, (uint8_t)ssl_idsize);
+    }
+    Curl_ssl_sessionid_unlock(conn);
   }
-  else
+
+  if(!ssl)
     ssl = ssl_client_new(ssl_ctx, conn->sock[sockindex], NULL, 0);
 
   conn->ssl[sockindex].ssl = ssl;
@@ -277,10 +284,8 @@ static CURLcode connect_prep(struct connectdata *conn, int sockindex)
  */
 static CURLcode connect_finish(struct connectdata *conn, int sockindex)
 {
-  struct SessionHandle *data = conn->data;
+  struct Curl_easy *data = conn->data;
   SSL *ssl = conn->ssl[sockindex].ssl;
-  const uint8_t *ssl_sessionid;
-  size_t ssl_idsize;
   const char *peer_CN;
   uint32_t dns_altname_index;
   const char *dns_altname;
@@ -378,11 +383,15 @@ static CURLcode connect_finish(struct connectdata *conn, int sockindex)
   conn->send[sockindex] = axtls_send;
 
   /* Put our freshly minted SSL session in cache */
-  ssl_idsize = ssl_get_session_id_size(ssl);
-  ssl_sessionid = ssl_get_session_id(ssl);
-  if(Curl_ssl_addsessionid(conn, (void *) ssl_sessionid, ssl_idsize)
-     != CURLE_OK)
-    infof (data, "failed to add session to cache\n");
+  if(conn->ssl_config.sessionid) {
+    const uint8_t *ssl_sessionid = ssl_get_session_id_size(ssl);
+    size_t ssl_idsize = ssl_get_session_id(ssl);
+    Curl_ssl_sessionid_lock(conn);
+    if(Curl_ssl_addsessionid(conn, (void *) ssl_sessionid, ssl_idsize)
+       != CURLE_OK)
+      infof (data, "failed to add session to cache\n");
+    Curl_ssl_sessionid_unlock(conn);
+  }
 
   return CURLE_OK;
 }
@@ -463,9 +472,11 @@ Curl_axtls_connect(struct connectdata *conn,
                   int sockindex)
 
 {
+  struct Curl_easy *data = conn->data;
   CURLcode conn_step = connect_prep(conn, sockindex);
   int ssl_fcn_return;
   SSL *ssl = conn->ssl[sockindex].ssl;
+  long timeout_ms;
 
   if(conn_step != CURLE_OK) {
     Curl_axtls_close(conn, sockindex);
@@ -474,14 +485,23 @@ Curl_axtls_connect(struct connectdata *conn,
 
   /* Check to make sure handshake was ok. */
   while(ssl_handshake_status(ssl) != SSL_OK) {
+    /* check allowed time left */
+    timeout_ms = Curl_timeleft(data, NULL, TRUE);
+
+    if(timeout_ms < 0) {
+      /* no need to continue if time already is up */
+      failf(data, "SSL connection timeout");
+      return CURLE_OPERATION_TIMEDOUT;
+    }
+
     ssl_fcn_return = ssl_read(ssl, NULL);
     if(ssl_fcn_return < 0) {
       Curl_axtls_close(conn, sockindex);
       ssl_display_error(ssl_fcn_return); /* goes to stdout. */
       return map_error_to_curl(ssl_fcn_return);
     }
-    usleep(10000);
-    /* TODO: check for timeout as this could hang indefinitely otherwise */
+    /* TODO: avoid polling */
+    Curl_wait_ms(10);
   }
   infof (conn->data, "handshake completed successfully\n");
 
@@ -506,19 +526,13 @@ static ssize_t axtls_send(struct connectdata *conn,
 
   infof(conn->data, "  axtls_send\n");
 
-  if(rc < 0 ) {
+  if(rc < 0) {
     *err = map_error_to_curl(rc);
     rc = -1; /* generic error code for send failure */
   }
 
   *err = CURLE_OK;
   return rc;
-}
-
-void Curl_axtls_close_all(struct SessionHandle *data)
-{
-  (void)data;
-  infof(data, "  Curl_axtls_close_all\n");
 }
 
 void Curl_axtls_close(struct connectdata *conn, int sockindex)
@@ -548,7 +562,7 @@ int Curl_axtls_shutdown(struct connectdata *conn, int sockindex)
    */
   int retval = 0;
   struct ssl_connect_data *connssl = &conn->ssl[sockindex];
-  struct SessionHandle *data = conn->data;
+  struct Curl_easy *data = conn->data;
   uint8_t *buf;
   ssize_t nread;
 
@@ -664,7 +678,7 @@ size_t Curl_axtls_version(char *buffer, size_t size)
   return snprintf(buffer, size, "axTLS/%s", ssl_version());
 }
 
-int Curl_axtls_random(struct SessionHandle *data,
+int Curl_axtls_random(struct Curl_easy *data,
                       unsigned char *entropy,
                       size_t length)
 {
@@ -677,7 +691,7 @@ int Curl_axtls_random(struct SessionHandle *data,
      * race condition is that some global resources will leak. */
     RNG_initialize();
   }
-  get_random(length, entropy);
+  get_random((int)length, entropy);
   return 0;
 }
 

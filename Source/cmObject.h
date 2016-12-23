@@ -1,16 +1,9 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmObject_h
 #define cmObject_h
+
+#include <cmConfigure.h>
 
 #include "cmStandardIncludes.h"
 
@@ -36,16 +29,13 @@ public:
   /**
    * Returns true if this class is the given class, or a subclass of it.
    */
-  static bool IsTypeOf(const char *type)
-    { return !strcmp("cmObject", type); }
+  static bool IsTypeOf(const char* type) { return !strcmp("cmObject", type); }
 
   /**
    * Returns true if this object is an instance of the given class or
    * a subclass of it.
    */
-  virtual bool IsA(const char *type)
-    { return cmObject::IsTypeOf(type); }
+  virtual bool IsA(const char* type) { return cmObject::IsTypeOf(type); }
 };
 
 #endif
-

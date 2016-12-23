@@ -84,9 +84,9 @@ function(check_updates build)
   set(MSG "")
   if(MISSING)
     # List the missing entries
-    set(MSG "${MSG}Update.xml is missing expected entries:\n")
+    string(APPEND MSG "Update.xml is missing expected entries:\n")
     foreach(f ${MISSING})
-      set(MSG "${MSG}  ${f}\n")
+      string(APPEND MSG "  ${f}\n")
     endforeach()
   else()
     # Success
@@ -96,9 +96,9 @@ function(check_updates build)
   # Report the result
   if(EXTRA)
     # List the extra entries
-    set(MSG "${MSG}Update.xml has extra unexpected entries:\n")
+    string(APPEND MSG "Update.xml has extra unexpected entries:\n")
     foreach(f ${EXTRA})
-      set(MSG "${MSG}  ${f}\n")
+      string(APPEND MSG "  ${f}\n")
     endforeach()
   else()
     # Success
@@ -112,9 +112,9 @@ function(check_updates build)
     if(UPDATE_LOG_FILE)
       file(READ ${UPDATE_LOG_FILE} UPDATE_LOG LIMIT ${max_update_xml_size})
       string(REPLACE "\n" "\n  " UPDATE_LOG "${UPDATE_LOG}")
-      set(MSG "${MSG}Update log:\n  ${UPDATE_LOG}")
+      string(APPEND MSG "Update log:\n  ${UPDATE_LOG}")
     else()
-      set(MSG "${MSG}No update log found!")
+      string(APPEND MSG "No update log found!")
     endif()
 
     # Display the error message
@@ -182,6 +182,14 @@ endfunction()
 #-----------------------------------------------------------------------------
 # Function to write the dashboard test script.
 function(create_dashboard_script bin_dir custom_text)
+  if (NOT ctest_update_check)
+    set(ctest_update_check [[
+if(ret LESS 0)
+  message(FATAL_ERROR "ctest_update failed with ${ret}")
+endif()
+]])
+  endif()
+
   # Write the dashboard script.
   file(WRITE ${TOP}/${bin_dir}.cmake
     "# CTest Dashboard Script
@@ -193,8 +201,8 @@ set(CTEST_BINARY_DIRECTORY \${CTEST_DASHBOARD_ROOT}/${bin_dir})
 ${custom_text}
 # Start a dashboard and run the update step
 ctest_start(Experimental)
-ctest_update(SOURCE \${CTEST_SOURCE_DIRECTORY})
-")
+ctest_update(SOURCE \${CTEST_SOURCE_DIRECTORY} RETURN_VALUE ret ${ctest_update_args})
+${ctest_update_check}")
 endfunction()
 
 #-----------------------------------------------------------------------------
@@ -250,6 +258,24 @@ function(check_no_update bin_dir)
   endif()
 endfunction()
 
+#-----------------------------------------------------------------------------
+# Function to find the Update.xml file and make sure
+# it only has the UpdateReturnStatus failure message and no updates.
+function(check_fail_update bin_dir)
+  set(PATTERN ${TOP}/${bin_dir}/Testing/*/Update.xml)
+  file(GLOB UPDATE_XML_FILE RELATIVE ${TOP} ${PATTERN})
+  string(REGEX REPLACE "//Update.xml$" "/Update.xml"
+    UPDATE_XML_FILE "${UPDATE_XML_FILE}")
+  message(" found ${UPDATE_XML_FILE}")
+  file(STRINGS ${TOP}/${UPDATE_XML_FILE} UPDATE_XML_STATUS
+    REGEX "^\t<UpdateReturnStatus>[^<\n]+"
+    )
+  if(UPDATE_XML_STATUS MATCHES "Update command failed")
+    message(" correctly found 'Update command failed'")
+  else()
+    message(FATAL_ERROR " missing 'Update command failed'")
+  endif()
+endfunction()
 
 #-----------------------------------------------------------------------------
 # Function to run the dashboard through a script
@@ -263,6 +289,8 @@ function(run_dashboard_script bin_dir)
   list(APPEND UPDATE_MAYBE Updated{subdir} Updated{CTestConfig.cmake})
   if(NO_UPDATE)
     check_no_update(${bin_dir})
+  elseif(FAIL_UPDATE)
+    check_fail_update(${bin_dir})
   else()
     check_updates(${bin_dir}
       Updated{foo.txt}

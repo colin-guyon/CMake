@@ -29,14 +29,14 @@ add_custom_command(TARGET testLib1 POST_BUILD
                                    $<TARGET_FILE:testLib1>.genex
   )
 install(FILES $<TARGET_FILE:testLib1>.genex
-  DESTINATION lib
+  DESTINATION $<1:lib>$<0:/wrong>
   )
 set_property(TARGET testLib1 PROPERTY MY_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/testLib1file1.txt
   ${CMAKE_CURRENT_SOURCE_DIR}/testLib1file2.txt
   )
 install(FILES $<TARGET_PROPERTY:testLib1,MY_FILES>
-  DESTINATION doc
+  DESTINATION $<1:doc>$<0:/wrong>
   )
 
 # Test library with empty link interface.  Link it to an implementation
@@ -73,11 +73,11 @@ install(TARGETS testLibPerConfigDest EXPORT exp
   DESTINATION lib/$<$<BOOL:$<CONFIG>>:$<CONFIG>>$<$<NOT:$<BOOL:$<CONFIG>>>:NoConfig>
   )
 
-# Work-around: Visual Studio 6 does not support per-target object files.
-set(VS6)
-if("${CMAKE_GENERATOR}" MATCHES "Visual Studio 6")
-  set(VS6 1)
-endif()
+# Test OUTPUT_NAME properties with generator expressions
+add_library(testLib7 STATIC testLib7.c)
+set_property(TARGET testLib7 PROPERTY OUTPUT_NAME_DEBUG testLib7D-$<CONFIG>)
+set_property(TARGET testLib7 PROPERTY OUTPUT_NAME_RELEASE testLib7R-$<CONFIG>)
+set_property(TARGET testLib7 PROPERTY OUTPUT_NAME testLib7-$<CONFIG>)
 
 # Test using the target_link_libraries command to set the
 # LINK_INTERFACE_LIBRARIES* properties.  We construct two libraries
@@ -87,8 +87,8 @@ endif()
 # configuration in which it is built.  If the proper library is not
 # used via the link interface the import test will fail to link.
 add_library(testLib4lib STATIC testLib4lib.c)
-add_library(testLib4libdbg STATIC testLib4libopt.c testLib4libdbg${VS6}.c)
-add_library(testLib4libopt STATIC testLib4libdbg.c testLib4libopt${VS6}.c)
+add_library(testLib4libdbg STATIC testLib4libopt.c testLib4libdbg.c)
+add_library(testLib4libopt STATIC testLib4libdbg.c testLib4libopt.c)
 set_property(TARGET testLib4libdbg PROPERTY COMPILE_DEFINITIONS LIB_DBG)
 set_property(TARGET testLib4libopt PROPERTY COMPILE_DEFINITIONS LIB_OPT)
 target_link_libraries(testLib4
@@ -99,6 +99,19 @@ target_link_libraries(testLib4
 add_executable(testExe3 testExe3.c)
 set_property(TARGET testExe3 PROPERTY MACOSX_BUNDLE 1)
 
+# Test <ARCHIVE|LIBRARY|RUNTIME>_OUTPUT_DIRECTORY[_<CONFIG>] properties with generator expressions
+add_executable(testExe4 testExe4.c)
+target_link_libraries(testExe4 testExe1lib)
+set_property(TARGET testLib7 PROPERTY ARCHIVE_OUTPUT_DIRECTORY_DEBUG testLib7D-$<CONFIG>)
+set_property(TARGET testLib7 PROPERTY ARCHIVE_OUTPUT_DIRECTORY_RELEASE testLib7R-$<CONFIG>)
+set_property(TARGET testLib7 PROPERTY ARCHIVE_OUTPUT_DIRECTORY testLib7-$<CONFIG>)
+set_property(TARGET testLib5 PROPERTY LIBRARY_OUTPUT_DIRECTORY_DEBUG testLib5D-$<CONFIG>)
+set_property(TARGET testLib5 PROPERTY LIBRARY_OUTPUT_DIRECTORY_RELEASE testLib5R-$<CONFIG>)
+set_property(TARGET testLib5 PROPERTY LIBRARY_OUTPUT_DIRECTORY testLib5-$<CONFIG>)
+set_property(TARGET testExe4 PROPERTY RUNTIME_OUTPUT_DIRECTORY_DEBUG testExe4D-$<CONFIG>)
+set_property(TARGET testExe4 PROPERTY RUNTIME_OUTPUT_DIRECTORY_RELEASE testExe4R-$<CONFIG>)
+set_property(TARGET testExe4 PROPERTY RUNTIME_OUTPUT_DIRECTORY testExe4-$<CONFIG>)
+
 # Test cyclic dependencies.
 add_library(testLibCycleA STATIC
   testLibCycleA1.c testLibCycleA2.c testLibCycleA3.c)
@@ -108,13 +121,21 @@ target_link_libraries(testLibCycleA testLibCycleB)
 target_link_libraries(testLibCycleB testLibCycleA)
 set_property(TARGET testLibCycleA PROPERTY LINK_INTERFACE_MULTIPLICITY 3)
 
+add_library(testLibNoSONAME SHARED testLibNoSONAME.c)
+set_property(TARGET testLibNoSONAME PROPERTY NO_SONAME 1)
+
+cmake_policy(PUSH)
+cmake_policy(SET CMP0022 NEW)
 # Test exporting dependent libraries into different exports
 add_library(testLibRequired testLibRequired.c)
 add_library(testLibDepends testLibDepends.c)
 target_link_libraries(testLibDepends LINK_PUBLIC testLibRequired)
+add_library(testStaticLibRequiredPrivate testStaticLibRequiredPrivate.c)
+target_link_libraries(testLibDepends PRIVATE testStaticLibRequiredPrivate)
+cmake_policy(POP)
 
 macro(add_include_lib _libName)
-  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${_libName}.c" "// no content\n")
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${_libName}.c" "/* no content */\n")
   add_library(${_libName} "${CMAKE_CURRENT_BINARY_DIR}/${_libName}.c")
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${_libName}")
   set_property(TARGET ${_libName} APPEND PROPERTY
@@ -122,7 +143,7 @@ macro(add_include_lib _libName)
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/${_libName}>"
       )
   if (NOT "${ARGV1}" STREQUAL "NO_HEADER")
-      file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${_libName}/${_libName}.h" "// no content\n")
+      file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${_libName}/${_libName}.h" "/* no content */\n")
       install(FILES
         "${CMAKE_CURRENT_BINARY_DIR}/${_libName}/${_libName}.h"
           DESTINATION include/${_libName}
@@ -160,7 +181,7 @@ install(FILES
 )
 add_include_lib(testLibIncludeRequired6)
 
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/testLibIncludeRequired7/testLibIncludeRequired7.h" "// No content\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/testLibIncludeRequired7/testLibIncludeRequired7.h" "/* No content */\n")
 install(FILES
   "${CMAKE_CURRENT_BINARY_DIR}/testLibIncludeRequired7/testLibIncludeRequired7.h"
     DESTINATION include/testLibIncludeRequired7
@@ -248,6 +269,7 @@ install(FILES
     DESTINATION include/testSharedLibRequiredUser
 )
 
+cmake_policy(PUSH)
 cmake_policy(SET CMP0022 NEW)
 add_library(testSharedLibRequiredUser2 SHARED testSharedLibRequiredUser2.cpp)
 generate_export_header(testSharedLibRequiredUser2)
@@ -261,7 +283,7 @@ install(FILES
   "${CMAKE_CURRENT_BINARY_DIR}/testsharedlibrequireduser2_export.h"
     DESTINATION include/testSharedLibRequiredUser2
 )
-cmake_policy(SET CMP0022 OLD)
+cmake_policy(POP)
 
 add_library(testSharedLibDepends SHARED testSharedLibDepends.cpp)
 set_property(TARGET testSharedLibDepends APPEND PROPERTY
@@ -289,6 +311,8 @@ target_link_libraries(testSharedLibDepends LINK_PUBLIC renamed_on_export)
 target_link_libraries(testSharedLibDepends LINK_INTERFACE_LIBRARIES
   $<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:$<TARGET_NAME:testSharedLibRequired>>)
 
+cmake_policy(PUSH)
+cmake_policy(SET CMP0022 OLD)
 add_library(cmp0022OLD SHARED cmp0022_vs6_1.cpp)
 generate_export_header(cmp0022OLD BASE_NAME cmp0022)
 target_include_directories(cmp0022OLD PUBLIC
@@ -302,7 +326,7 @@ target_include_directories(cmp0022NEW PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR};${CMAKE_CURRENT_SOURCE_DIR}>"
   "$<INSTALL_INTERFACE:$<INSTALL_PREFIX>/include/cmp0022>"
 )
-cmake_policy(SET CMP0022 OLD)
+cmake_policy(POP)
 install(FILES
   "${CMAKE_CURRENT_SOURCE_DIR}/cmp0022.h"
   "${CMAKE_CURRENT_BINARY_DIR}/cmp0022_export.h"
@@ -366,25 +390,29 @@ install(TARGETS
         INCLUDES DESTINATION
           $<INSTALL_PREFIX>/include/$<TARGET_PROPERTY:NAME>
 )
+install(TARGETS
+          testStaticLibRequiredPrivate
+        EXPORT RequiredExp DESTINATION lib
+)
 install(EXPORT RequiredExp NAMESPACE Req:: FILE testLibRequiredTargets.cmake DESTINATION lib/cmake/testLibRequired)
 
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest/installIncludesTest.h" "// No content\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest/installIncludesTest.h" "/* No content */\n")
 
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest2")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest2/installIncludesTest2.h" "// No content\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest2/installIncludesTest2.h" "/* No content */\n")
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest3/testLibRequired")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest3/testLibRequired/installIncludesTest3.h" "// No content\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest3/testLibRequired/installIncludesTest3.h" "/* No content */\n")
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/testLibRequired/installIncludesTest4")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/testLibRequired/installIncludesTest4/installIncludesTest4.h" "// No content\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/testLibRequired/installIncludesTest4/installIncludesTest4.h" "/* No content */\n")
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest5")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest5/installIncludesTest5.h" "// No content\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest5/installIncludesTest5.h" "/* No content */\n")
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest6")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest6/installIncludesTest6.h" "// No content\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest6/installIncludesTest6.h" "/* No content */\n")
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest7")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest7/installIncludesTest7.h" "// No content\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest7/installIncludesTest7.h" "/* No content */\n")
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest8")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest8/installIncludesTest8.h" "// No content\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest8/installIncludesTest8.h" "/* No content */\n")
 install(FILES
   "${CMAKE_CURRENT_BINARY_DIR}/installIncludesTest/installIncludesTest.h"
   DESTINATION installIncludesTest
@@ -444,10 +472,11 @@ install(FILES
 # Install and export from install tree.
 install(
   TARGETS
-  testExe1 testLib1 testLib2 testExe2 testLib3 testLib4 testExe3
+  testExe1 testLib1 testLib2 testExe2 testLib3 testLib4 testExe3 testExe4
   testExe2lib testLib4lib testLib4libdbg testLib4libopt
-  testLib6
+  testLib6 testLib7
   testLibCycleA testLibCycleB
+  testLibNoSONAME
   cmp0022NEW cmp0022OLD
   systemlib
   EXPORT exp
@@ -505,9 +534,10 @@ export(TARGETS testExe1 testLib1 testLib2 testLib3
   NAMESPACE bld_
   FILE ExportBuildTree.cmake
   )
-export(TARGETS testExe2 testLib4 testLib5 testLib6 testExe3 testExe2lib
+export(TARGETS testExe2 testLib4 testLib5 testLib6 testLib7 testExe3 testExe4 testExe2lib
   testLib4lib testLib4libdbg testLib4libopt
   testLibCycleA testLibCycleB
+  testLibNoSONAME
   testLibPerConfigDest
   NAMESPACE bld_
   APPEND FILE ExportBuildTree.cmake
@@ -527,5 +557,5 @@ install(
   ARCHIVE DESTINATION lib
   INCLUDES DESTINATION include/abs
   )
-install(DIRECTORY include/abs DESTINATION include)
+install(DIRECTORY $<1:include/abs>$<0:/wrong> DESTINATION $<1:include>$<0:/wrong>)
 install(EXPORT expAbs NAMESPACE expAbs_ DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/expAbs)

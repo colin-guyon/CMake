@@ -1,32 +1,24 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCursesForm.h"
+
+#include <cmConfigure.h>
 
 cmsys::ofstream cmCursesForm::DebugFile;
 bool cmCursesForm::Debug = false;
 
 cmCursesForm::cmCursesForm()
 {
-  this->Form = 0;
+  this->Form = CM_NULLPTR;
 }
 
 cmCursesForm::~cmCursesForm()
 {
-  if (this->Form)
-    {
+  if (this->Form) {
     unpost_form(this->Form);
     free_form(this->Form);
-    this->Form = 0;
-    }
+    this->Form = CM_NULLPTR;
+  }
 }
 
 void cmCursesForm::DebugStart()
@@ -37,10 +29,9 @@ void cmCursesForm::DebugStart()
 
 void cmCursesForm::DebugEnd()
 {
-  if (!cmCursesForm::Debug)
-    {
+  if (!cmCursesForm::Debug) {
     return;
-    }
+  }
 
   cmCursesForm::Debug = false;
   cmCursesForm::DebugFile.close();
@@ -48,10 +39,9 @@ void cmCursesForm::DebugEnd()
 
 void cmCursesForm::LogMessage(const char* msg)
 {
-  if (!cmCursesForm::Debug)
-    {
+  if (!cmCursesForm::Debug) {
     return;
-    }
+  }
 
   cmCursesForm::DebugFile << msg << std::endl;
 }
