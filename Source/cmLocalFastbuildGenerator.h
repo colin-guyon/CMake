@@ -14,7 +14,7 @@
 
 #include "cmLocalGenerator.h"
 
-#include <cmsys/auto_ptr.hxx>
+#include <cm_auto_ptr.hxx>
 
 class cmSourceFile;
 class cmSourceGroup;
