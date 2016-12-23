@@ -386,7 +386,7 @@ public:
 			"Semicolon separated list of supported configuration types, "
 			"only supports Debug, Release, MinSizeRel, and RelWithDebInfo, "
 			"anything else will be ignored.",
-			cmCacheManager::STRING);
+			cmState::STRING);
 	}
 
 	struct FastbuildTargetNames
@@ -410,7 +410,7 @@ public:
 		cmTarget &target,
 		const std::string & configName)
 	{
-		if (target.GetType() == cmTarget::EXECUTABLE)
+		if (target.GetType() == cmState::EXECUTABLE)
 		{
 			target.GetExecutableNames(
 				targetNamesOut.targetNameOut,
@@ -466,15 +466,15 @@ public:
 				targetNamesOut.targetNameReal;
 		}
 
-		if (target.GetType() == cmTarget::EXECUTABLE ||
-			target.GetType() == cmTarget::STATIC_LIBRARY ||
-			target.GetType() == cmTarget::SHARED_LIBRARY ||
-			target.GetType() == cmTarget::MODULE_LIBRARY)
+		if (target.GetType() == cmState::EXECUTABLE ||
+			target.GetType() == cmState::STATIC_LIBRARY ||
+			target.GetType() == cmState::SHARED_LIBRARY ||
+			target.GetType() == cmState::MODULE_LIBRARY)
 		{
 			targetNamesOut.targetOutputPDBDir = target.GetPDBDirectory(configName);
 			targetNamesOut.targetOutputPDBDir += "/";
 		}
-		if (target.GetType() <= cmTarget::OBJECT_LIBRARY)
+		if (target.GetType() <= cmState::OBJECT_LIBRARY)
 		{
 			targetNamesOut.targetOutputCompilePDBDir = target.GetCompilePDBPath(configName);
 			if (targetNamesOut.targetOutputCompilePDBDir.empty())
@@ -498,7 +498,7 @@ public:
 		cmGeneratorTarget *gt,
 		std::string configName)
 	{
-		const std::string& linkLanguage = target.GetLinkerLanguage(configName);
+		const std::string& linkLanguage = gt->GetLinkerLanguage(configName);
 		cmMakefile* mf = lg->GetMakefile();
 		{
 			std::string linkCmdVar = 
@@ -514,7 +514,7 @@ public:
 		// If the above failed, then lets try this:
 		switch (target.GetType()) 
 		{
-			case cmTarget::STATIC_LIBRARY: 
+			case cmState::STATIC_LIBRARY: 
 			{
 				// We have archive link commands set. First, delete the existing archive.
 				{
@@ -540,9 +540,9 @@ public:
 				}
 				return;
 			}
-			case cmTarget::SHARED_LIBRARY:
-			case cmTarget::MODULE_LIBRARY:
-			case cmTarget::EXECUTABLE:
+			case cmState::SHARED_LIBRARY:
+			case cmState::MODULE_LIBRARY:
+			case cmState::EXECUTABLE:
 				break;
 			default:
 				assert(0 && "Unexpected target type");
@@ -798,8 +798,8 @@ public:
 		// Object libraries do not have linker stages
 		// nor utilities
 		bool hasObjectGroups =
-			target.GetType() != cmTarget::UTILITY &&
-			target.GetType() != cmTarget::GLOBAL_TARGET;
+			target.GetType() != cmState::UTILITY &&
+			target.GetType() != cmState::GLOBAL_TARGET;
 		if (!hasObjectGroups)
 		{
 			return;
@@ -905,7 +905,7 @@ public:
 		cmTarget& target, 
 		std::vector<std::string>& dependencies)
 	{
-		if (target.GetType() == cmTarget::GLOBAL_TARGET)
+		if (target.GetType() == cmState::GLOBAL_TARGET)
 		{
 			// Global targets only depend on other utilities, which may not appear in
 			// the TargetDepends set (e.g. "all").
@@ -935,8 +935,8 @@ public:
 		std::vector<std::string>& dependencies)
 	{
 		// Static libraries never depend on other targets for linking.
-		if (target.GetType() == cmTarget::STATIC_LIBRARY ||
-			target.GetType() == cmTarget::OBJECT_LIBRARY)
+		if (target.GetType() == cmState::STATIC_LIBRARY ||
+			target.GetType() == cmState::OBJECT_LIBRARY)
 		{
 			return;
 		}
@@ -1251,7 +1251,7 @@ public:
 	{
 		bool operator()(const cmTarget* target) const
 		{
-			if (target->GetType() == cmTarget::GLOBAL_TARGET)
+			if (target->GetType() == cmState::GLOBAL_TARGET)
 			{
 				// We only want to process global targets that live in the home
 				// (i.e. top-level) directory.  CMake creates copies of these targets
@@ -1634,7 +1634,7 @@ public:
 		{
 			TargetGenerationContext& targetContext = iter->second;
 
-			if (targetContext.target->GetType() == cmTarget::INTERFACE_LIBRARY)
+			if (targetContext.target->GetType() == cmState::INTERFACE_LIBRARY)
 			{
 				continue;
 			}
@@ -2122,34 +2122,34 @@ public:
 		std::string linkCommand = "Library";
 		switch (target.GetType())
 		{
-			case cmTarget::INTERFACE_LIBRARY:
+			case cmState::INTERFACE_LIBRARY:
 				// We don't write out interface libraries.
 				return;
-			case cmTarget::EXECUTABLE:
+			case cmState::EXECUTABLE:
 			{
 				linkCommand = "Executable";
 				break;
 			}
-			case cmTarget::SHARED_LIBRARY:
+			case cmState::SHARED_LIBRARY:
 			{
 				linkCommand = "DLL";
 				break;
 			}
-			case cmTarget::STATIC_LIBRARY:
-			case cmTarget::MODULE_LIBRARY:
-			case cmTarget::OBJECT_LIBRARY:
+			case cmState::STATIC_LIBRARY:
+			case cmState::MODULE_LIBRARY:
+			case cmState::OBJECT_LIBRARY:
 			{
 				// No changes required
 				break;
 			}
-			case cmTarget::UTILITY:
-			case cmTarget::GLOBAL_TARGET:
+			case cmState::UTILITY:
+			case cmState::GLOBAL_TARGET:
 			{
 				// No link command used 
 				linkCommand = "NoLinkCommand";
 				break;
 			}
-			case cmTarget::UNKNOWN_LIBRARY:
+			case cmState::UNKNOWN_LIBRARY:
 			{
 				// Ignoring this target generation...
 				return;
@@ -2442,9 +2442,9 @@ public:
 		// Object libraries do not have linker stages
 		// nor utilities
 		bool hasLinkerStage = 
-			target.GetType() != cmTarget::OBJECT_LIBRARY &&
-			target.GetType() != cmTarget::UTILITY &&
-			target.GetType() != cmTarget::GLOBAL_TARGET;
+			target.GetType() != cmState::OBJECT_LIBRARY &&
+			target.GetType() != cmState::UTILITY &&
+			target.GetType() != cmState::GLOBAL_TARGET;
 
 		// Iterate over each configuration
 		// This time to define linker settings for each config
@@ -2671,7 +2671,7 @@ public:
 			++targetIter)
 		{
 			const cmTarget* constTarget = (*targetIter);
-			if(constTarget->GetType() == cmTarget::INTERFACE_LIBRARY)
+			if(constTarget->GetType() == cmState::INTERFACE_LIBRARY)
 			{
 				continue;
 			}
@@ -2685,7 +2685,7 @@ public:
 			cmTarget* target = findResult->second.target;
 			cmLocalFastbuildGenerator* lg = findResult->second.lg;
 
-			if (target->GetType() == cmTarget::GLOBAL_TARGET)
+			if (target->GetType() == cmState::GLOBAL_TARGET)
 			{
 				if (!outputGlobals)
 					continue;
@@ -2698,15 +2698,15 @@ public:
 
 			switch (target->GetType())
 			{
-				case cmTarget::EXECUTABLE:
-				case cmTarget::SHARED_LIBRARY:
-				case cmTarget::STATIC_LIBRARY:
-				case cmTarget::MODULE_LIBRARY:
-				case cmTarget::OBJECT_LIBRARY:
+				case cmState::EXECUTABLE:
+				case cmState::SHARED_LIBRARY:
+				case cmState::STATIC_LIBRARY:
+				case cmState::MODULE_LIBRARY:
+				case cmState::OBJECT_LIBRARY:
 					WriteTargetDefinition(context, lg, *target);
 					break;
-				case cmTarget::UTILITY:
-				case cmTarget::GLOBAL_TARGET:
+				case cmState::UTILITY:
+				case cmState::GLOBAL_TARGET:
 					WriteTargetUtilityDefinition(context, lg, *target);
 					break;
 				default:
@@ -2734,7 +2734,7 @@ public:
 			++targetIter)
 		{
 			const cmTarget* constTarget = (*targetIter);
-			if(constTarget->GetType() == cmTarget::INTERFACE_LIBRARY)
+			if(constTarget->GetType() == cmState::INTERFACE_LIBRARY)
 			{
 				continue;
 			}
@@ -2748,7 +2748,7 @@ public:
 			cmTarget* target = findResult->second.target;
 			const std::string & targetName = target->GetName();
 
-			if (target->GetType() == cmTarget::GLOBAL_TARGET)
+			if (target->GetType() == cmState::GLOBAL_TARGET)
 			{
 				if (!outputGlobals)
 					continue;
