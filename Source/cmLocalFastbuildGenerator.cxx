@@ -11,6 +11,7 @@
 ============================================================================*/
 #include "cmLocalFastbuildGenerator.h"
 #include "cmGlobalGenerator.h"
+#include "cmGeneratorTarget.h"
 #include "cmMakefile.h"
 #include "cmSourceFile.h"
 #include "cmSystemTools.h"
@@ -20,7 +21,9 @@
 #endif
 #define FASTBUILD_DOLLAR_TAG "FASTBUILD_DOLLAR_TAG"
 //----------------------------------------------------------------------------
-cmLocalFastbuildGenerator::cmLocalFastbuildGenerator()
+cmLocalFastbuildGenerator::cmLocalFastbuildGenerator(cmGlobalGenerator* gg,
+        cmMakefile* mf)
+  : cmLocalCommonGenerator(gg, mf, mf->GetCurrentBinaryDirectory())
 {
 #ifdef _WIN32
 	this->WindowsShell = true;
@@ -76,7 +79,7 @@ void cmLocalFastbuildGenerator::ComputeObjectFilenames(
 
 //----------------------------------------------------------------------------
 std::string cmLocalFastbuildGenerator::GetTargetDirectory(
-	cmTarget const& target) const
+	cmGeneratorTarget const& target) const
 {
 	std::string dir = cmake::GetCMakeFilesDirectoryPostSlash();
 	dir += target.GetName();
