@@ -12,7 +12,7 @@
 #ifndef cmGlobalFastbuildGenerator_h
 #define cmGlobalFastbuildGenerator_h
 
-#include "cmGlobalGenerator.h"
+#include "cmGlobalCommonGenerator.h"
 
 class cmGlobalGeneratorFactory;
 
@@ -20,7 +20,7 @@ class cmGlobalGeneratorFactory;
  * \brief Class for global fastbuild generator.
  */
 class cmGlobalFastbuildGenerator 
-	: public cmGlobalGenerator
+	: public cmGlobalCommonGenerator
 {
 public:
 	cmGlobalFastbuildGenerator();
