@@ -853,7 +853,7 @@ public:
     cmLocalFastbuildGenerator* lg, const cmGeneratorTarget* gt,
     std::string configName)
   {
-    std::string result = lg->GetTargetDirectory(*gt) + "/";
+    std::string result = lg->GetTargetDirectory(gt) + "/";
     if (!configName.empty()) {
       result = result + configName + "/";
     }
