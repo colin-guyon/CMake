@@ -664,6 +664,7 @@ public:
     compileObjectVars.ObjectFileDir = "";
     compileObjectVars.Flags = "";
     compileObjectVars.Defines = "";
+    compileObjectVars.Includes= "";
     compileObjectVars.TargetCompilePDB = FASTBUILD_DOLLAR_TAG
       "TargetOutCompilePDBDir" FASTBUILD_DOLLAR_TAG FASTBUILD_DOLLAR_TAG
       "TargetNamePDB" FASTBUILD_DOLLAR_TAG;
