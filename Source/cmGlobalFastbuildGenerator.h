@@ -23,7 +23,7 @@ class cmGlobalFastbuildGenerator
 	: public cmGlobalCommonGenerator
 {
 public:
-	cmGlobalFastbuildGenerator();
+	cmGlobalFastbuildGenerator(cmake* cm);
 	virtual ~cmGlobalFastbuildGenerator();
 
 	static cmGlobalGeneratorFactory* NewFactory() {
@@ -44,7 +44,7 @@ public:
 		std::vector<std::string> const& makeOptions);
 
 	///! create the correct local generator
-	virtual cmLocalGenerator *CreateLocalGenerator();
+	virtual cmLocalGenerator *CreateLocalGenerator(cmMakefile* mf);
 	virtual std::string GetName() const;
 
 	virtual bool IsMultiConfig() { return true; }
