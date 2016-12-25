@@ -91,7 +91,6 @@ The following tests FAILED:
 #include "cmGlobalFastbuildGenerator.h"
 
 #include "cmGeneratorTarget.h"
-#include "cmGlobalGeneratorFactory.h"
 #include "cmLocalFastbuildGenerator.h"
 #include "cmMakefile.h"
 #include "cmSourceFile.h"
@@ -106,35 +105,7 @@ The following tests FAILED:
 
 static const char fastbuildGeneratorName[] = "Fastbuild";
 
-class cmGlobalFastbuildGenerator::Factory 
-	: public cmGlobalGeneratorFactory
-{
-public:
-	Factory()
-	{
 
-	}
-
-	cmGlobalGenerator* CreateGlobalGenerator(const std::string& name) const 
-	{
-		if (name == (fastbuildGeneratorName))
-		{
-			return new cmGlobalFastbuildGenerator();
-		}
-		return NULL;
-	}
-
-	void GetDocumentation(cmDocumentationEntry& entry) const 
-	{
-		entry.Name = fastbuildGeneratorName;
-		entry.Brief = "Generates fastbuild project files.";
-	}
-
-	void GetGenerators(std::vector<std::string>& names) const 
-	{
-		names.push_back(fastbuildGeneratorName);
-	}
-};
 
 //----------------------------------------------------------------------------
 class cmGlobalFastbuildGenerator::Detail
@@ -2830,10 +2801,6 @@ public:
 };
 
 //----------------------------------------------------------------------------
-cmGlobalGeneratorFactory* cmGlobalFastbuildGenerator::NewFactory()
-{
-	return new Factory();
-}
 
 //----------------------------------------------------------------------------
 cmGlobalFastbuildGenerator::cmGlobalFastbuildGenerator()
@@ -2859,6 +2826,13 @@ cmLocalGenerator *cmGlobalFastbuildGenerator::CreateLocalGenerator()
 	cmLocalGenerator * lg = new cmLocalFastbuildGenerator();
 	lg->SetGlobalGenerator(this);
 	return lg;
+}
+
+void cmGlobalFastbuildGenerator
+::GetDocumentation(cmDocumentationEntry& entry)
+{
+  entry.Name = cmGlobalFastbuildGenerator::GetActualName();
+  entry.Brief = "Generates fastbuild files (experimental).";
 }
 
 //----------------------------------------------------------------------------
