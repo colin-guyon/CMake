@@ -228,18 +228,6 @@ public:
     return string.substr(string.rfind('/'));
   }
 
-  static bool IsExcludedFromAll(cmGeneratorTarget* gt)
-  {
-    bool excluded = gt->GetPropertyAsBool("EXCLUDE_FROM_ALL");
-    cmLocalGenerator* lg = gt->GetLocalGenerator();
-    cmState::Snapshot s = lg->GetStateSnapshot();
-    while (s.GetBuildsystemDirectoryParent() != 0 && !excluded) {
-      excluded = lg->GetMakefile()->GetPropertyAsBool("EXCLUDE_FROM_ALL");
-      s = s.GetBuildsystemDirectoryParent();
-    }
-
-    return excluded;
-  }
 
 #define FASTBUILD_DOLLAR_TAG "FASTBUILD_DOLLAR_TAG"
 
@@ -2605,7 +2593,7 @@ public:
 
         perTarget[targetName].push_back(aliasName);
 
-        if (!Detection::IsExcludedFromAll(gt)) {
+        if (!context.self->IsExcluded(context.root,gt)) {
           perConfig[configName].push_back(aliasName);
         }
       }
