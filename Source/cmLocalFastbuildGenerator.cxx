@@ -25,9 +25,6 @@ cmLocalFastbuildGenerator::cmLocalFastbuildGenerator(cmGlobalGenerator* gg,
                                                      cmMakefile* mf)
   : cmLocalCommonGenerator(gg, mf, mf->GetCurrentBinaryDirectory())
 {
-#ifdef _WIN32
-  this->WindowsShell = true;
-#endif
   this->TargetImplib =
     FASTBUILD_DOLLAR_TAG "TargetOutputImplib" FASTBUILD_DOLLAR_TAG;
   // this->LinkScriptShell = true;
