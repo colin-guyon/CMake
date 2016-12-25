@@ -13,8 +13,8 @@
 #define cmGlobalFastbuildGenerator_h
 
 #include "cmGlobalCommonGenerator.h"
+#  include "cmGlobalGeneratorFactory.h"
 
-class cmGlobalGeneratorFactory;
 
 /** \class cmGlobalFastbuildGenerator
  * \brief Class for global fastbuild generator.
@@ -26,7 +26,8 @@ public:
 	cmGlobalFastbuildGenerator();
 	virtual ~cmGlobalFastbuildGenerator();
 
-	static cmGlobalGeneratorFactory* NewFactory();
+	static cmGlobalGeneratorFactory* NewFactory() {
+        return new cmGlobalGeneratorSimpleFactory<cmGlobalFastbuildGenerator>(); }
 
 	void EnableLanguage(
 		std::vector<std::string>const &  lang,
@@ -63,6 +64,21 @@ public:
 
 	const std::vector<std::string> & GetConfigurations() const;
 
+  /**
+   * Utilized by the generator factory to determine if this generator
+   * supports toolsets.
+   */
+  static bool SupportsToolset() { return false; }
+
+  /**
+   * Utilized by the generator factory to determine if this generator
+   * supports platforms.
+   */
+  static bool SupportsPlatform() { return false; }
+
+  static std::string GetActualName() { return "Fastbuild"; }
+
+  static void GetDocumentation(cmDocumentationEntry& entry);
 private:
 	class Factory;
 	class Detail;
