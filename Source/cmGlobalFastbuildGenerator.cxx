@@ -2639,6 +2639,7 @@ cmGlobalFastbuildGenerator::cmGlobalFastbuildGenerator(cmake* cm)
   : cmGlobalCommonGenerator(cm)
 {
   this->FindMakeProgramFile = "CMakeFastbuildFindMake.cmake";
+  cm->GetState()->SetFastbuildMake(true);
 }
 
 //----------------------------------------------------------------------------
