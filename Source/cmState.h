@@ -154,6 +154,8 @@ public:
   bool UseNMake() const;
   void SetMSYSShell(bool mSYSShell);
   bool UseMSYSShell() const;
+  void SetFastbuildMake(bool fastbuildMake);
+  bool UseFastbuildMake() const;
 
   unsigned int GetCacheMajorVersion() const;
   unsigned int GetCacheMinorVersion() const;
@@ -190,6 +192,7 @@ private:
   bool MinGWMake;
   bool NMake;
   bool MSYSShell;
+  bool FastbuildMake;
 };
 
 #endif
