@@ -452,7 +452,7 @@ public:
           std::string cmakeCommand = lg->ConvertToOutputFormat(
             mf->GetRequiredDefinition("CMAKE_COMMAND"),
             cmLocalGenerator::SHELL);
-          linkCmds.push_back(cmakeCommand + " -E remove $TARGET_FILE");
+          linkCmds.push_back(cmakeCommand + " -E remove <TARGET>");
         }
         // TODO: Use ARCHIVE_APPEND for archives over a certain size.
         {
