@@ -603,6 +603,7 @@ public:
                                           " " FASTBUILD_DOLLAR_TAG
                                           "LinkPath" FASTBUILD_DOLLAR_TAG;
     vars.LanguageCompileFlags="";
+	vars.Manifests = "";
     // Rule for linking library/executable.
     std::vector<std::string> linkCmds;
     ComputeLinkCmds(linkCmds, lg, gt, configName);
