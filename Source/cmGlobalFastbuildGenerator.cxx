@@ -505,16 +505,18 @@ public:
       lg->AppendDefines(defines, source->GetProperty(defPropName));
     }
 
-    // Add a definition for the configuration name.
-    // NOTE: CMAKE_TEST_REQUIREMENT The following was added specifically to
-    // facillitate cmake testing. Doesn't feel right to do this...
-    std::string configDefine = "CMAKE_INTDIR=\"";
-    configDefine += configName;
-    configDefine += "\"";
-    lg->AppendDefines(defines, configDefine);
 
     std::string definesString;
     lg->JoinDefines(defines, definesString, language);
+    // Add a definition for the configuration name.
+    // NOTE: CMAKE_TEST_REQUIREMENT The following was added specifically to
+    // facillitate cmake testing. Doesn't feel right to do this...
+    // TODO
+    // fastbuild use ^ as escape prefix, but cmake escape as shell needed
+    // so we need to add -DCMAKE_INTDIR="xxx" after JoinDefines
+    // better solution should makes cmLocalGenerator aware of fastbuild
+
+    definesString.append(" -DCMAKE_INTDIR=\""+configName+"\"");
 
     return definesString;
   }
