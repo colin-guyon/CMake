@@ -2320,11 +2320,12 @@ public:
           linkPath = frameworkPath + linkPath;
 
           if (gt->IsExecutableWithExports()) {
-            const char* defFileFlag =
+            auto def=gt->GetModuleDefinitionFile(configName);
+            if (def) {
+              const char* defFileFlag =
               lg->GetMakefile()->GetDefinition("CMAKE_LINK_DEF_FILE_FLAG");
-            const std::string defFile =
-              gt->GetModuleDefinitionFile(configName)->GetFullPath();
-            if (!defFile.empty()) {
+
+              const std::string defFile=def->GetFullPath();
               linkFlags += defFileFlag + defFile;
             }
           }
