@@ -446,29 +446,15 @@ public:
     // If the above failed, then lets try this:
     switch (gt->GetType()) {
       case cmState::STATIC_LIBRARY: {
-        // We have archive link commands set. First, delete the existing
-        // archive.
-        {
-          std::string cmakeCommand = lg->ConvertToOutputFormat(
-            mf->GetRequiredDefinition("CMAKE_COMMAND"),
-            cmLocalGenerator::SHELL);
-          linkCmds.push_back(cmakeCommand + " -E remove <TARGET>");
-        }
         // TODO: Use ARCHIVE_APPEND for archives over a certain size.
-        {
-          std::string linkCmdVar = "CMAKE_";
-          linkCmdVar += linkLanguage;
-          linkCmdVar += "_ARCHIVE_CREATE";
-          const char* linkCmd = mf->GetRequiredDefinition(linkCmdVar);
-          cmSystemTools::ExpandListArgument(linkCmd, linkCmds);
-        }
-        {
-          std::string linkCmdVar = "CMAKE_";
-          linkCmdVar += linkLanguage;
-          linkCmdVar += "_ARCHIVE_FINISH";
-          const char* linkCmd = mf->GetRequiredDefinition(linkCmdVar);
-          cmSystemTools::ExpandListArgument(linkCmd, linkCmds);
-        }
+        std::string linkCmdVar = "CMAKE_";
+        linkCmdVar += linkLanguage;
+        linkCmdVar += "_ARCHIVE_CREATE";
+        const char* linkCmd = mf->GetRequiredDefinition(linkCmdVar);
+        cmSystemTools::ExpandListArgument(linkCmd, linkCmds);
+        //TODO cmake use ar && ranlib ,but fastbuild only supports one command 
+        std::string& toReplace=linkCmds.back();
+        toReplace.replace(toReplace.find(" qc "),4," rcs ");
         return;
       }
       case cmState::SHARED_LIBRARY:
