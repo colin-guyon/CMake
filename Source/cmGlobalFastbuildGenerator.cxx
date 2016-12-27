@@ -1775,6 +1775,10 @@ public:
 
     std::string scriptFileName(workingDirectory + simpleName + shellExt);
     cmsys::ofstream scriptFile(scriptFileName.c_str());
+#ifndef _WIN32
+    //fastbuild use execve , script must have interpreter line
+    scriptFile << "#!/bin/sh\n";
+#endif
 
     for (unsigned i = 0; i != ccg.GetNumberOfCommands(); ++i) {
       std::string args;
@@ -1794,6 +1798,8 @@ public:
 
       scriptFile << Quote(command, "\"") << args << std::endl;
     }
+
+    cmSystemTools::SetPermissions(scriptFileName,0777);
 
     // Write out an exec command
     /*
