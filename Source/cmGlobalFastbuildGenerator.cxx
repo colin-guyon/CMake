@@ -1754,7 +1754,7 @@ public:
       workingDirectory += "/";
     }
 
-    std::string scriptFileName(workingDirectory + targetName + ".bat");
+    std::string scriptFileName(workingDirectory + targetName + shellExt);
     cmsys::ofstream scriptFile(scriptFileName.c_str());
 
     for (unsigned i = 0; i != ccg.GetNumberOfCommands(); ++i) {
