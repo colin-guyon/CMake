@@ -321,9 +321,6 @@ public:
     // default to at least Debug and Release
     if (configurations.size() == 0) {
       configurations.push_back("Debug");
-      configurations.push_back("Release");
-      configurations.push_back("MinSizeRel");
-      configurations.push_back("RelWithDebInfo");
     }
 
     // Reset the entry to have a semi-colon separated list.
