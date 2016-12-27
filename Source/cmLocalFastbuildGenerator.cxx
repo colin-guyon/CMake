@@ -25,8 +25,6 @@ cmLocalFastbuildGenerator::cmLocalFastbuildGenerator(cmGlobalGenerator* gg,
                                                      cmMakefile* mf)
   : cmLocalCommonGenerator(gg, mf, mf->GetCurrentBinaryDirectory())
 {
-  this->TargetImplib =
-    FASTBUILD_DOLLAR_TAG "TargetOutputImplib" FASTBUILD_DOLLAR_TAG;
   // this->LinkScriptShell = true;
 }
 
@@ -46,11 +44,7 @@ void cmLocalFastbuildGenerator::Generate()
 }
 
 //----------------------------------------------------------------------------
-void cmLocalFastbuildGenerator::ExpandRuleVariables(
-  std::string& s, const RuleVariables& replaceValues)
-{
-  return cmLocalGenerator::ExpandRuleVariables(s, replaceValues);
-}
+
 
 //----------------------------------------------------------------------------
 std::string cmLocalFastbuildGenerator::ConvertToLinkReference(

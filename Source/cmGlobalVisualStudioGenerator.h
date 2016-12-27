@@ -131,7 +131,7 @@ public:
                               std::string const& configName);
 
 protected:
-  virtual void AddExtraIDETargets();
+  void AddExtraIDETargets() CM_OVERRIDE;
 
   // Does this VS version link targets to each other if there are
   // dependencies in the SLN file?  This was done for VS versions
@@ -140,7 +140,7 @@ protected:
 
   virtual const char* GetIDEVersion() = 0;
 
-  virtual bool ComputeTargetDepends();
+  bool ComputeTargetDepends() CM_OVERRIDE;
   class VSDependSet : public std::set<std::string>
   {
   };

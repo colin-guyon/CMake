@@ -13,6 +13,7 @@
 #define cmLocalFastbuildGenerator_h
 
 #include "cmLocalCommonGenerator.h"
+#include "cmRulePlaceholderExpander.h"
 
 #include <cm_auto_ptr.hxx>
 
@@ -35,9 +36,8 @@ public:
 
   void Generate() CM_OVERRIDE;
 
-  void ExpandRuleVariables(std::string& s, const RuleVariables& replaceValues);
   std::string ConvertToLinkReference(std::string const& lib,
-                                     OutputFormat format) CM_OVERRIDE;
+                                     OutputFormat format) ;
   void ComputeObjectFilenames(
     std::map<cmSourceFile const*, std::string>& mapping,
     cmGeneratorTarget const* gt) CM_OVERRIDE;
