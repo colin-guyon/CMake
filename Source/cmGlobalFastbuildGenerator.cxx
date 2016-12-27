@@ -1293,7 +1293,7 @@ public:
   };
   typedef std::map<const cmGeneratorTarget*, TargetGenerationContext>
     TargetContextMap;
-  typedef std::map<const cmCustomCommand*, std::set<std::string> >
+  typedef std::map<std::pair<const cmCustomCommand*,std::string>, std::set<std::string> >
     CustomCommandAliasMap;
   typedef Detection::OrderedTargetSet OrderedTargets;
 
@@ -1692,7 +1692,7 @@ public:
       // Check if this custom command has already been output.
       // If it has then just drop an alias here to the original
       CustomCommandAliasMap::iterator findResult =
-        context.customCommandAliases.find(cc);
+        context.customCommandAliases.find(std::make_pair(cc,configName));
       if (findResult != context.customCommandAliases.end()) {
         const std::set<std::string>& aliases = findResult->second;
         if (aliases.find(targetName) != aliases.end()) {
@@ -1720,7 +1720,7 @@ public:
           return;
         }
       }
-      context.customCommandAliases[cc].insert(targetName);
+      context.customCommandAliases[std::make_pair(cc,configName)].insert(targetName);
     } else {
       // No merged outputs, so this command must always be run.
       // Make it's name unique to its host target
