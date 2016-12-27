@@ -1645,10 +1645,29 @@ public:
                                  cmLocalFastbuildGenerator* lg,
                                  const cmGeneratorTarget* tg,
                                  const std::string& configName,
-                                 std::string& targetName,
+                                 std::string& targetNamePart,
+                                 const std::string& sourceFileFullPath,
                                  const std::string& hostTargetName)
   {
     cmMakefile* makefile = lg->GetMakefile();
+
+    //used as custom build step target name, or script file name
+    std::string simpleName =
+      targetNamePart + cmSystemTools::GetFilenameName(sourceFileFullPath);
+    std::string targetName = simpleName;
+    if (!sourceFileFullPath.empty()) {
+      // when generating output file, makes relapath as part of targetName
+      // to make it unique
+      auto relPath =
+        lg->ConvertToRelativePath(context.self->GetLocalGenerators()[0]
+                                    ->GetState()
+                                    ->GetBinaryDirectory(),
+                                  sourceFileFullPath);
+#ifdef _WIN32
+      std::replace(relPath.begin(), relPath.end(), '/', '\\');
+#endif
+      targetName = targetNamePart + relPath;
+    }
 
     // We need to generate the command for execution.
     cmCustomCommandGenerator ccg(*cc, configName, lg);
@@ -1754,7 +1773,7 @@ public:
       workingDirectory += "/";
     }
 
-    std::string scriptFileName(workingDirectory + targetName + shellExt);
+    std::string scriptFileName(workingDirectory + simpleName + shellExt);
     cmsys::ofstream scriptFile(scriptFileName.c_str());
 
     for (unsigned i = 0; i != ccg.GetNumberOfCommands(); ++i) {
@@ -1872,7 +1891,7 @@ public:
 
         std::string customCommandTargetNameStr = customCommandTargetName.str();
         WriteCustomCommand(context, &cc, lg, gt, configName,
-                           customCommandTargetNameStr, targetName);
+                           customCommandTargetNameStr,"",targetName);
         customCommandTargets.push_back(customCommandTargetNameStr);
       }
 
@@ -1934,17 +1953,15 @@ public:
           std::stringstream customCommandTargetName;
           customCommandTargetName << customCommandNameBase << (commandCount++);
           customCommandTargetName
-            << "-"
-            << cmSystemTools::GetFilenameName(sourceFile->GetFullPath());
-          ;
+            << "-";
 
-          std::string customCommandTargetNameStr =
+          std::string customCommandTargetNamePrefix=
             customCommandTargetName.str();
           WriteCustomCommand(context, sourceFile->GetCustomCommand(), lg, gt,
-                             configName, customCommandTargetNameStr,
-                             targetName);
+                             configName, customCommandTargetNamePrefix,
+                             sourceFile->GetFullPath(),targetName);
 
-          customCommandTargets.push_back(customCommandTargetNameStr);
+          customCommandTargets.push_back(customCommandTargetNamePrefix);
         }
 
         std::string customCommandGroupName =
