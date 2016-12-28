@@ -1648,11 +1648,13 @@ public:
   {
     cmMakefile* makefile = lg->GetMakefile();
 
-    //used as custom build step target name, or script file name
+    //used as custom build step target name (if no output)
+    //or script file name
     std::string simpleName =
       targetNamePart + cmSystemTools::GetFilenameName(sourceFileFullPath);
-    std::string targetName = simpleName;
-    if (!sourceFileFullPath.empty()) {
+    if (sourceFileFullPath.empty()) {
+      targetNamePart = simpleName;
+    } else {
       // when generating output file, makes relapath as part of targetName
       // to make it unique
       auto relPath =
@@ -1663,7 +1665,7 @@ public:
 #ifdef _WIN32
       std::replace(relPath.begin(), relPath.end(), '/', '\\');
 #endif
-      targetName = targetNamePart + relPath;
+      targetNamePart = targetNamePart + relPath;
     }
 
     // We need to generate the command for execution.
@@ -1711,7 +1713,7 @@ public:
         context.customCommandAliases.find(std::make_pair(cc,configName));
       if (findResult != context.customCommandAliases.end()) {
         const std::set<std::string>& aliases = findResult->second;
-        if (aliases.find(targetName) != aliases.end()) {
+        if (aliases.find(targetNamePart) != aliases.end()) {
           // This target has already been generated
           // with the correct name somewhere else.
           return;
@@ -1721,13 +1723,13 @@ public:
           // But under a different name so setup an alias to redirect
           // No merged outputs, so this command must always be run.
           // Make it's name unique to its host target
-          targetName += "-";
-          targetName += hostTargetName;
+          targetNamePart += "-";
+          targetNamePart += hostTargetName;
 
           std::vector<std::string> targets;
           targets.push_back(*findResult->second.begin());
 
-          context.fc.WriteCommand("Alias", Quote(targetName));
+          context.fc.WriteCommand("Alias", Quote(targetNamePart));
           context.fc.WritePushScope();
           {
             context.fc.WriteArray("Targets", Wrap(targets));
@@ -1736,12 +1738,12 @@ public:
           return;
         }
       }
-      context.customCommandAliases[std::make_pair(cc,configName)].insert(targetName);
+      context.customCommandAliases[std::make_pair(cc,configName)].insert(targetNamePart);
     } else {
       // No merged outputs, so this command must always be run.
       // Make it's name unique to its host target
-      targetName += "-";
-      targetName += hostTargetName;
+      targetNamePart += "-";
+      targetNamePart += hostTargetName;
     }
 
     // Take the dependencies listed and split into targets and files.
@@ -1820,7 +1822,7 @@ public:
     std::for_each(mergedOutputs.begin(), mergedOutputs.end(),
                   &Detection::UnescapeFastbuildVariables);
 
-    context.fc.WriteCommand("Exec", Quote(targetName));
+    context.fc.WriteCommand("Exec", Quote(targetNamePart));
     context.fc.WritePushScope();
     {
 #ifdef _WIN32
@@ -1843,7 +1845,7 @@ public:
         context.fc.WriteVariable("ExecUseStdOutAsOutput", "true");
 
         std::string outputDir = lg->GetMakefile()->GetCurrentBinaryDirectory();
-        mergedOutputs.push_back(outputDir + "/dummy-out-" + targetName +
+        mergedOutputs.push_back(outputDir + "/dummy-out-" + targetNamePart +
                                 ".txt");
       }
       // Currently fastbuild doesn't support more than 1
