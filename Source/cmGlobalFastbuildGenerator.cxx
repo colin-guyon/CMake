@@ -1643,7 +1643,7 @@ public:
                                  const cmGeneratorTarget* tg,
                                  const std::string& configName,
                                  std::string& targetNamePart,
-                                 const std::string& sourceFileFullPath,
+                                 const std::string& outputFilePath,
                                  const std::string& hostTargetName)
   {
     cmMakefile* makefile = lg->GetMakefile();
@@ -1651,8 +1651,8 @@ public:
     //used as custom build step target name (if no output)
     //or script file name
     std::string simpleName =
-      targetNamePart + cmSystemTools::GetFilenameName(sourceFileFullPath);
-    if (sourceFileFullPath.empty()) {
+      targetNamePart + cmSystemTools::GetFilenameName(outputFilePath);
+    if (outputFilePath.empty()) {
       targetNamePart = simpleName;
     } else {
       // when generating output file, makes relapath as part of targetName
@@ -1661,7 +1661,7 @@ public:
         lg->ConvertToRelativePath(context.self->GetLocalGenerators()[0]
                                     ->GetState()
                                     ->GetBinaryDirectory(),
-                                  sourceFileFullPath);
+                                  outputFilePath);
 #ifdef _WIN32
       std::replace(relPath.begin(), relPath.end(), '/', '\\');
 #endif
@@ -1960,11 +1960,18 @@ public:
           customCommandTargetName
             << "-";
 
-          std::string customCommandTargetNamePrefix=
+          std::string customCommandTargetNamePrefix =
             customCommandTargetName.str();
+
+          std::vector<std::string> outputs;
+          ccHelper.GetOutputs(sourceFile, outputs);
+
+          // use first output file path as factor
+          std::string pathFactor = outputs.empty() ? "" : outputs[0];
+
           WriteCustomCommand(context, sourceFile->GetCustomCommand(), lg, gt,
                              configName, customCommandTargetNamePrefix,
-                             sourceFile->GetFullPath(),targetName);
+                             pathFactor, targetName);
 
           customCommandTargets.push_back(customCommandTargetNamePrefix);
         }
