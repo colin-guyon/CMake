@@ -1312,6 +1312,14 @@ public:
     CustomCommandAliasMap customCommandAliases;
   };
 
+  static std::string QuoteReplace(const std::string& str,
+                                  const std::string& quotation = "'")
+  {
+    std::string result = str;
+    cmSystemTools::ReplaceString(result, FASTBUILD_DOLLAR_TAG, "$");
+    return Quote(result, quotation);
+  }
+
   static std::string Quote(const std::string& str,
                            const std::string& quotation = "'")
   {
@@ -1342,7 +1350,9 @@ public:
 
     std::string operator()(const std::string& in)
     {
-      return m_prefix + in + m_suffix;
+      std::string result = m_prefix + in + m_suffix;
+      cmSystemTools::ReplaceString(result,FASTBUILD_DOLLAR_TAG,"$");
+      return result;
     }
   };
 
@@ -1822,7 +1832,7 @@ public:
     std::for_each(mergedOutputs.begin(), mergedOutputs.end(),
                   &Detection::UnescapeFastbuildVariables);
 
-    context.fc.WriteCommand("Exec", Quote(targetNamePart));
+    context.fc.WriteCommand("Exec", QuoteReplace(targetNamePart));
     context.fc.WritePushScope();
     {
 #ifdef _WIN32
@@ -2086,17 +2096,17 @@ public:
         // TODO: Remove this if these variables aren't used...
         // They've been added for testing
         context.fc.WriteVariable("TargetOutput",
-                                 Quote(targetNames.targetOutput));
+                                 QuoteReplace(targetNames.targetOutput));
         context.fc.WriteVariable("TargetOutputImplib",
-                                 Quote(targetNames.targetOutputImplib));
+                                 QuoteReplace(targetNames.targetOutputImplib));
         context.fc.WriteVariable("TargetOutputReal",
-                                 Quote(targetNames.targetOutputReal));
+                                 QuoteReplace(targetNames.targetOutputReal));
         context.fc.WriteVariable("TargetOutDir",
-                                 Quote(targetNames.targetOutputDir));
+                                 QuoteReplace(targetNames.targetOutputDir));
         context.fc.WriteVariable("TargetOutCompilePDBDir",
-                                 Quote(targetNames.targetOutputCompilePDBDir));
+                                 QuoteReplace(targetNames.targetOutputCompilePDBDir));
         context.fc.WriteVariable("TargetOutPDBDir",
-                                 Quote(targetNames.targetOutputPDBDir));
+                                 QuoteReplace(targetNames.targetOutputPDBDir));
 
         // Compile directory always needs to exist
         EnsureDirectoryExists(targetNames.targetOutputCompilePDBDir, context);
