@@ -857,25 +857,6 @@ public:
     }
   }
 
-  static void DetectTargetLinkDependencies(
-    cmGeneratorTarget* gt, const std::string& configName,
-    std::vector<std::string>& dependencies)
-  {
-    // Static libraries never depend on other targets for linking.
-    if (gt->GetType() == cmStateEnums::STATIC_LIBRARY ||
-        gt->GetType() == cmStateEnums::OBJECT_LIBRARY) {
-      return;
-    }
-
-    cmComputeLinkInformation* cli = gt->GetLinkInformation(configName);
-    if (!cli) {
-      return;
-    }
-
-    const std::vector<std::string>& deps = cli->GetDepends();
-    std::copy(deps.begin(), deps.end(), std::back_inserter(dependencies));
-  }
-
   static std::string DetectTargetCompileOutputDir(
     cmLocalFastbuildGenerator* lg, const cmGeneratorTarget* gt,
     std::string configName)
@@ -2454,8 +2435,6 @@ public:
             std::vector<std::string> extraDependencies;
             Detection::DetectTargetObjectDependencies(
               context.self, gt, configName, extraDependencies);
-            Detection::DetectTargetLinkDependencies(gt, configName,
-                                                    extraDependencies);
 
             std::for_each(extraDependencies.begin(), extraDependencies.end(),
                           Detection::UnescapeFastbuildVariables);
