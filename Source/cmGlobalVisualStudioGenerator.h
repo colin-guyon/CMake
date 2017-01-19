@@ -95,7 +95,7 @@ public:
 
   /** Return true if the generated build tree may contain multiple builds.
       i.e. "Can I build Debug and Release in the same tree?" */
-  virtual bool IsMultiConfig() const { return true; }
+  bool IsMultiConfig() const CM_OVERRIDE { return true; }
 
   /** Return true if building for Windows CE */
   virtual bool TargetsWindowsCE() const { return false; }
@@ -119,10 +119,10 @@ public:
 
   bool FindMakeProgram(cmMakefile*) CM_OVERRIDE;
 
-  virtual std::string ExpandCFGIntDir(const std::string& str,
-                                      const std::string& config) const;
+  std::string ExpandCFGIntDir(const std::string& str,
+                              const std::string& config) const CM_OVERRIDE;
 
-  void ComputeTargetObjectDirectory(cmGeneratorTarget* gt) const;
+  void ComputeTargetObjectDirectory(cmGeneratorTarget* gt) const CM_OVERRIDE;
 
   std::string GetStartupProjectName(cmLocalGenerator const* root) const;
 
@@ -131,7 +131,7 @@ public:
                               std::string const& configName);
 
 protected:
-  virtual void AddExtraIDETargets();
+  void AddExtraIDETargets() CM_OVERRIDE;
 
   // Does this VS version link targets to each other if there are
   // dependencies in the SLN file?  This was done for VS versions
@@ -140,7 +140,7 @@ protected:
 
   virtual const char* GetIDEVersion() = 0;
 
-  virtual bool ComputeTargetDepends();
+  bool ComputeTargetDepends() CM_OVERRIDE;
   class VSDependSet : public std::set<std::string>
   {
   };
