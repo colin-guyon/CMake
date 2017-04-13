@@ -68,6 +68,8 @@ public:
     is supported and false otherwise.  */
     virtual bool SetGeneratorPlatform(std::string const& p, cmMakefile* mf);
 
+    virtual void setDefaultPlatform(std::string const& p);
+
     std::string const& GetPlatformName() const;
 
     static void GetDocumentation(cmDocumentationEntry& entry);

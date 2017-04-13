@@ -1427,46 +1427,60 @@ public:
 	}
 
 	static void DetectCompilerExtraFiles(const std::string& compilerID,
-		const std::string& version, std::vector<std::string>& extraFiles)
+		const std::string& version, const std::string& path, std::vector<std::string>& extraFiles)
 	{
 		// Output a list of files that are relative to $CompilerRoot$
 		//return;
 
 		if (compilerID == "MSVC")
 		{
+			// Strip out the path to the compiler
+			std::string compilerPath =
+				cmSystemTools::GetFilenamePath(path);
+			std::string dirName = cmSystemTools::GetFilenameName(compilerPath);
+			bool inSubdir = (dirName != "bin");
+			bool clIsX64 = (dirName == "amd64");
+
+			const std::string prefixBinCL = "$CompilerRoot$\\";
+			const std::string prefixBinMS = inSubdir ? prefixBinCL+"..\\" : prefixBinCL;
+			const std::string prefixBinUI = prefixBinCL + "1033\\";
+			const std::string prefixBinCRT = clIsX64 ? prefixBinMS + "..\\redist\\x64\\" : prefixBinMS + "..\\redist\\x86\\";
+
+
 			if (version.compare(0, 3, "19.") != std::string::npos)
 			{
 				// Using vs2015
-				const char *vs2013_extraFiles[12] = {
-					"$CompilerRoot$\\c1.dll",
-					"$CompilerRoot$\\c1xx.dll",
-					"$CompilerRoot$\\c2.dll",
-					"$CompilerRoot$\\msobj140.dll",
-					"$CompilerRoot$\\mspdb140.dll",
-					"$CompilerRoot$\\mspdbsrv.exe", // not sure this one makes sense...
-					"$CompilerRoot$\\mspdbcore.dll",
-					"$CompilerRoot$\\mspft140.dll",
-					"$CompilerRoot$\\1033\\clui.dll",
-					"$CompilerRoot$\\..\\redist\\x86\\Microsoft.VC140.CRT\\msvcp140.dll",
-					"$CompilerRoot$\\..\\redist\\x86\\Microsoft.VC140.CRT\\vcruntime140.dll",
-					"$CompilerRoot$\\..\\redist\\x86\\Microsoft.VC140.CRT\\vccorlib140.dll"
+				std::string vs2013_extraFiles[12] = {
+					prefixBinCL+"c1.dll",
+					prefixBinCL+"c1xx.dll",
+					prefixBinCL+"c2.dll",
+
+					prefixBinMS+"msobj140.dll",
+					prefixBinMS+"mspdb140.dll",
+					prefixBinMS+"mspdbsrv.exe", // not sure this one makes sense...
+					prefixBinMS+"mspdbcore.dll",
+					prefixBinMS+"mspft140.dll",
+					prefixBinUI+"clui.dll",
+					prefixBinCRT+"Microsoft.VC140.CRT\\msvcp140.dll",
+					prefixBinCRT+"Microsoft.VC140.CRT\\vcruntime140.dll",
+					prefixBinCRT+"Microsoft.VC140.CRT\\vccorlib140.dll"
 				};
 				extraFiles.insert(extraFiles.end(), &vs2013_extraFiles[0], &vs2013_extraFiles[12]);
 			}
 			else if (version.compare(0, 3, "18.") != std::string::npos)
 			{
 				// Using vs2013
-				const char *vs2013_extraFiles[13] = {
-					"$CompilerRoot$\\c1.dll",
-					"$CompilerRoot$\\c1ast.dll",
-					"$CompilerRoot$\\c1xx.dll",
-					"$CompilerRoot$\\c1xxast.dll",
-					"$CompilerRoot$\\c2.dll",
-					"$CompilerRoot$\\msobj120.dll",
-					"$CompilerRoot$\\mspdb120.dll",
-					"$CompilerRoot$\\mspdbcore.dll",
-					"$CompilerRoot$\\mspft120.dll",
-					"$CompilerRoot$\\1033\\clui.dll",
+				std::string vs2013_extraFiles[13] = {
+					prefixBinCL+"c1.dll",
+					prefixBinCL+"c1ast.dll",
+					prefixBinCL+"c1xx.dll",
+					prefixBinCL+"c1xxast.dll",
+					prefixBinCL+"c2.dll",
+					prefixBinMS+"msobj120.dll",
+					prefixBinMS+"mspdb120.dll",
+					prefixBinMS+"mspdbcore.dll",
+					prefixBinMS+"mspft120.dll",
+					prefixBinUI+"clui.dll",
 					"$CompilerRoot$\\..\\..\\redist\\x86\\Microsoft.VC120.CRT\\msvcp120.dll",
 					"$CompilerRoot$\\..\\..\\redist\\x86\\Microsoft.VC120.CRT\\msvcr120.dll",
 					"$CompilerRoot$\\..\\..\\redist\\x86\\Microsoft.VC120.CRT\\vccorlib120.dll"
@@ -1476,14 +1490,14 @@ public:
 			else if (version.compare(0, 3, "17.") != std::string::npos)
 			{
 				// Using vs2012
-				const char *vs2012_extraFiles[12] = {
-					"$CompilerRoot$\\c1.dll",
-					"$CompilerRoot$\\c1ast.dll",
-					"$CompilerRoot$\\c1xx.dll",
-					"$CompilerRoot$\\c1xxast.dll",
-					"$CompilerRoot$\\c2.dll",
-					"$CompilerRoot$\\mspft110.dll",
-					"$CompilerRoot$\\1033\\clui.dll",
+				std::string vs2012_extraFiles[12] = {
+					prefixBinCL+"c1.dll",
+					prefixBinCL+"c1ast.dll",
+					prefixBinCL+"c1xx.dll",
+					prefixBinCL+"c1xxast.dll",
+					prefixBinCL+"c2.dll",
+					prefixBinMS+"mspft110.dll",
+					prefixBinUI+"clui.dll",
 					"$CompilerRoot$\\..\\..\\redist\\x86\\Microsoft.VC110.CRT\\msvcp110.dll",
 					"$CompilerRoot$\\..\\..\\redist\\x86\\Microsoft.VC110.CRT\\msvcr110.dll",
 					"$CompilerRoot$\\..\\..\\redist\\x86\\Microsoft.VC110.CRT\\vccorlib110.dll",
@@ -1495,14 +1509,14 @@ public:
 			else if (version.compare(0, 3, "16.") != std::string::npos)
 			{
 				// Using vs2010
-				const char *vs2010_extraFiles[11] = {
-					"$CompilerRoot$\\c1.dll",
-					"$CompilerRoot$\\c1xx.dll",
-					"$CompilerRoot$\\c2.dll",
-					"$CompilerRoot$\\mspft110.dll",
-					"$CompilerRoot$\\1033\\clui.dll",
-					"$CompilerRoot$\\..\\redist\\x86\\Microsoft.VC100.CRT\\msvcp110.dll",
-					"$CompilerRoot$\\..\\redist\\x86\\Microsoft.VC100.CRT\\msvcr110.dll",
+				std::string vs2010_extraFiles[11] = {
+					prefixBinCL+"c1.dll",
+					prefixBinCL+"c1xx.dll",
+					prefixBinCL+"c2.dll",
+					prefixBinMS+"mspft110.dll",
+					prefixBinUI+"clui.dll",
+					prefixBinCRT+"Microsoft.VC100.CRT\\msvcp110.dll",
+					prefixBinCRT+"Microsoft.VC100.CRT\\msvcr110.dll",
 					"$CompilerRoot$\\..\\..\\Common7\\IDE\\mspdb100.dll",
 					"$CompilerRoot$\\..\\..\\Common7\\IDE\\msobj100.dll",
 					"$CompilerRoot$\\..\\..\\Common7\\IDE\\mspdbsrv.exe",
@@ -1880,7 +1894,7 @@ public:
 			// for distribution
 			std::vector<std::string> extraFiles;
 			Detection::DetectCompilerExtraFiles(compilerDef.cmakeCompilerID,
-				compilerDef.cmakeCompilerVersion, extraFiles);
+				compilerDef.cmakeCompilerVersion, compilerDef.path, extraFiles);
 
 			// Strip out the path to the compiler
 			std::string compilerPath = 
@@ -3766,7 +3780,7 @@ public:
 
 		// detect platform (only for MSVC)
 		std::string platformToolset;
-		// Translate the cmake compiler id into the PlatformToolset
+		// Translate the cmake compiler id into the PlatformName and PlatformToolset
 		cmMakefile* mf = context.root->GetMakefile();
 		if (mf != 0)
 		{
@@ -3796,6 +3810,10 @@ public:
 				{
 					// Using vs2010 / vc10
 					platformToolset = "v100";
+				}
+				if (mf->GetSafeDefinition("CMAKE_CL_64"))
+				{
+					context.self->setDefaultPlatform("x64");
 				}
 			}
 		}
@@ -4082,6 +4100,10 @@ bool cmGlobalFastbuildGenerator::SetGeneratorPlatform(std::string const& p, cmMa
 	}
 	mf->AddDefinition("CMAKE_VS_PLATFORM_NAME", this->GetPlatformName().c_str());
 	return this->cmGlobalGenerator::SetGeneratorPlatform("", mf);
+}
+void cmGlobalFastbuildGenerator::setDefaultPlatform(std::string const& p)
+{
+	this->DefaultPlatformName = p;
 }
 
 //----------------------------------------------------------------------------
