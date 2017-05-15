@@ -3315,7 +3315,7 @@ public:
 						//Detection::DetectTargetLinkDependencies(target, configName, extraDependencies);
 						std::ostringstream log;
 						Detection::DetectTargetLinkItems(target, configName, extraDependencies, log);
-						context.fc.WriteCommentMultiLines(log.str().c_str());
+						//context.fc.WriteCommentMultiLines(log.str().c_str());
 
 						std::for_each(extraDependencies.begin(), extraDependencies.end(), Detection::UnescapeFastbuildVariables);
 
@@ -3775,8 +3775,6 @@ public:
 
 		context.fc.WriteVariable("ProjectCommon", "");
 		context.fc.WritePushScopeStruct();
-		context.fc.WriteVariable("ProjectBuildCommand", Quote("cd ^$(SolutionDir) &amp; fbuild -vs -dist -cache -monitor ^$(ProjectName)-^$(Configuration)"));
-		context.fc.WriteVariable("ProjectRebuildCommand", Quote("cd ^$(SolutionDir) &amp; fbuild -vs -dist -cache -monitor -clean ^$(ProjectName)-^$(Configuration)"));
 
 		// detect platform (only for MSVC)
 		std::string platformToolset;
@@ -3811,8 +3809,9 @@ public:
 					// Using vs2010 / vc10
 					platformToolset = "v100";
 				}
-				if (mf->GetSafeDefinition("CMAKE_CL_64"))
+				if (mf->IsOn("CMAKE_CL_64"))
 				{
+					//context.fc.WriteComment("CMAKE_CL_64 is set, using x64 platform.");
 					context.self->setDefaultPlatform("x64");
 				}
 			}
@@ -3843,6 +3842,10 @@ public:
 			// Output platform (TODO: CURRENTLY ONLY HANDLED FOR WINDOWS)
 			context.fc.WriteVariable("Platform", Quote(context.self->GetPlatformName()));
 			context.fc.WriteVariable("Config", Quote(vsconfig));
+			context.fc.WriteVariable("ProjectBuildCommand", Quote("cd ^$(SolutionDir) &amp; fbuild -vs -dist -cache -monitor ^$(ProjectName)-" + configName));
+			context.fc.WriteVariable("ProjectRebuildCommand", Quote("cd ^$(SolutionDir) &amp; fbuild -vs -dist -cache -monitor -clean ^$(ProjectName)-" + configName));
+			// TODO: read this from cmake config...
+			context.fc.WriteVariable("OutputDirectory", Quote("^$(SolutionDir)bin/"+configName));
 
 			context.fc.WritePopScope();
 		}
@@ -3877,7 +3880,7 @@ public:
 	{
 		const std::string& targetName = target.GetName();
 
-        WriteVSConfigAlias(context, targetName);
+		//WriteVSConfigAlias(context, targetName);
 
 		context.fc.WriteCommand("VCXProject",
 			Quote(targetName + "-project"));
@@ -3943,15 +3946,15 @@ public:
 			rootDirectory += "/";
 		}
 
-        WriteVSConfigAlias(context, buildTargetName);
-        context.fc.WriteCommand("VCXProject", Quote(buildTargetName + "-project"));
+		//WriteVSConfigAlias(context, buildTargetName);
+		context.fc.WriteCommand("VCXProject", Quote(buildTargetName + "-project"));
 		context.fc.WritePushScope();
 		context.fc.WriteVariable("ProjectOutput", Quote(rootDirectory + buildTargetName + ".vcxproj"));
 		context.fc.WritePopScope();
 
 		if (finalTargetName != buildTargetName)
 		{
-            WriteVSConfigAlias(context, finalTargetName);
+			//WriteVSConfigAlias(context, finalTargetName);
 			context.fc.WriteCommand("VCXProject", Quote(finalTargetName + "-project"));
 			context.fc.WritePushScope();
 			context.fc.WriteVariable("ProjectOutput", Quote(rootDirectory + finalTargetName + ".vcxproj"));
