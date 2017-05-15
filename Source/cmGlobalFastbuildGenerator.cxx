@@ -108,8 +108,10 @@ The following tests FAILED:
 #include "cmLocalGenerator.h"
 #include "cmComputeLinkInformation.h"
 #include "cmGlobalVisualStudioGenerator.h"
+#include "cmGlobalVisualStudio7Generator.h" // for CMAKE_CHECK_BUILD_SYSTEM_TARGET
 #include "cmCustomCommandGenerator.h"
 #include <cmsys/Encoding.hxx>
+#include <cmsys/SystemTools.hxx>
 #include <assert.h>
 
 static const char fastbuildGeneratorName[] = "Fastbuild";
@@ -818,6 +820,26 @@ public:
 
 		return cmdLine;
 	}
+
+    static void DetectCacheBaseDirectories(std::vector<std::string>& dirs,
+        cmLocalFastbuildGenerator *lg,
+        cmGeneratorTarget &target,
+        const std::string& configName)
+    {
+        std::string dirVar = "CMAKE_CACHE_BASE_DIRECTORIES";
+        if (const char* value = lg->GetMakefile()->GetDefinition(dirVar))
+        {
+            std::vector<std::string> dirVec;
+            cmSystemTools::ExpandListArgument(value, dirVec);
+            for (std::vector<std::string>::const_iterator i = dirVec.begin();
+                i != dirVec.end(); ++i) {
+                std::string d = *i;
+                //cmSystemTools::ConvertToUnixSlashes(d);
+                cmSystemTools::ConvertToOutputSlashes(d);
+                dirs.push_back(d);
+            }
+        }
+    }
 
 	static void DetectLanguages(std::set<std::string> & languages,
 		cmGlobalFastbuildGenerator * self,
@@ -2981,6 +3003,19 @@ public:
 					context.fc.WriteVariable("Compiler", compilerName);
 				}
 
+                // Cache base directories
+                {
+                    // Remove the command from the front and leave the flags behind
+                    std::vector<std::string> cacheBaseDirs;
+                    Detection::DetectCacheBaseDirectories(cacheBaseDirs,
+                        lg, target, configName);
+
+                    if (!cacheBaseDirs.empty())
+                    {
+                        context.fc.WriteArray("CompilerCacheBaseDirectories", Wrap(cacheBaseDirs));
+                    }
+                }
+
 				std::map<std::string,CompileCommand> commandPermutations;
 
 				// Source files
@@ -3945,6 +3980,33 @@ public:
 			rootDirectory = mf->GetHomeOutputDirectory();
 			rootDirectory += "/";
 		}
+
+        // ZERO_CHECK target (checking if cmake update is required)
+
+        // Create the regeneration custom rule.
+        if (!mf->IsOn("CMAKE_SUPPRESS_REGENERATION")) {
+            // Create a rule to regenerate the build system when the target
+            // specification source changes.
+            context.fc.WriteCommand("VCXProject", Quote(std::string(CMAKE_CHECK_BUILD_SYSTEM_TARGET) + "-project"));
+            context.fc.WritePushScope();
+            context.fc.WriteVariable("ProjectOutput", Quote(rootDirectory + std::string(CMAKE_CHECK_BUILD_SYSTEM_TARGET) + ".vcxproj"));
+            context.fc.WritePopScope();
+            /*
+            if (cmSourceFile* sf = this->CreateVCProjBuildRule()) {
+                // Add the rule to targets that need it.
+                std::vector<cmGeneratorTarget*> tgts = this->GetGeneratorTargets();
+                for (std::vector<cmGeneratorTarget*>::iterator l = tgts.begin();
+                    l != tgts.end(); ++l) {
+                    if ((*l)->GetType() == cmState::GLOBAL_TARGET) {
+                        continue;
+                    }
+                    if ((*l)->GetName() != CMAKE_CHECK_BUILD_SYSTEM_TARGET) {
+                        (*l)->AddSource(sf->GetFullPath());
+                    }
+                }
+            }
+            */
+        }
 
 		//WriteVSConfigAlias(context, buildTargetName);
 		context.fc.WriteCommand("VCXProject", Quote(buildTargetName + "-project"));
