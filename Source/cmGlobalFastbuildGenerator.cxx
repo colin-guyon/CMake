@@ -986,14 +986,12 @@ void cmGlobalFastbuildGenerator::Detail::Generation::WriteAliases(
   }
 
   if (!outputGlobals) {
-    std::vector<std::string> configs;
-    context.root->GetMakefile()->GetConfigurations(configs, false);
 
     FileContext& fc = context.bffFiles.main;
     fc.WriteComment("All");
     fc.WriteCommand("Alias", "'All'");
     fc.WritePushScope();
-    fc.WriteArray("Targets", Wrap(configs, "'", "'"));
+    fc.WriteArray("Targets", Wrap(usedConfigs, "'", "'"));
     fc.WritePopScope();
   }
 }
