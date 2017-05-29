@@ -110,8 +110,24 @@ public:
       void WritePushScope(char begin = '{', char end = '}');
       void WritePushScopeStruct();
       void WritePopScope();
-      void WriteVariable(const std::string& key, const std::string& value,
+      // create   .Var =     part only
+      void WriteVariableDeclare(const std::string& key,
+                                const std::string& operation = "=",
+                                bool newLine=true);
+      // create string .Var = 'value'      always quote
+      void WriteVariable(const std::string& key,
+                         const std::string& value,
                          const std::string& operation = "=");
+
+ 
+      //create bool  .Var = true/false
+      void WriteVariableBool(const std::string& key,
+                         bool value);
+
+      //create    .Foo = .Bar
+      void WriteVariableAssign(const std::string& key,
+                         const std::string& value);
+
       void WriteCommand(const std::string& command,
                         const std::string& value = std::string());
       void WriteArray(const std::string& key,
