@@ -361,8 +361,13 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
   std::string workingDirectory = ccg.GetWorkingDirectory();
   if (workingDirectory.empty()) {
     workingDirectory = Makefile->GetCurrentBinaryDirectory();
-    workingDirectory += "/";
   }
+  workingDirectory += "/";
+
+  // during script file generate, should expand
+  // CMAKE_CFG_INTDIR variable
+  workingDirectory = LocalGenerator->GetGlobalGenerator()->ExpandCFGIntDir(
+    workingDirectory, configName);
 
   std::string scriptFileName(workingDirectory + scriptBaseName + shellExt);
   cmsys::ofstream scriptFile(scriptFileName.c_str());
