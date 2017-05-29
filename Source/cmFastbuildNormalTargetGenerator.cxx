@@ -345,7 +345,10 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
     if (isTarget) {
       orderDependencies.push_back(dep + "-" + configName);
     } else {
-      inputs.push_back(dep);
+      std::string realDep;
+      if (this->LocalGenerator->GetRealDependency(dep, configName, realDep)) {
+        inputs.push_back(realDep);
+      }
     }
   }
 
