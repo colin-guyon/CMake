@@ -12,6 +12,7 @@
 #include "cmGeneratorTarget.h"
 
 #define FASTBUILD_DOLLAR_TAG "FASTBUILD_DOLLAR_TAG"
+#define VAR_LITERAL(VARNAME) FASTBUILD_DOLLAR_TAG VARNAME FASTBUILD_DOLLAR_TAG
 
 cmGlobalFastbuildGenerator::Detail::Generation::CustomCommandAliasMap
   cmFastbuildNormalTargetGenerator::s_customCommandAliases;
@@ -107,7 +108,7 @@ void cmFastbuildNormalTargetGenerator::WriteCustomBuildSteps(
 
     cmGlobalFastbuildGenerator::Detail::FileContext& fc =
       m_bffFiles.perConfig[configName];
-    fc.WriteVariable("buildStep_" + buildStep + "_" + configName, "");
+    fc.WriteVariableDeclare("buildStep_" + buildStep + "_" + configName);
     fc.WritePushScopeStruct();
 
     fc.WriteCommand("Using", ".BaseConfig_" + configName);
@@ -159,7 +160,7 @@ bool cmFastbuildNormalTargetGenerator::WriteCustomBuildRules()
 
     cmGlobalFastbuildGenerator::Detail::FileContext& fc =
       m_bffFiles.perConfig[configName];
-    fc.WriteVariable("CustomCommands_" + configName, "");
+    fc.WriteVariableDeclare("CustomCommands_" + configName);
     fc.WritePushScopeStruct();
 
     fc.WriteCommand("Using", ".BaseConfig_" + configName);
@@ -415,9 +416,6 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
   }
   */
 
-  std::for_each(inputs.begin(), inputs.end(), &UnescapeFastbuildVariables);
-  std::for_each(mergedOutputs.begin(), mergedOutputs.end(),
-                &UnescapeFastbuildVariables);
 
   cmGlobalFastbuildGenerator::Detail::FileContext& fc =
     m_bffFiles.perConfig[configName];
@@ -425,21 +423,14 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
   fc.WritePushScope();
   {
 #ifdef _WIN32
-    fc.WriteVariable("ExecExecutable",
-                                cmGlobalFastbuildGenerator::Quote(
-                                  cmSystemTools::FindProgram("cmd.exe")));
-    fc.WriteVariable(
-      "ExecArguments",
-      cmGlobalFastbuildGenerator::Quote("/C " + scriptFileName));
+    fc.WriteVariable("ExecExecutable",cmSystemTools::FindProgram("cmd.exe"));
+    fc.WriteVariable("ExecArguments", "/C " + scriptFileName);
 #else
-    fc.WriteVariable("ExecExecutable",
-                     cmGlobalFastbuildGenerator::Quote(
-                       ConvertToFastbuildPath(scriptFileName)));
+    fc.WriteVariable("ExecExecutable", ConvertToFastbuildPath(scriptFileName));
 #endif
     if (!workingDirectory.empty()) {
       fc.WriteVariable("ExecWorkingDir",
-                       cmGlobalFastbuildGenerator::Quote(
-                         ConvertToFastbuildPath(workingDirectory)));
+                       ConvertToFastbuildPath(workingDirectory));
     }
 
     if (inputs.empty()) {
@@ -450,7 +441,7 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
                                    ->ConvertToFastbuildPath(inputs)));
 
     if (mergedOutputs.empty()) {
-      fc.WriteVariable("ExecUseStdOutAsOutput", "true");
+      fc.WriteVariableBool("ExecUseStdOutAsOutput", true);
 
       std::string outputDir =
         LocalGenerator->GetMakefile()->GetHomeOutputDirectory();
@@ -459,9 +450,7 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
     // Currently fastbuild doesn't support more than 1
     // output for a custom command (soon to change hopefully).
     // so only use the first one
-    fc.WriteVariable("ExecOutput",
-                     cmGlobalFastbuildGenerator::Quote(
-                       ConvertToFastbuildPath(mergedOutputs[0])));
+    fc.WriteVariable("ExecOutput", ConvertToFastbuildPath(mergedOutputs[0]));
   }
   fc.WritePopScope();
 }
@@ -604,18 +593,14 @@ bool cmFastbuildNormalTargetGenerator::DetectBaseLinkerCommand(
   vars.Manifests = manifests.c_str();
 
   std::string responseFlag;
-  vars.Objects =
-    FASTBUILD_DOLLAR_TAG "FB_INPUT_1_PLACEHOLDER" FASTBUILD_DOLLAR_TAG;
+  vars.Objects = VAR_LITERAL("FB_INPUT_1_PLACEHOLDER");
   vars.LinkLibraries = "";
 
-  vars.ObjectDir = FASTBUILD_DOLLAR_TAG "TargetOutDir" FASTBUILD_DOLLAR_TAG;
-  vars.Target =
-    FASTBUILD_DOLLAR_TAG "FB_INPUT_2_PLACEHOLDER" FASTBUILD_DOLLAR_TAG;
+  vars.ObjectDir = VAR_LITERAL("TargetOutDir") ;
+  vars.Target = VAR_LITERAL("FB_INPUT_2_PLACEHOLDER");
 
   vars.TargetSOName = "";
-  vars.TargetPDB = FASTBUILD_DOLLAR_TAG
-    "TargetOutPDBDir" FASTBUILD_DOLLAR_TAG FASTBUILD_DOLLAR_TAG
-    "TargetNamePDB" FASTBUILD_DOLLAR_TAG;
+  vars.TargetPDB = VAR_LITERAL("TargetOutPDBDir") VAR_LITERAL("TargetNamePDB");
 
   // Setup the target version.
   std::string targetVersionMajor;
@@ -634,12 +619,9 @@ bool cmFastbuildNormalTargetGenerator::DetectBaseLinkerCommand(
   vars.TargetVersionMajor = targetVersionMajor.c_str();
   vars.TargetVersionMinor = targetVersionMinor.c_str();
 
-  vars.Defines =
-    FASTBUILD_DOLLAR_TAG "CompileDefineFlags" FASTBUILD_DOLLAR_TAG;
-  vars.Flags = FASTBUILD_DOLLAR_TAG "TargetFlags" FASTBUILD_DOLLAR_TAG;
-  vars.LinkFlags = FASTBUILD_DOLLAR_TAG "LinkFlags" FASTBUILD_DOLLAR_TAG
-                                        " " FASTBUILD_DOLLAR_TAG
-                                        "LinkPath" FASTBUILD_DOLLAR_TAG;
+  vars.Defines = VAR_LITERAL("CompileDefineFlags") ;
+  vars.Flags = VAR_LITERAL("TargetFlags");
+  vars.LinkFlags = VAR_LITERAL("LinkFlags") " " VAR_LITERAL("LinkPath") ;
   vars.LanguageCompileFlags = "";
   // Rule for linking library/executable.
   std::string launcher;
@@ -652,8 +634,7 @@ bool cmFastbuildNormalTargetGenerator::DetectBaseLinkerCommand(
 
   CM_AUTO_PTR<cmRulePlaceholderExpander> rulePlaceholderExpander(
     LocalGenerator->CreateRulePlaceholderExpander());
-  rulePlaceholderExpander->SetTargetImpLib(
-    FASTBUILD_DOLLAR_TAG "TargetOutputImplib" FASTBUILD_DOLLAR_TAG);
+  rulePlaceholderExpander->SetTargetImpLib(VAR_LITERAL("TargetOutputImplib"));
 
   std::vector<std::string> linkCmds;
   ComputeLinkCmds(linkCmds, configName);
@@ -664,7 +645,7 @@ bool cmFastbuildNormalTargetGenerator::DetectBaseLinkerCommand(
       (cmLocalFastbuildGenerator*)LocalGenerator, *i, vars);
   }
 
-  command = BuildCommandLine(linkCmds);
+  command = BuildCommandLine(linkCmds,true);
 
   return true;
 }
@@ -753,12 +734,9 @@ void cmFastbuildNormalTargetGenerator::DetectBaseCompileCommand(
   compileObjectVars.CMTargetType =
     cmState::GetTargetTypeName(GeneratorTarget->GetType());
   compileObjectVars.Language = language.c_str();
-  compileObjectVars.Source =
-    FASTBUILD_DOLLAR_TAG "FB_INPUT_1_PLACEHOLDER" FASTBUILD_DOLLAR_TAG;
-  compileObjectVars.Object =
-    FASTBUILD_DOLLAR_TAG "FB_INPUT_2_PLACEHOLDER" FASTBUILD_DOLLAR_TAG;
-  compileObjectVars.ObjectDir =
-    FASTBUILD_DOLLAR_TAG "TargetOutputDir" FASTBUILD_DOLLAR_TAG;
+  compileObjectVars.Source = VAR_LITERAL("FB_INPUT_1_PLACEHOLDER");
+  compileObjectVars.Object = VAR_LITERAL("FB_INPUT_2_PLACEHOLDER");
+  compileObjectVars.ObjectDir = VAR_LITERAL("TargetOutputDir");
   compileObjectVars.ObjectFileDir = "";
   compileObjectVars.Flags = "";
   compileObjectVars.Includes = "";
@@ -766,9 +744,8 @@ void cmFastbuildNormalTargetGenerator::DetectBaseCompileCommand(
   compileObjectVars.Manifests = manifests.c_str();
   compileObjectVars.Defines = "";
   compileObjectVars.Includes = "";
-  compileObjectVars.TargetCompilePDB = FASTBUILD_DOLLAR_TAG
-    "TargetOutCompilePDBDir" FASTBUILD_DOLLAR_TAG FASTBUILD_DOLLAR_TAG
-    "TargetNamePDB" FASTBUILD_DOLLAR_TAG;
+  compileObjectVars.TargetCompilePDB =
+    VAR_LITERAL("TargetOutCompilePDBDir") VAR_LITERAL("TargetNamePDB");
 
   // Rule for compiling object file.
   std::string compileCmdVar = "CMAKE_";
@@ -782,8 +759,7 @@ void cmFastbuildNormalTargetGenerator::DetectBaseCompileCommand(
   CM_AUTO_PTR<cmRulePlaceholderExpander> rulePlaceholderExpander(
     LocalGenerator->CreateRulePlaceholderExpander());
 
-  rulePlaceholderExpander->SetTargetImpLib(
-    FASTBUILD_DOLLAR_TAG "TargetOutputImplib" FASTBUILD_DOLLAR_TAG);
+  rulePlaceholderExpander->SetTargetImpLib(VAR_LITERAL("TargetOutputImplib"));
 
   for (std::vector<std::string>::iterator i = compileCmds.begin();
        i != compileCmds.end(); ++i) {
@@ -793,7 +769,7 @@ void cmFastbuildNormalTargetGenerator::DetectBaseCompileCommand(
       compileObjectVars);
   }
 
-  command = BuildCommandLine(compileCmds);
+  command = BuildCommandLine(compileCmds,true);
 }
 
 void cmFastbuildNormalTargetGenerator::DetectTargetObjectDependencies(
@@ -891,7 +867,7 @@ bool cmFastbuildNormalTargetGenerator::isConfigDependant(
 }
 
 std::string cmFastbuildNormalTargetGenerator::BuildCommandLine(
-  const std::vector<std::string>& cmdLines)
+  const std::vector<std::string>& cmdLines, bool asFastbuildVariable)
 {
 #ifdef _WIN32
   const char* cmdExe = "cmd.exe";
@@ -933,7 +909,9 @@ std::string cmFastbuildNormalTargetGenerator::BuildCommandLine(
   }
 #endif
   std::string cmdOut = cmd.str();
-  UnescapeFastbuildVariables(cmdOut);
+  if (!asFastbuildVariable) {
+    UnescapeFastbuildVariables(cmdOut);
+  }
 
   return cmdOut;
 }
@@ -1030,13 +1008,12 @@ void cmFastbuildNormalTargetGenerator::Generate()
 
     fc.WriteComment("Target definition: " + targetName);
     fc.WritePushScope();
-    fc.WriteVariable("BaseConfig_" + configName, "");
+    fc.WriteVariableDeclare("BaseConfig_" + configName);
     fc.WritePushScopeStruct();
 
     fc.WriteCommand("Using", ".ConfigBase");
 
-    fc.WriteVariable("ConfigName",
-                     cmGlobalFastbuildGenerator::Quote(configName));
+    fc.WriteVariable("ConfigName",configName);
 
     fc.WriteBlankLine();
     fc.WriteComment("General output details:");
@@ -1045,40 +1022,28 @@ void cmFastbuildNormalTargetGenerator::Generate()
       FastbuildTargetNames targetNames;
       DetectOutput(targetNames, configName);
 
-      fc.WriteVariable("TargetNameOut", cmGlobalFastbuildGenerator::Quote(
-                                          targetNames.targetNameOut));
-      fc.WriteVariable("TargetNameImport", cmGlobalFastbuildGenerator::Quote(
-                                             targetNames.targetNameImport));
-      fc.WriteVariable("TargetNamePDB", cmGlobalFastbuildGenerator::Quote(
-                                          targetNames.targetNamePDB));
-      fc.WriteVariable("TargetNameSO", cmGlobalFastbuildGenerator::Quote(
-                                         targetNames.targetNameSO));
-      fc.WriteVariable("TargetNameReal", cmGlobalFastbuildGenerator::Quote(
-                                           targetNames.targetNameReal));
+      fc.WriteVariable("TargetNameOut", targetNames.targetNameOut);
+      fc.WriteVariable("TargetNameImport", targetNames.targetNameImport);
+      fc.WriteVariable("TargetNamePDB", targetNames.targetNamePDB);
+      fc.WriteVariable("TargetNameSO", targetNames.targetNameSO);
+      fc.WriteVariable("TargetNameReal", targetNames.targetNameReal);
 
       // TODO: Remove this if these variables aren't used...
       // They've been added for testing
       fc.WriteVariable("TargetOutput",
-                       cmGlobalFastbuildGenerator::Quote(
-                         ConvertToFastbuildPath(targetNames.targetOutput)));
-      fc.WriteVariable(
-        "TargetOutputImplib",
-        cmGlobalFastbuildGenerator::Quote(
-          ConvertToFastbuildPath(targetNames.targetOutputImplib)));
-      fc.WriteVariable("TargetOutputReal", cmGlobalFastbuildGenerator::Quote(
-                                             ConvertToFastbuildPath(
-                                               targetNames.targetOutputReal)));
+                       ConvertToFastbuildPath(targetNames.targetOutput));
+      fc.WriteVariable("TargetOutputImplib",
+                       ConvertToFastbuildPath(targetNames.targetOutputImplib));
+      fc.WriteVariable("TargetOutputReal",
+                       ConvertToFastbuildPath(targetNames.targetOutputReal));
       fc.WriteVariable("TargetOutDir",
-                       cmGlobalFastbuildGenerator::Quote(
-                         ConvertToFastbuildPath(targetNames.targetOutputDir)));
+                         ConvertToFastbuildPath(targetNames.targetOutputDir));
       fc.WriteVariable(
         "TargetOutCompilePDBDir",
-        cmGlobalFastbuildGenerator::Quote(
-          ConvertToFastbuildPath(targetNames.targetOutputCompilePDBDir)));
+          ConvertToFastbuildPath(targetNames.targetOutputCompilePDBDir));
       fc.WriteVariable(
         "TargetOutPDBDir",
-        cmGlobalFastbuildGenerator::Quote(
-          ConvertToFastbuildPath(targetNames.targetOutputPDBDir)));
+          ConvertToFastbuildPath(targetNames.targetOutputPDBDir));
 
       // Compile directory always needs to exist
       EnsureDirectoryExists(targetNames.targetOutputCompilePDBDir,
@@ -1122,7 +1087,7 @@ void cmFastbuildNormalTargetGenerator::Generate()
     cmGlobalFastbuildGenerator::Detail::FileContext& fc =
       m_bffFiles.perConfig[configName];
 
-    fc.WriteVariable("BaseCompilationConfig_" + configName, "");
+    fc.WriteVariableDeclare("BaseCompilationConfig_" + configName);
     fc.WritePushScopeStruct();
 
     fc.WriteCommand("Using", ".BaseConfig_" + configName);
@@ -1177,10 +1142,10 @@ void cmFastbuildNormalTargetGenerator::Generate()
       cmGlobalFastbuildGenerator::Detail::FileContext& fc =
         m_bffFiles.perConfig[configName];
 
-      fc.WriteVariable(ruleObjectGroupName, "");
+      fc.WriteVariableDeclare(ruleObjectGroupName);
       fc.WritePushScopeStruct();
 
-      fc.WriteVariable("ObjectConfig_" + configName, "");
+      fc.WriteVariableDeclare("ObjectConfig_" + configName);
       fc.WritePushScopeStruct();
 
       fc.WriteCommand("Using", ".BaseCompilationConfig_" + configName);
@@ -1202,11 +1167,10 @@ void cmFastbuildNormalTargetGenerator::Generate()
         std::string executable;
         SplitExecutableAndFlags(compileCmd, executable, baseCompileFlags);
 
-        fc.WriteVariable("CompilerCmdBaseFlags",
-                         cmGlobalFastbuildGenerator::Quote(baseCompileFlags));
+        fc.WriteVariable("CompilerCmdBaseFlags", baseCompileFlags);
 
-        std::string compilerName = ".Compiler_" + objectGroupLanguage;
-        fc.WriteVariable("Compiler", compilerName);
+        std::string compilerName = "Compiler_" + objectGroupLanguage;
+        fc.WriteVariableAssign("Compiler", compilerName);
       }
 
       std::map<std::string,
@@ -1244,8 +1208,6 @@ void cmFastbuildNormalTargetGenerator::Generate()
           std::string compileDefines =
             ComputeDefines(srcFile, configName, objectGroupLanguage);
 
-          UnescapeFastbuildVariables(compilerFlags);
-          UnescapeFastbuildVariables(compileDefines);
 
           std::string configKey = compilerFlags + "{|}" + compileDefines;
           cmGlobalFastbuildGenerator::Detail::Generation::CompileCommand&
@@ -1271,22 +1233,20 @@ void cmFastbuildNormalTargetGenerator::Generate()
         const cmGlobalFastbuildGenerator::Detail::Generation::CompileCommand&
           command = groupIter->second;
 
-        fc.WriteVariable("CompileDefineFlags",
-                         cmGlobalFastbuildGenerator::Quote(command.defines));
-        fc.WriteVariable("CompileFlags",
-                         cmGlobalFastbuildGenerator::Quote(command.flags));
+        fc.WriteVariable("CompileDefineFlags", command.defines);
+        fc.WriteVariable("CompileFlags", command.flags);
         fc.WriteVariable(
           "CompilerOptions",
-          cmGlobalFastbuildGenerator::Quote(
-            "$CompileFlags$ $CompileDefineFlags$ $CompilerCmdBaseFlags$"));
+          VAR_LITERAL("CompileFlags") " " VAR_LITERAL("CompileDefineFlags") 
+          " " VAR_LITERAL("CompilerCmdBaseFlags"));
 
         if (objectGroupLanguage == "RC") {
           fc.WriteVariable("CompilerOutputExtension",
-                           cmGlobalFastbuildGenerator::Quote(".res"));
+                  //TODO miss file name ?
+                           ".res");
         } else {
           fc.WriteVariable("CompilerOutputExtension",
-                           cmGlobalFastbuildGenerator::Quote(
-                             "." + objectGroupLanguage + ".obj"));
+                           "." + objectGroupLanguage + ".obj");
         }
 
         std::map<std::string, std::vector<std::string> >::const_iterator
@@ -1315,10 +1275,10 @@ void cmFastbuildNormalTargetGenerator::Generate()
           cmSystemTools::ConvertToOutputSlashes(targetCompileOutDirectory);
           fc.WriteVariable(
             "CompilerOutputPath",
-            cmGlobalFastbuildGenerator::Quote(targetCompileOutDirectory));
+            targetCompileOutDirectory);
 
           // Unity source files:
-          fc.WriteVariable("UnityInputFiles", ".CompilerInputFiles");
+          fc.WriteVariableAssign("UnityInputFiles", "CompilerInputFiles");
 
           /*
           if
@@ -1369,7 +1329,7 @@ void cmFastbuildNormalTargetGenerator::Generate()
       m_bffFiles.perConfig[configName];
     if (hasLinkerStage) {
 
-      fc.WriteVariable("LinkerConfig_" + configName, "");
+      fc.WriteVariableDeclare("LinkerConfig_" + configName);
       fc.WritePushScopeStruct();
 
       fc.WriteCommand("Using", ".BaseConfig_" + configName);
@@ -1419,10 +1379,10 @@ void cmFastbuildNormalTargetGenerator::Generate()
           }
         }
 
-        fc.WriteVariable("LinkPath", "'" + linkPath + "'");
-        fc.WriteVariable("LinkLibs", "'" + linkLibs + "'");
-        fc.WriteVariable("LinkFlags", "'" + linkFlags + "'");
-        fc.WriteVariable("TargetFlags", "'" + targetFlags + "'");
+        fc.WriteVariable("LinkPath", linkPath );
+        fc.WriteVariable("LinkLibs", linkLibs );
+        fc.WriteVariable("LinkFlags", linkFlags );
+        fc.WriteVariable("TargetFlags", targetFlags );
 
         // Remove the command from the front and leave the flags behind
         std::string linkCmd;
@@ -1442,15 +1402,14 @@ void cmFastbuildNormalTargetGenerator::Generate()
           LocalGenerator->GetMakefile()->GetSafeDefinition(
             "CMAKE_" + language + "_COMPILER_ID");
 
-        fc.WriteVariable("Linker",
-                         cmGlobalFastbuildGenerator::Quote(executable));
-        fc.WriteVariable("LinkerType",
-                         cmGlobalFastbuildGenerator::Quote(linkerType));
-        fc.WriteVariable("BaseLinkerOptions",
-                         cmGlobalFastbuildGenerator::Quote(flags));
+        fc.WriteVariable("Linker",executable);
+        fc.WriteVariable("LinkerType",linkerType);
+        fc.WriteVariable("BaseLinkerOptions",flags);
 
-        fc.WriteVariable("LinkerOutput", "'$TargetOutput$'");
-        fc.WriteVariable("LinkerOptions", "'$BaseLinkerOptions$ $LinkLibs$'");
+        fc.WriteVariable("LinkerOutput", VAR_LITERAL("TargetOutput"));
+        fc.WriteVariable(
+          "LinkerOptions",
+          VAR_LITERAL("BaseLinkerOptions") " " VAR_LITERAL("LinkLibs"));
 
         fc.WriteArray("Libraries", cmGlobalFastbuildGenerator::Wrap(
                                      linkableDeps, "'" + targetName + "-",
@@ -1477,20 +1436,20 @@ void cmFastbuildNormalTargetGenerator::Generate()
 
           // Push dummy definitions for compilation variables
           // These variables are required by the Library command
-          fc.WriteVariable("Compiler", ".Compiler_dummy");
-          fc.WriteVariable(
-            "CompilerOptions",
-            "'-c $FB_INPUT_1_PLACEHOLDER$ $FB_INPUT_2_PLACEHOLDER$'");
-          fc.WriteVariable("CompilerOutputPath", "'/dummy/'");
+          fc.WriteVariableAssign("Compiler", "Compiler_dummy");
+          fc.WriteVariable("CompilerOptions",
+                           "-c " VAR_LITERAL("FB_INPUT_1_PLACEHOLDER") 
+                           " " VAR_LITERAL("FB_INPUT_2_PLACEHOLDER") );
+          fc.WriteVariable("CompilerOutputPath", "/dummy/");
 
           // These variables are required by the Library command as well
           // we just need to transfer the values in the linker variables
           // to these locations
-          fc.WriteVariable("Librarian", "'$Linker$'");
-          fc.WriteVariable("LibrarianOptions", "'$LinkerOptions$'");
-          fc.WriteVariable("LibrarianOutput", "'$LinkerOutput$'");
+          fc.WriteVariable("Librarian", VAR_LITERAL("Linker"));
+          fc.WriteVariable("LibrarianOptions", VAR_LITERAL("LinkerOptions"));
+          fc.WriteVariable("LibrarianOutput", VAR_LITERAL("LinkerOutput"));
 
-          fc.WriteVariable("LibrarianAdditionalInputs", ".Libraries");
+          fc.WriteVariableAssign("LibrarianAdditionalInputs", "Libraries");
         }
         fc.WritePopScope();
       }

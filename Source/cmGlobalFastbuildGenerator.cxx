@@ -190,11 +190,37 @@ void cmGlobalFastbuildGenerator::Detail::FileContext::WritePopScope()
   closingScope.resize(closingScope.size() - 1);
 }
 
+void cmGlobalFastbuildGenerator::Detail::FileContext::WriteVariableDeclare(
+  const std::string& key,
+  const std::string& operation,
+  bool newLine)
+{
+  fout << linePrefix << "." << key << " " << operation << (newLine?" \n":" ") ;
+}
+
+void cmGlobalFastbuildGenerator::Detail::FileContext::WriteVariableAssign(
+  const std::string& key,
+  const std::string& value)
+{
+  WriteVariableDeclare(key,"=",false);
+  fout  << "." <<value << "\n";
+}
+
+void cmGlobalFastbuildGenerator::Detail::FileContext::WriteVariableBool(
+  const std::string& key,
+  bool value)
+{
+  WriteVariableDeclare(key,"=",false);
+  fout  << (value?"true":"false") << "\n";
+}
+
 void cmGlobalFastbuildGenerator::Detail::FileContext::WriteVariable(
-  const std::string& key, const std::string& value,
+  const std::string& key,
+  const std::string& value,
   const std::string& operation)
 {
-  fout << linePrefix << "." << key << " " << operation << " " << value << "\n";
+  WriteVariableDeclare(key,operation,false);
+  fout  << Quote(value) << "\n";
 }
 
 void cmGlobalFastbuildGenerator::Detail::FileContext::WriteCommand(
@@ -211,7 +237,7 @@ void cmGlobalFastbuildGenerator::Detail::FileContext::WriteArray(
   const std::string& key, const std::vector<std::string>& values,
   const std::string& operation)
 {
-  WriteVariable(key, "", operation);
+  WriteVariableDeclare(key,operation);
   WritePushScope();
   size_t size = values.size();
   for (size_t index = 0; index < size; ++index) {
@@ -693,8 +719,8 @@ void cmGlobalFastbuildGenerator::Detail::Generation::WritePlaceholders(
   // Define some placeholder
   fileContext.WriteSectionHeader("Helper variables");
 
-  fileContext.WriteVariable("FB_INPUT_1_PLACEHOLDER", Quote("\"%1\""));
-  fileContext.WriteVariable("FB_INPUT_2_PLACEHOLDER", Quote("\"%2\""));
+  fileContext.WriteVariable("FB_INPUT_1_PLACEHOLDER", "\"%1\"");
+  fileContext.WriteVariable("FB_INPUT_2_PLACEHOLDER", "\"%2\"");
 }
 
 void cmGlobalFastbuildGenerator::Detail::Generation::WriteSettings(
@@ -708,7 +734,7 @@ void cmGlobalFastbuildGenerator::Detail::Generation::WriteSettings(
   cacheDir += "\\.fbuild.cache";
   cmSystemTools::ConvertToOutputSlashes(cacheDir);
 
-  fileContext.WriteVariable("CachePath", Quote(cacheDir));
+  fileContext.WriteVariable("CachePath", cacheDir);
   fileContext.WritePopScope();
 }
 
@@ -788,7 +814,14 @@ bool cmGlobalFastbuildGenerator::Detail::Generation::WriteCompilers(
     std::string compilerPath =
       cmSystemTools::GetFilenamePath(compilerDef.path);
     std::string compilerFile =
-      "$CompilerRoot$\\" + cmSystemTools::GetFilenameName(compilerDef.path);
+      FASTBUILD_DOLLAR_TAG "CompilerRoot" FASTBUILD_DOLLAR_TAG ""
+
+#if defined(_WIN32) 
+      "\\"
+#else
+      "/"
+#endif
+      + cmSystemTools::GetFilenameName(compilerDef.path);
 
     cmSystemTools::ConvertToOutputSlashes(compilerPath);
     cmSystemTools::ConvertToOutputSlashes(compilerFile);
@@ -796,8 +829,8 @@ bool cmGlobalFastbuildGenerator::Detail::Generation::WriteCompilers(
     // Write out the compiler that has been configured
     base.WriteCommand("Compiler", Quote(compilerDef.name));
     base.WritePushScope();
-    base.WriteVariable("CompilerRoot", Quote(compilerPath));
-    base.WriteVariable("Executable", Quote(compilerFile));
+    base.WriteVariable("CompilerRoot", compilerPath);
+    base.WriteVariable("Executable", compilerFile);
     base.WriteArray("ExtraFiles", Wrap(extraFiles));
     base.WritePopScope();
   }
@@ -812,10 +845,10 @@ bool cmGlobalFastbuildGenerator::Detail::Generation::WriteCompilers(
     // Output a default compiler to absorb the library requirements for a
     // compiler
     if (iter == languageToCompiler.begin()) {
-      base.WriteVariable("Compiler_dummy", Quote(compilerDef.name));
+      base.WriteVariable("Compiler_dummy", compilerDef.name);
     }
 
-    base.WriteVariable("Compiler_" + language, Quote(compilerDef.name));
+    base.WriteVariable("Compiler_" + language, compilerDef.name);
   }
 
   return true;
@@ -827,7 +860,7 @@ void cmGlobalFastbuildGenerator::Detail::Generation::WriteConfigurations(
   FileContext& base = bffFiles.base;
   base.WriteSectionHeader("Configurations");
 
-  base.WriteVariable("ConfigBase", "");
+  base.WriteVariableDeclare("ConfigBase");
   base.WritePushScopeStruct();
   base.WritePopScope();
 
@@ -838,7 +871,7 @@ void cmGlobalFastbuildGenerator::Detail::Generation::WriteConfigurations(
        iter != configs.end(); ++iter) {
     const std::string& configName = *iter;
     FileContext& perConfig = bffFiles.perConfig[configName];
-    perConfig.WriteVariable("config_" + configName, "");
+    perConfig.WriteVariableDeclare("config_" + configName);
     perConfig.WritePushScopeStruct();
 
     // Using base config
@@ -1047,18 +1080,14 @@ void cmGlobalFastbuildGenerator::Detail::Generation::WriteBFFRebuildTarget(
     fc.WriteArray("ExecInput",
                   cmGlobalFastbuildGenerator::Wrap(
                     gg->ConvertToFastbuildPath(implicitDeps), "'", "'"));
-    fc.WriteVariable("ExecExecutable", cmGlobalFastbuildGenerator::Quote(
-                                         cmSystemTools::GetCMakeCommand()));
-    fc.WriteVariable("ExecArguments",
-                     cmGlobalFastbuildGenerator::Quote(args.str()));
+    fc.WriteVariable("ExecExecutable", cmSystemTools::GetCMakeCommand());
+    fc.WriteVariable("ExecArguments",args.str());
 
-    fc.WriteVariable("ExecIsGenerator","true");
+    fc.WriteVariableBool("ExecIsGenerator",true);
     // Currently fastbuild doesn't support more than 1
     // output for a custom command (soon to change hopefully).
     // so only use the first one
-    fc.WriteVariable("ExecOutput",
-                     cmGlobalFastbuildGenerator::Quote(
-                       gg->ConvertToFastbuildPath(outDir + "fbuild.bff")));
+    fc.WriteVariable("ExecOutput",gg->ConvertToFastbuildPath(outDir + "fbuild.bff"));
   }
   fc.WritePopScope();
 }
