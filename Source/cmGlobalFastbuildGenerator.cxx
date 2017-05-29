@@ -516,7 +516,9 @@ std::string cmGlobalFastbuildGenerator::Quote(const std::string& str,
                                               const std::string& quotation)
 {
   std::string result = str;
+  cmSystemTools::ReplaceString(result, "^", "^^");
   cmSystemTools::ReplaceString(result, quotation, "^" + quotation);
+  cmSystemTools::ReplaceString(result, "$", "^$" );
   cmSystemTools::ReplaceString(result, FASTBUILD_DOLLAR_TAG, "$");
   return quotation + result + quotation;
 }
