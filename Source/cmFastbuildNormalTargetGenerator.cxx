@@ -1406,7 +1406,7 @@ void cmFastbuildNormalTargetGenerator::Generate()
         fc.WriteVariable("LinkerType",linkerType);
         fc.WriteVariable("BaseLinkerOptions",flags);
 
-        fc.WriteVariable("LinkerOutput", VAR_LITERAL("TargetOutput"));
+        fc.WriteVariable("LinkerOutput", VAR_LITERAL("TargetOutputReal"));
         fc.WriteVariable(
           "LinkerOptions",
           VAR_LITERAL("BaseLinkerOptions") " " VAR_LITERAL("LinkLibs"));
