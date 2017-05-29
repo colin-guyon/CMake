@@ -80,7 +80,7 @@ private:
   static bool isConfigDependant(const cmCustomCommandGenerator* ccg);
 
   static std::string BuildCommandLine(
-    const std::vector<std::string>& cmdLines);
+    const std::vector<std::string>& cmdLines,bool asFastbuildVariable);
 
   static void SplitExecutableAndFlags(const std::string& command,
                                       std::string& executable,
