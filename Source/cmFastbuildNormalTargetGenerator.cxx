@@ -270,7 +270,7 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
   // then we need to make sure we don't define outputs multiple times.
   // but if the command should always run (i.e. post builds etc)
   // then we will output a new one.
-  if (!mergedOutputs.empty()) {
+  if (!mergedOutputs.empty() && !isConfigDependant(&ccg)) {
 
     for (std::vector<std::string>::const_iterator iter =
            mergedOutputs.cbegin();
