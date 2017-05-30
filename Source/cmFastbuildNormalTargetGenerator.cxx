@@ -274,7 +274,8 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
 
     for (std::vector<std::string>::const_iterator iter =
            mergedOutputs.cbegin();
-         iter != mergedOutputs.cend(); ++iter) {
+         iter != mergedOutputs.cend();
+         ++iter) {
       m_duplicateOutputs[*iter].insert(configName);
     }
 

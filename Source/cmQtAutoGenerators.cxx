@@ -73,9 +73,17 @@ static void InfoGet(cmMakefile* makefile, const char* key, bool& value)
 }
 
 static void InfoGet(cmMakefile* makefile, const char* key,
-                    std::vector<std::string>& list)
+                    std::vector<std::string>& list,
+                    const std::string& config="")
 {
   cmSystemTools::ExpandListArgument(makefile->GetSafeDefinition(key), list);
+  if (config.empty()) {
+      return;
+  }
+  for (std::vector<std::string>::iterator it = list.begin(); it != list.end();
+       ++it) {
+      *it=makefile->GetGlobalGenerator()->ExpandCFGIntDir(*it,config);
+  }
 }
 
 static void InfoGet(cmMakefile* makefile, const char* key,
@@ -304,7 +312,7 @@ bool cmQtAutoGenerators::Run(const std::string& targetDirectory,
     // Read old settings
     this->SettingsFileRead(mf.get());
     // Init and run
-    this->Init(mf.get());
+    this->Init(mf.get(),config);
     if (this->RunAutogen()) {
       // Write current settings
       if (this->SettingsFileWrite()) {
@@ -394,7 +402,7 @@ bool cmQtAutoGenerators::ReadAutogenInfoFile(
 
   // - Moc
   if (this->MocEnabled()) {
-    InfoGet(makefile, "AM_MOC_SKIP", this->MocSkipList);
+    InfoGet(makefile, "AM_MOC_SKIP", this->MocSkipList, config);
     InfoGet(makefile, "AM_MOC_DEFINITIONS", config, this->MocDefinitions);
 #ifdef _WIN32
     {
@@ -404,7 +412,7 @@ bool cmQtAutoGenerators::ReadAutogenInfoFile(
       }
     }
 #endif
-    InfoGet(makefile, "AM_MOC_INCLUDES", config, this->MocIncludePaths);
+    InfoGet(makefile, "AM_MOC_INCLUDES", this->MocIncludePaths, config);
     InfoGet(makefile, "AM_MOC_OPTIONS", this->MocOptions);
     InfoGet(makefile, "AM_MOC_RELAXED_MODE", this->MocRelaxedMode);
     {
@@ -613,9 +621,11 @@ bool cmQtAutoGenerators::SettingsFileWrite()
   return success;
 }
 
-void cmQtAutoGenerators::Init(cmMakefile* makefile)
+void cmQtAutoGenerators::Init(cmMakefile* makefile,const std::string& config)
 {
   this->AutogenBuildSubDir = this->AutogenTargetName;
+  this->AutogenBuildSubDir += "/";
+  this->AutogenBuildSubDir += config;
   this->AutogenBuildSubDir += "/";
 
   this->MocCppFilenameRel = this->AutogenBuildSubDir;

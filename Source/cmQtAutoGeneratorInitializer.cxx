@@ -8,6 +8,7 @@
 #include "cmFilePathChecksum.h"
 #include "cmGeneratorTarget.h"
 #include "cmLocalGenerator.h"
+#include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
 #include "cmOutputConverter.h"
 #include "cmSourceFile.h"
@@ -77,6 +78,8 @@ static std::string GetAutogenTargetBuildDir(cmGeneratorTarget const* target)
   std::string targetDir = makefile->GetCurrentBinaryDirectory();
   targetDir += "/";
   targetDir += GetAutogenTargetName(target);
+  targetDir += "/";
+  targetDir += target->GetGlobalGenerator()->GetCMakeCFGIntDir();
   targetDir += "/";
   return targetDir;
 }
