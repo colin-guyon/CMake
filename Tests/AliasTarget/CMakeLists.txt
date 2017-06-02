@@ -28,9 +28,13 @@ add_executable(AliasTarget commandgenerator.cpp $<TARGET_OBJECTS:Alias::Objects>
 add_executable(PREFIX::AliasTarget ALIAS AliasTarget)
 add_executable(Generator::Command ALIAS AliasTarget)
 
-add_custom_command(OUTPUT commandoutput.h COMMAND Generator::Command)
+add_custom_command(OUTPUT ${CMAKE_CFG_INTDIR}/commandoutput.h 
+    WORKING_DIRECTORY ${CMAKE_CFG_INTDIR}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CFG_INTDIR}
+    COMMAND Generator::Command)
 
-add_library(bat SHARED bat.cpp "${CMAKE_CURRENT_BINARY_DIR}/commandoutput.h")
+include_directories("${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}")
+add_library(bat SHARED bat.cpp "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/commandoutput.h")
 target_link_libraries(bat PREFIX::Foo)
 target_include_directories(bat PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 
