@@ -17,14 +17,14 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 # Generated source file
-add_custom_command(OUTPUT main.cpp
+add_custom_command(OUTPUT ${CMAKE_CFG_INTDIR}/main.cpp
                    COMMAND ${CMAKE_COMMAND} -E sleep 2
-                   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/main.cpp
+                   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/main.cpp
                    )
 
 add_executable(mocRerun
   ${CMAKE_CURRENT_BINARY_DIR}/test1.h
-  ${CMAKE_CURRENT_BINARY_DIR}/main.cpp
+  ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/main.cpp
   res1.qrc
   )
 target_include_directories(mocRerun PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
