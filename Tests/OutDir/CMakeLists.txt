@@ -28,9 +28,9 @@ endforeach()
 add_subdirectory(../COnly COnly)
 
 add_custom_command(
-  OUTPUT OutDir.h
+  OUTPUT ${CMAKE_CFG_INTDIR}/OutDir.h
   COMMAND ${CMAKE_COMMAND} -Dtop=${top} -P ${OutDir_SOURCE_DIR}/OutDir.cmake
   DEPENDS COnly ${OutDir_SOURCE_DIR}/OutDir.cmake
   )
 include_directories(${top})
-add_executable(OutDir OutDir.c OutDir.h)
+add_executable(OutDir OutDir.c ${CMAKE_CFG_INTDIR}/OutDir.h)

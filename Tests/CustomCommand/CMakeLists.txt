@@ -38,11 +38,11 @@ add_executable(generator generator.cxx)
 add_executable(wrapper wrapper.cxx)
 
 add_custom_command(
-  OUTPUT ${PROJECT_BINARY_DIR}/wrapped.c ${PROJECT_BINARY_DIR}/wrapped_help.c
+  OUTPUT ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/wrapped.c ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/wrapped_help.c
   DEPENDS wrapper
   MAIN_DEPENDENCY ${PROJECT_SOURCE_DIR}/wrapped.h
   COMMAND ${EXECUTABLE_OUTPUT_PATH}/${CMAKE_CFG_INTDIR}/wrapper
-  ${PROJECT_BINARY_DIR}/wrapped.c ${PROJECT_BINARY_DIR}/wrapped_help.c
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/wrapped.c ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/wrapped_help.c
   ${CMAKE_CFG_INTDIR} # this argument tests passing of the configuration
   VERBATIM # passing of configuration should work in this mode
   )
@@ -52,33 +52,33 @@ add_custom_command(
 #  Test creating files from a custom target
 #
 ################################################################
-add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}//doc1.dvi # test 2 slashes
-  DEPENDS ${PROJECT_SOURCE_DIR}/doc1.tex
+add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}//${CMAKE_CFG_INTDIR}/doc1.dvi # test 2 slashes
+  DEPENDS ${PROJECT_SOURCE_DIR}/${CMAKE_CFG_INTDIR}/doc1.tex
   COMMAND   ${CMAKE_COMMAND}
   ARGS      -E copy ${PROJECT_SOURCE_DIR}/doc1.tex
-  ${PROJECT_BINARY_DIR}/doc1.dvi
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/doc1.dvi
   )
 
-add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/doc1.h
+add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/doc1.h
   COMMAND ${CMAKE_COMMAND} -E echo " Copying doc1.dvi to doc1temp.h."
   COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_BINARY_DIR}/doc1.dvi
-                                   ${PROJECT_BINARY_DIR}/doc1temp.h
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/doc1temp.h
   )
-add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/doc1.h APPEND
+add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/doc1.h APPEND
   DEPENDS ${PROJECT_BINARY_DIR}/doc1.dvi
   COMMAND ${CMAKE_COMMAND} -E echo " Copying doc1temp.h to doc1.h."
   COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_BINARY_DIR}/doc1temp.h
-                                   ${PROJECT_BINARY_DIR}/doc1.h
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/doc1.h
   COMMAND ${CMAKE_COMMAND} -E echo " Removing doc1temp.h."
-  COMMAND ${CMAKE_COMMAND} -E remove -f ${PROJECT_BINARY_DIR}/doc1temp.h
+  COMMAND ${CMAKE_COMMAND} -E remove -f ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/doc1temp.h
   )
 
 # Add custom command to generate foo.h.
-add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/foo.h
+add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/foo.h
   DEPENDS ${PROJECT_SOURCE_DIR}/foo.h.in
   COMMAND ${CMAKE_COMMAND} -E echo " Copying foo.h.in to foo.h."
   COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/foo.h.in
-                                   ${PROJECT_BINARY_DIR}/foo.h
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/foo.h
   )
 
 # Add the location of foo.h to the include path.
@@ -88,8 +88,8 @@ include_directories(${PROJECT_BINARY_DIR})
 # of CMake 2.6 custom command outputs specified by relative path go in
 # the build tree.
 add_custom_command(
-  OUTPUT doc1.txt
-  COMMAND ${CMAKE_COMMAND} -E echo "Example Document Target" > doc1.txt
+  OUTPUT ${CMAKE_CFG_INTDIR}/doc1.txt
+  COMMAND ${CMAKE_COMMAND} -E echo "Example Document Target" > ${CMAKE_CFG_INTDIR}/doc1.txt
   DEPENDS doc1.tex
   VERBATIM
   )
@@ -116,19 +116,19 @@ add_custom_command(
   TARGET TDocument POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E echo " Copying doc1pre.txt to doc2post.txt."
   COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_BINARY_DIR}/doc1pre.txt
-                                   ${PROJECT_BINARY_DIR}/doc2post.txt
-  BYPRODUCTS ${PROJECT_BINARY_DIR}/doc2post.txt
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/doc2post.txt
+                                   BYPRODUCTS ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/doc2post.txt
   COMMENT "Running TDocument post-build commands"
   )
 
 # Setup a custom target that will fail if the POST_BUILD custom command
 # isn't run before it.
 add_custom_command(
-  OUTPUT doc3post.txt
+    OUTPUT ${CMAKE_CFG_INTDIR}/doc3post.txt
   DEPENDS ${PROJECT_BINARY_DIR}/doc2post.txt
   COMMAND ${CMAKE_COMMAND} -E echo " Copying doc2pre.txt to doc3post.txt."
   COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_BINARY_DIR}/doc2post.txt
-                                   ${PROJECT_BINARY_DIR}/doc3post.txt
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/doc3post.txt
   COMMENT "Running TDocument post-build dependent custom command"
   )
 add_custom_target(doc3Post ALL DEPENDS doc3post.txt)
@@ -139,62 +139,62 @@ add_dependencies(doc3Post TDocument)
 #  Test using a multistep generated file
 #
 ################################################################
-add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/foo.pre
+add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/foo.pre
   DEPENDS ${PROJECT_SOURCE_DIR}/foo.in
           TDocument # Ensure doc1.h generates before this target
   COMMAND   ${CMAKE_COMMAND}
   ARGS      -E copy ${PROJECT_SOURCE_DIR}/foo.in
-  ${PROJECT_BINARY_DIR}/foo.pre
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/foo.pre
   )
 
-add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/foo.c
+add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/foo.c
   DEPENDS   ${PROJECT_BINARY_DIR}/foo.pre
   COMMAND   ${CMAKE_COMMAND}
   ARGS      -E copy ${PROJECT_BINARY_DIR}/foo.pre
-  ${PROJECT_BINARY_DIR}/foo.c
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/foo.c
   )
 
 # Test using OBJECT_DEPENDS to bring in a custom command.
 # Use a path that can be simplified to make sure paths
 # are consistently normalized.
 add_custom_command(
-  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/subdir/../subdir/subdir.h
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/subdir/../subdir/${CMAKE_CFG_INTDIR}/subdir.h
   COMMAND ${CMAKE_COMMAND} -E copy
             ${CMAKE_CURRENT_SOURCE_DIR}/subdir.h.in
-            ${CMAKE_CURRENT_BINARY_DIR}/subdir/subdir.h
+            ${CMAKE_CURRENT_BINARY_DIR}/subdir/${CMAKE_CFG_INTDIR}/subdir.h
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/subdir.h.in
   )
-set_property(SOURCE ${PROJECT_BINARY_DIR}/foo.c PROPERTY
-  OBJECT_DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/subdir/../subdir/subdir.h)
+set_property(SOURCE ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/foo.c PROPERTY
+    OBJECT_DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/subdir/../subdir/${CMAKE_CFG_INTDIR}/subdir.h)
 
 # Add custom command to generate not_included.h, which is a header
 # file that is not included by any source in this project.  This will
 # test whether all custom command outputs explicitly listed as sources
 # get generated even if they are not needed by an object file.
-add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/not_included.h
+add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/not_included.h
   DEPENDS ${PROJECT_SOURCE_DIR}/foo.h.in
   COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/foo.h.in
-                                   ${PROJECT_BINARY_DIR}/not_included.h
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/not_included.h
   )
 
 # add the executable
 add_executable(CustomCommand
-  ${PROJECT_BINARY_DIR}/foo.h
-  ${PROJECT_BINARY_DIR}/foo.c
-  ${PROJECT_BINARY_DIR}/wrapped.c
-  ${PROJECT_BINARY_DIR}/wrapped_help.c
-  ${PROJECT_BINARY_DIR}/generated.c
-  ${PROJECT_BINARY_DIR}/not_included.h
-  gen_redirect.c # default location for custom commands is in build tree
+    ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/foo.h
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/foo.c
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/wrapped.c
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/wrapped_help.c
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/generated.c
+  ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/not_included.h
+  ${CMAKE_CFG_INTDIR}/gen_redirect.c # default location for custom commands is in build tree
   )
 
 # Add the rule to create generated.c at build time.  This is placed
 # here to test adding the generation rule after referencing the
 # generated source in a target.
-add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/generated.c
+add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/generated.c
   DEPENDS $<1:generator> $<0:does_not_exist>
   COMMAND generator
-  ARGS ${PROJECT_BINARY_DIR}/generated.c
+  ARGS ${PROJECT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/generated.c
   )
 
 target_link_libraries(CustomCommand GeneratedHeader)
@@ -208,11 +208,11 @@ target_link_libraries(CustomCommand GeneratedHeader)
 #
 # Test the same for add_custom_target()
 
-add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated_extern.cxx
-  COMMAND generator_extern ${CMAKE_CURRENT_BINARY_DIR}/generated_extern.cxx
+add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/generated_extern.cxx
+  COMMAND generator_extern ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/generated_extern.cxx
   )
 
-add_executable(CustomCommandUsingTargetTest main.cxx ${CMAKE_CURRENT_BINARY_DIR}/generated_extern.cxx )
+add_executable(CustomCommandUsingTargetTest main.cxx ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/generated_extern.cxx )
 
 add_custom_target(RunTarget
   COMMAND generator_extern ${CMAKE_CURRENT_BINARY_DIR}/run_target.cxx
@@ -231,10 +231,10 @@ add_executable(tcat tcat.cxx)
 # Test that list expansion from a generator expression works.
 set_property(TARGET tcat PROPERTY DEPSLIST tcat gen_redirect_in.c)
 
-add_custom_command(OUTPUT gen_redirect.c
+add_custom_command(OUTPUT ${CMAKE_CFG_INTDIR}/gen_redirect.c
   DEPENDS $<TARGET_PROPERTY:tcat,DEPSLIST>
-  COMMAND tcat < ${CMAKE_CURRENT_SOURCE_DIR}/gen_redirect_in.c > gen_redirect.c
-  COMMAND ${CMAKE_COMMAND} -E echo "#endif" >> gen_redirect.c
+  COMMAND tcat < ${CMAKE_CURRENT_SOURCE_DIR}/gen_redirect_in.c > ${CMAKE_CFG_INTDIR}/gen_redirect.c
+  COMMAND ${CMAKE_COMMAND} -E echo "#endif" >> ${CMAKE_CFG_INTDIR}/gen_redirect.c
   VERBATIM
   )
 
@@ -426,8 +426,8 @@ add_dependencies(do_check_command_line pre_check_command_line)
 # having this test here makes sure it stays fixed moving forward.
 #
 add_custom_command(
-  OUTPUT SameName1.txt
-  COMMAND ${CMAKE_COMMAND} -E touch SameName1.txt
+  OUTPUT ${CMAKE_CFG_INTDIR}/SameName1.txt
+  COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CFG_INTDIR}/SameName1.txt
   )
 add_custom_target(SameName ALL
   DEPENDS SameName1.txt
@@ -435,11 +435,11 @@ add_custom_target(SameName ALL
 
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/subdir/SameName
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/subdir
-  COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_BINARY_DIR}/subdir/SameName
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/subdir
+  COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/subdir/SameName
   )
 add_custom_target(DifferentName ALL
-  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/subdir/SameName
+    DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/subdir/SameName
   )
 #
 # </SameNameTest>
@@ -465,7 +465,7 @@ set_property(SOURCE source_in_custom_target
 )
 
 set(gen_path "${CMAKE_CURRENT_BINARY_DIR}//./foo")
-set(gen_file "${gen_path}/foo.cxx")
+set(gen_file "${gen_path}/${CMAKE_CFG_INTDIR}/foo.cxx")
 
 add_custom_command(
   OUTPUT "${gen_file}"
@@ -480,16 +480,16 @@ string(APPEND gen_path "/bar")
 set(gen_file "${gen_path}/bar.cxx")
 
 add_custom_command(
-  OUTPUT "${gen_path}"
-  COMMAND ${CMAKE_COMMAND} -E make_directory "${gen_path}"
+    OUTPUT "${CMAKE_CFG_INTDIR}/${gen_path}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CFG_INTDIR}/${gen_path}"
 )
 
 add_custom_command(
-  OUTPUT "${gen_file}"
+    OUTPUT "${CMAKE_CFG_INTDIR}/${gen_file}"
   DEPENDS "${gen_path}"
-  COMMAND ${CMAKE_COMMAND} -E touch "${gen_file}")
+  COMMAND ${CMAKE_COMMAND} -E touch "${CMAKE_CFG_INTDIR}/${gen_file}")
 
-add_library(NormDepends "${gen_file}")
+add_library(NormDepends "${CMAKE_CFG_INTDIR}/${gen_file}")
 
 # Test that USES_TERMINAL is parsed correctly.
 # It seems much more difficult to test that USES_TERMINAL actually gives
@@ -499,14 +499,14 @@ add_library(NormDepends "${gen_file}")
 set(gen_file "${gen_path}/bar2.cxx")
 
 add_custom_command(
-  OUTPUT "${gen_file}"
+    OUTPUT "${CMAKE_CFG_INTDIR}/${gen_file}"
   DEPENDS "${gen_path}"
-  COMMAND ${CMAKE_COMMAND} -E touch "${gen_file}"
+  COMMAND ${CMAKE_COMMAND} -E touch "${CMAKE_CFG_INTDIR}/${gen_file}"
   VERBATIM
   USES_TERMINAL
 )
 
-add_library(UseConsole "${gen_file}")
+add_library(UseConsole "${CMAKE_CFG_INTDIR}/${gen_file}")
 
 add_custom_target(UseConsoleTarget ALL
   COMMAND ${CMAKE_COMMAND} -E echo "Custom console target."
