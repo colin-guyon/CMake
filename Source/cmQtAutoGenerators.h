@@ -54,7 +54,7 @@ private:
   }
 
   // -- Init and run
-  void Init(cmMakefile* makefile);
+  void Init(cmMakefile* makefile,const std::string& config);
   bool RunAutogen();
 
   // -- Content analysis

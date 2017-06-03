@@ -304,7 +304,7 @@ bool cmQtAutoGenerators::Run(const std::string& targetDirectory,
     // Read old settings
     this->SettingsFileRead(mf.get());
     // Init and run
-    this->Init(mf.get());
+    this->Init(mf.get(),config);
     if (this->RunAutogen()) {
       // Write current settings
       if (this->SettingsFileWrite()) {
@@ -394,7 +394,7 @@ bool cmQtAutoGenerators::ReadAutogenInfoFile(
 
   // - Moc
   if (this->MocEnabled()) {
-    InfoGet(makefile, "AM_MOC_SKIP", this->MocSkipList);
+    InfoGet(makefile, "AM_MOC_SKIP", config,this->MocSkipList);
     InfoGet(makefile, "AM_MOC_DEFINITIONS", config, this->MocDefinitions);
 #ifdef _WIN32
     {
@@ -613,10 +613,15 @@ bool cmQtAutoGenerators::SettingsFileWrite()
   return success;
 }
 
-void cmQtAutoGenerators::Init(cmMakefile* makefile)
+void cmQtAutoGenerators::Init(cmMakefile* makefile,const std::string& config)
 {
   this->AutogenBuildSubDir = this->AutogenTargetName;
   this->AutogenBuildSubDir += "/";
+  bool multiconfig = makefile->GetPropertyAsBool("AM_MULTI_CONFIG");
+  if (multiconfig) {
+    this->AutogenBuildSubDir += config;
+    this->AutogenBuildSubDir += "/";
+  }
 
   this->MocCppFilenameRel = this->AutogenBuildSubDir;
   this->MocCppFilenameRel += "moc_compilation.cpp";
