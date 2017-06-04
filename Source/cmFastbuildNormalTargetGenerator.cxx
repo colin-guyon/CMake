@@ -1179,6 +1179,9 @@ void cmFastbuildNormalTargetGenerator::Generate()
 
       // Source files
       fc.WriteBlankLine();
+
+      std::string extension;
+
       fc.WriteComment("Source files:");
       {
         // get a list of source files
@@ -1198,6 +1201,8 @@ void cmFastbuildNormalTargetGenerator::Generate()
                filteredObjectSources.begin();
              sourceIter != filteredObjectSources.end(); ++sourceIter) {
           cmSourceFile const* srcFile = *sourceIter;
+          // file extension is same in one object group 
+          extension = GlobalGenerator->GetLanguageOutputExtension(*srcFile); 
           std::string sourceFile = srcFile->GetFullPath();
 
           // Detect flags and defines
@@ -1240,14 +1245,7 @@ void cmFastbuildNormalTargetGenerator::Generate()
           VAR_LITERAL("CompileFlags") " " VAR_LITERAL("CompileDefineFlags") 
           " " VAR_LITERAL("CompilerCmdBaseFlags"));
 
-        if (objectGroupLanguage == "RC") {
-          fc.WriteVariable("CompilerOutputExtension",
-                  //TODO miss file name ?
-                           ".res");
-        } else {
-          fc.WriteVariable("CompilerOutputExtension",
-                           "." + objectGroupLanguage + ".obj");
-        }
+        fc.WriteVariable("CompilerOutputExtension",extension);
 
         std::map<std::string, std::vector<std::string> >::const_iterator
           objectListIt;
