@@ -736,6 +736,13 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     --test-command bar)
   list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/Framework")
 
+  if(NOT CMAKE_CONFIGURATION_TYPES)
+      set(TargetNameConfigs "")
+  else()
+      set(TargetNameConfigs ${CMAKE_CONFIGURATION_TYPES})
+  endif()
+  list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/TargetName")
+  foreach(type ${TargetNameConfigs})
   add_test(TargetName ${CMAKE_CTEST_COMMAND}
     --build-and-test
     "${CMake_SOURCE_DIR}/Tests/TargetName"
@@ -746,8 +753,8 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     --build-options ${build_options}
     --test-command ${CMAKE_CMAKE_COMMAND} -E compare_files
     ${CMake_SOURCE_DIR}/Tests/TargetName/scripts/hello_world
-    ${CMake_BINARY_DIR}/Tests/TargetName/scripts/hello_world)
-  list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/TargetName")
+    ${CMake_BINARY_DIR}/Tests/TargetName/scripts/${type}/hello_world)
+  endforeach()
 
   add_test(LibName ${CMAKE_CTEST_COMMAND}
     --build-and-test
