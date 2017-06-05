@@ -5,13 +5,14 @@ include_directories( ${CMAKE_CURRENT_BINARY_DIR} )
 add_executable(MakeTable MakeTable.cxx )
 # add the command to generate the source code
 add_custom_command (
-  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/Table.h
-  COMMAND MakeTable ${CMAKE_CURRENT_BINARY_DIR}/Table.h
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/Table.h
+    COMMAND MakeTable ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/Table.h
   DEPENDS MakeTable
   )
 
 # add the main library
-add_library(MathFunctions mysqrt.cxx ${CMAKE_CURRENT_BINARY_DIR}/Table.h  )
+add_library(MathFunctions mysqrt.cxx ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/Table.h  )
+target_include_directories(MathFunctions PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR})
 
 install (TARGETS MathFunctions DESTINATION bin)
 install (FILES MathFunctions.h DESTINATION include)
