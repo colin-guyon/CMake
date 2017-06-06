@@ -1242,8 +1242,7 @@ void cmFastbuildNormalTargetGenerator::Generate()
         fc.WriteVariable("CompileFlags", command.flags);
         fc.WriteVariable(
           "CompilerOptions",
-          VAR_LITERAL("CompileFlags") " " VAR_LITERAL("CompileDefineFlags") 
-          " " VAR_LITERAL("CompilerCmdBaseFlags"));
+          VAR_LITERAL("CompilerCmdBaseFlags") " " VAR_LITERAL("CompileFlags") " " VAR_LITERAL("CompileDefineFlags"));
 
         fc.WriteVariable("CompilerOutputExtension",extension);
 

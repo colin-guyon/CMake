@@ -42,22 +42,28 @@ else()
   message(FATAL_ERROR "Could not find external object.")
 endif()
 
+# Build an executable using the external object file.
+add_executable(ExternalOBJ2 executable.cxx ${EXTERNAL_OBJECT})
+
 # Test creation of external objects by custom commands.
-set(CUSTOM_OBJECT
-  ${CMAKE_CURRENT_BINARY_DIR}/custom_object${CMAKE_C_OUTPUT_EXTENSION})
 add_custom_command(
-  OUTPUT ${CUSTOM_OBJECT}
-  COMMAND ${CMAKE_COMMAND} -E copy ${EXTERNAL_OBJECT} ${CUSTOM_OBJECT}
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/custom_object${CMAKE_C_OUTPUT_EXTENSION}
+  COMMAND ${CMAKE_COMMAND} -E copy ${EXTERNAL_OBJECT} ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/custom_object${CMAKE_C_OUTPUT_EXTENSION}
   DEPENDS ${EXTERNAL_OBJECT}
   )
 
 message("${EXTERNAL_OBJECT}")
-# Build an executable using the external object file.
+
+string(FIND  "Visual Studio 10" ${CMAKE_GENERATOR} index)
+if(index GREATER_EQUAL 0)
+    set(vs10 TRUE)
+endif()
+if(vs10)
 add_executable(ExternalOBJ executable.cxx ${CUSTOM_OBJECT})
 # A bug showed up in VS2010 where an object file that was
 # part of a custom command output worked, but ones that were
 # not didn't work.  So, repeat the executable using the object
 # directly and not from the output of the copy.
-add_executable(ExternalOBJ2 executable.cxx ${EXTERNAL_OBJECT})
+endif()
 
 add_subdirectory(Sub)
