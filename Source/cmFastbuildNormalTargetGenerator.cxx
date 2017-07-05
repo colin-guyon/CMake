@@ -20,9 +20,9 @@ cmGlobalFastbuildGenerator::Detail::Generation::CustomCommandAliasMap
 cmFastbuildNormalTargetGenerator::cmFastbuildNormalTargetGenerator(
   cmGeneratorTarget* gt)
   : cmFastbuildTargetGenerator(gt)
-  , m_bffFiles(((cmGlobalFastbuildGenerator*)GlobalGenerator)->g_bffFiles)
+  , m_bffFiles(((cmGlobalFastbuildGenerator*)gt->GlobalGenerator)->g_bffFiles)
   , m_duplicateOutputs(
-      ((cmGlobalFastbuildGenerator*)GlobalGenerator)->g_duplicateOutputs)
+      ((cmGlobalFastbuildGenerator*)gt->GlobalGenerator)->g_duplicateOutputs)
 {
 }
 
@@ -176,7 +176,9 @@ bool cmFastbuildNormalTargetGenerator::WriteCustomBuildRules()
       // from another command. Need to sort the commands to output them in
       // order.
       cmGlobalFastbuildGenerator::Detail::Detection::DependencySorter::
-        CustomCommandHelper ccHelper = { GlobalGenerator, LocalGenerator,
+        CustomCommandHelper ccHelper = { 
+            (cmGlobalCommonGenerator*)GeneratorTarget->GlobalGenerator, 
+            (cmLocalCommonGenerator*)GeneratorTarget->LocalGenerator,
                                          configName };
       cmGlobalFastbuildGenerator::Detail::Detection::DependencySorter::Sort(
         ccHelper, customCommands);
@@ -232,7 +234,7 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
   std::string& targetName, const std::string& hostTargetName)
 {
   // We need to generate the command for execution.
-  cmCustomCommandGenerator ccg(*cc, configName, LocalGenerator);
+  cmCustomCommandGenerator ccg(*cc, configName, GeneratorTarget->LocalGenerator);
 
   const std::vector<std::string>& outputs = ccg.GetOutputs();
   const std::vector<std::string>& byproducts = ccg.GetByproducts();
@@ -282,7 +284,7 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
     // to make it unique
     std::string relPath = ConvertToFastbuildPath(mergedOutputs[0]);
 
-    relPath = LocalGenerator->GetGlobalGenerator()->ExpandCFGIntDir(
+    relPath = GeneratorTarget->GlobalGenerator->ExpandCFGIntDir(
       relPath, configName);
 #ifdef _WIN32
     std::replace(relPath.begin(), relPath.end(), '/', '\\');
@@ -342,12 +344,12 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
        iter != depends.end(); ++iter) {
     const std::string& dep = *iter;
 
-    bool isTarget = GlobalGenerator->FindTarget(dep) != NULL;
+    bool isTarget = GeneratorTarget->GlobalGenerator->FindTarget(dep) != NULL;
     if (isTarget) {
       orderDependencies.push_back(dep + "-" + configName);
     } else {
       std::string realDep;
-      if (this->LocalGenerator->GetRealDependency(dep, configName, realDep)) {
+      if (GeneratorTarget->LocalGenerator->GetRealDependency(dep, configName, realDep)) {
         inputs.push_back(realDep);
       }
     }
@@ -367,7 +369,7 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
 
   // during script file generate, should expand
   // CMAKE_CFG_INTDIR variable
-  workingDirectory = LocalGenerator->GetGlobalGenerator()->ExpandCFGIntDir(
+  workingDirectory = GeneratorTarget->LocalGenerator->GetGlobalGenerator()->ExpandCFGIntDir(
     workingDirectory, configName);
 
   std::string scriptFileName(workingDirectory + scriptBaseName + shellExt);
@@ -437,14 +439,14 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
       // inputs.push_back("dummy-in");
     }
     fc.WriteArray("ExecInput", cmGlobalFastbuildGenerator::Wrap(
-                                 ((cmGlobalFastbuildGenerator*)GlobalGenerator)
+                                 ((cmGlobalFastbuildGenerator*)GeneratorTarget->GlobalGenerator)
                                    ->ConvertToFastbuildPath(inputs)));
 
     if (mergedOutputs.empty()) {
       fc.WriteVariableBool("ExecUseStdOutAsOutput", true);
 
       std::string outputDir =
-        LocalGenerator->GetMakefile()->GetHomeOutputDirectory();
+        GeneratorTarget->LocalGenerator->GetMakefile()->GetHomeOutputDirectory();
       mergedOutputs.push_back(outputDir + "/dummy-out-" + targetName + ".txt");
     }
     // Currently fastbuild doesn't support more than 1
@@ -550,7 +552,7 @@ void cmFastbuildNormalTargetGenerator::DetectLinkerLibPaths(
   std::vector<std::string> const& libDirs = cli.GetDirectories();
   for (std::vector<std::string>::const_iterator libDir = libDirs.begin();
        libDir != libDirs.end(); ++libDir) {
-    std::string libpath = LocalGenerator->ConvertToOutputForExisting(
+    std::string libpath = GeneratorTarget->LocalGenerator->ConvertToOutputForExisting(
       *libDir, cmLocalGenerator::SHELL);
     cmSystemTools::ConvertToOutputSlashes(libpath);
 
@@ -626,14 +628,14 @@ bool cmFastbuildNormalTargetGenerator::DetectBaseLinkerCommand(
   // Rule for linking library/executable.
   std::string launcher;
   const char* val =
-    LocalGenerator->GetRuleLauncher(this->GeneratorTarget, "RULE_LAUNCH_LINK");
+    GeneratorTarget->LocalGenerator->GetRuleLauncher(this->GeneratorTarget, "RULE_LAUNCH_LINK");
   if (val && *val) {
     launcher = val;
     launcher += " ";
   }
 
   CM_AUTO_PTR<cmRulePlaceholderExpander> rulePlaceholderExpander(
-    LocalGenerator->CreateRulePlaceholderExpander());
+    GeneratorTarget->LocalGenerator->CreateRulePlaceholderExpander());
   rulePlaceholderExpander->SetTargetImpLib(VAR_LITERAL("TargetOutputImplib"));
 
   std::vector<std::string> linkCmds;
@@ -642,7 +644,7 @@ bool cmFastbuildNormalTargetGenerator::DetectBaseLinkerCommand(
        i != linkCmds.end(); ++i) {
     *i = launcher + *i;
     rulePlaceholderExpander->ExpandRuleVariables(
-      (cmLocalFastbuildGenerator*)LocalGenerator, *i, vars);
+      (cmLocalFastbuildGenerator*)GeneratorTarget->LocalGenerator, *i, vars);
   }
 
   command = BuildCommandLine(linkCmds,true);
@@ -696,20 +698,20 @@ std::string cmFastbuildNormalTargetGenerator::ComputeDefines(
 
   // Add the export symbol definition for shared library objects.
   if (const char* exportMacro = GeneratorTarget->GetExportMacro()) {
-    LocalGenerator->AppendDefines(defines, exportMacro);
+    GeneratorTarget->LocalGenerator->AppendDefines(defines, exportMacro);
   }
 
   // Add preprocessor definitions for this target and configuration.
-  LocalGenerator->AddCompileDefinitions(defines, GeneratorTarget, configName,
+  GeneratorTarget->LocalGenerator->AddCompileDefinitions(defines, GeneratorTarget, configName,
                                         language);
 
   if (source) {
-    LocalGenerator->AppendDefines(defines,
+    GeneratorTarget->LocalGenerator->AppendDefines(defines,
                                   source->GetProperty("COMPILE_DEFINITIONS"));
 
     std::string defPropName = "COMPILE_DEFINITIONS_";
     defPropName += cmSystemTools::UpperCase(configName);
-    LocalGenerator->AppendDefines(defines, source->GetProperty(defPropName));
+    GeneratorTarget->LocalGenerator->AppendDefines(defines, source->GetProperty(defPropName));
   }
 
   // Add a definition for the configuration name.
@@ -718,10 +720,10 @@ std::string cmFastbuildNormalTargetGenerator::ComputeDefines(
   std::string configDefine = "CMAKE_INTDIR=\"";
   configDefine += configName;
   configDefine += "\"";
-  LocalGenerator->AppendDefines(defines, configDefine);
+  GeneratorTarget->LocalGenerator->AppendDefines(defines, configDefine);
 
   std::string definesString;
-  LocalGenerator->JoinDefines(defines, definesString, language);
+  GeneratorTarget->LocalGenerator->JoinDefines(defines, definesString, language);
 
   return definesString;
 }
@@ -752,12 +754,12 @@ void cmFastbuildNormalTargetGenerator::DetectBaseCompileCommand(
   compileCmdVar += language;
   compileCmdVar += "_COMPILE_OBJECT";
   std::string compileCmd =
-    LocalGenerator->GetMakefile()->GetRequiredDefinition(compileCmdVar);
+    GeneratorTarget->LocalGenerator->GetMakefile()->GetRequiredDefinition(compileCmdVar);
   std::vector<std::string> compileCmds;
   cmSystemTools::ExpandListArgument(compileCmd, compileCmds);
 
   CM_AUTO_PTR<cmRulePlaceholderExpander> rulePlaceholderExpander(
-    LocalGenerator->CreateRulePlaceholderExpander());
+    GeneratorTarget->LocalGenerator->CreateRulePlaceholderExpander());
 
   rulePlaceholderExpander->SetTargetImpLib(VAR_LITERAL("TargetOutputImplib"));
 
@@ -765,7 +767,7 @@ void cmFastbuildNormalTargetGenerator::DetectBaseCompileCommand(
        i != compileCmds.end(); ++i) {
     std::string& compileCmdStr = *i;
     rulePlaceholderExpander->ExpandRuleVariables(
-      (cmLocalFastbuildGenerator*)LocalGenerator, compileCmdStr,
+      (cmLocalFastbuildGenerator*)GeneratorTarget->LocalGenerator, compileCmdStr,
       compileObjectVars);
   }
 
@@ -787,7 +789,7 @@ void cmFastbuildNormalTargetGenerator::DetectTargetObjectDependencies(
     const std::string& objectLib = (*i)->GetObjectLibrary();
     if (!objectLib.empty()) {
       // Find the target this actually is (might be an alias)
-      const cmTarget* objectTarget = GlobalGenerator->FindTarget(objectLib);
+      const cmTarget* objectTarget = GeneratorTarget->GlobalGenerator->FindTarget(objectLib);
       if (objectTarget) {
         objectLibs.insert(objectTarget->GetName() + "-" + configName +
                           "-products");
@@ -817,7 +819,7 @@ std::string cmFastbuildNormalTargetGenerator::DetectTargetCompileOutputDir(
   std::string configName) const
 {
   std::string result =
-    LocalGenerator->GetTargetDirectory(GeneratorTarget) + "/";
+    GeneratorTarget->LocalGenerator->GetTargetDirectory(GeneratorTarget) + "/";
   if (!configName.empty()) {
     result = result + configName + "/";
   }
@@ -993,7 +995,7 @@ void cmFastbuildNormalTargetGenerator::Generate()
 
 
   std::vector<std::string> dependencies;
-  DetectTargetCompileDependencies(GlobalGenerator, dependencies);
+  DetectTargetCompileDependencies((cmGlobalCommonGenerator*)GeneratorTarget->GlobalGenerator, dependencies);
 
   // Iterate over each configuration
   // This time to define linker settings for each config
@@ -1202,13 +1204,13 @@ void cmFastbuildNormalTargetGenerator::Generate()
              sourceIter != filteredObjectSources.end(); ++sourceIter) {
           cmSourceFile const* srcFile = *sourceIter;
           // file extension is same in one object group 
-          extension = GlobalGenerator->GetLanguageOutputExtension(*srcFile); 
+          extension = GeneratorTarget->GlobalGenerator->GetLanguageOutputExtension(*srcFile); 
           std::string sourceFile = srcFile->GetFullPath();
 
           // Detect flags and defines
           std::string compilerFlags;
           cmGlobalFastbuildGenerator::Detail::Detection::DetectCompilerFlags(
-            compilerFlags, LocalGenerator, GeneratorTarget, srcFile,
+            compilerFlags, (cmLocalCommonGenerator*)GeneratorTarget->LocalGenerator, GeneratorTarget, srcFile,
             objectGroupLanguage, configName);
           std::string compileDefines =
             ComputeDefines(srcFile, configName, objectGroupLanguage);
@@ -1261,7 +1263,7 @@ void cmFastbuildNormalTargetGenerator::Generate()
 
           fc.WriteArray("CompilerInputFiles",
                         cmGlobalFastbuildGenerator::Wrap(
-                          ((cmGlobalFastbuildGenerator*)GlobalGenerator)
+                          ((cmGlobalFastbuildGenerator*)GeneratorTarget->GlobalGenerator)
                             ->ConvertToFastbuildPath(objectListIt->second),
                           "'", "'"));
 
@@ -1342,12 +1344,12 @@ void cmFastbuildNormalTargetGenerator::Generate()
         std::string dummyLinkPath;
 
         cmLocalGenerator* root =
-          LocalGenerator->GetGlobalGenerator()->GetLocalGenerators()[0];
+          GeneratorTarget->GlobalGenerator->GetLocalGenerators()[0];
         CM_AUTO_PTR<cmLinkLineComputer> linkLineComputer(
-          LocalGenerator->GetGlobalGenerator()->CreateLinkLineComputer(
+          GeneratorTarget->GlobalGenerator->CreateLinkLineComputer(
             root, root->GetStateSnapshot().GetDirectory()));
 
-        LocalGenerator->GetTargetFlags(
+        GeneratorTarget->LocalGenerator->GetTargetFlags(
           linkLineComputer.get(), configName, linkLibs, targetFlags, linkFlags,
           frameworkPath, dummyLinkPath, GeneratorTarget);
 
@@ -1367,7 +1369,7 @@ void cmFastbuildNormalTargetGenerator::Generate()
             GeneratorTarget->GetModuleDefinitionInfo(configName);
           if (def) {
             const char* defFileFlag =
-              LocalGenerator->GetMakefile()->GetDefinition(
+              GeneratorTarget->LocalGenerator->GetMakefile()->GetDefinition(
                 "CMAKE_LINK_DEF_FILE_FLAG");
             const std::string defFile = def->DefFile;
             if (!defFile.empty()) {
@@ -1396,7 +1398,7 @@ void cmFastbuildNormalTargetGenerator::Generate()
 
         std::string language = GeneratorTarget->GetLinkerLanguage(configName);
         std::string linkerType =
-          LocalGenerator->GetMakefile()->GetSafeDefinition(
+          GeneratorTarget->LocalGenerator->GetMakefile()->GetSafeDefinition(
             "CMAKE_" + language + "_COMPILER_ID");
 
         fc.WriteVariable("Linker",executable);
