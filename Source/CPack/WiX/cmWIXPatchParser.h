@@ -1,24 +1,14 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2013 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCPackWIXPatchParser_h
 #define cmCPackWIXPatchParser_h
 
-#include <CPack/cmCPackLog.h>
+#include "cmCPackLog.h"
 
-#include <cmXMLParser.h>
+#include "cmXMLParser.h"
 
-#include <list>
 #include <map>
+#include <vector>
 
 struct cmWIXPatchNode
 {
@@ -46,7 +36,7 @@ struct cmWIXPatchElement : cmWIXPatchNode
 
   ~cmWIXPatchElement();
 
-  typedef std::list<cmWIXPatchNode*> child_list_t;
+  typedef std::vector<cmWIXPatchNode*> child_list_t;
   typedef std::map<std::string, std::string> attributes_t;
 
   std::string name;
@@ -94,7 +84,7 @@ private:
 
   fragment_map_t& Fragments;
 
-  std::list<cmWIXPatchElement*> ElementStack;
+  std::vector<cmWIXPatchElement*> ElementStack;
 };
 
 #endif

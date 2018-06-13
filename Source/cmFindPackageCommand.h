@@ -1,20 +1,21 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmFindPackageCommand_h
 #define cmFindPackageCommand_h
 
+#include "cmConfigure.h" // IWYU pragma: keep
+
+#include "cm_kwiml.h"
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
 #include "cmFindCommon.h"
 
-class cmFindPackageFileList;
+class cmCommand;
+class cmExecutionStatus;
+class cmSearchPath;
 
 /** \class cmFindPackageCommand
  * \brief Load settings from an external project.
@@ -24,31 +25,40 @@ class cmFindPackageFileList;
 class cmFindPackageCommand : public cmFindCommon
 {
 public:
+  /*! A sorting order strategy to be applied to recovered package folders (see
+   * FIND_PACKAGE_SORT_ORDER)*/
+  enum /*class*/ SortOrderType
+  {
+    None,
+    Name_order,
+    Natural
+  };
+  /*! A sorting direction to be applied to recovered package folders (see
+   * FIND_PACKAGE_SORT_DIRECTION)*/
+  enum /*class*/ SortDirectionType
+  {
+    Asc,
+    Dec
+  };
+
+  /*! sorts a given list of string based on the input sort parameters */
+  static void Sort(std::vector<std::string>::iterator begin,
+                   std::vector<std::string>::iterator end, SortOrderType order,
+                   SortDirectionType dir);
+
   cmFindPackageCommand();
 
   /**
    * This is a virtual constructor for the command.
    */
-  virtual cmCommand* Clone() { return new cmFindPackageCommand; }
+  cmCommand* Clone() override { return new cmFindPackageCommand; }
 
   /**
    * This is called when the command is first encountered in
    * the CMakeLists.txt file.
    */
-  virtual bool InitialPass(std::vector<std::string> const& args,
-                           cmExecutionStatus& status);
-
-  /**
-   * This determines if the command is invoked when in script mode.
-   */
-  virtual bool IsScriptable() const { return true; }
-
-  /**
-   * The name of the command as specified in CMakeList.txt.
-   */
-  virtual std::string GetName() const { return "find_package"; }
-
-  cmTypeMacro(cmFindPackageCommand, cmFindCommon);
+  bool InitialPass(std::vector<std::string> const& args,
+                   cmExecutionStatus& status) override;
 
 private:
   class PathLabel : public cmFindCommon::PathLabel
@@ -90,6 +100,7 @@ private:
   void StoreVersionFound();
 
   void ComputePrefixes();
+  void FillPrefixesPackageRoot();
   void FillPrefixesCMakeEnvironment();
   void FillPrefixesCMakeVariable();
   void FillPrefixesSystemEnvironment();
@@ -148,17 +159,39 @@ private:
   bool NoUserRegistry;
   bool NoSystemRegistry;
   bool DebugMode;
+  bool UseLib32Paths;
   bool UseLib64Paths;
+  bool UseLibx32Paths;
   bool PolicyScope;
   std::string LibraryArchitecture;
   std::vector<std::string> Names;
   std::vector<std::string> Configs;
   std::set<std::string> IgnoredPaths;
 
+  /*! the selected sortOrder (None by default)*/
+  SortOrderType SortOrder;
+  /*! the selected sortDirection (Asc by default)*/
+  SortDirectionType SortDirection;
+
   struct ConfigFileInfo
   {
     std::string filename;
     std::string version;
+
+    bool operator<(ConfigFileInfo const& rhs) const
+    {
+      return this->filename < rhs.filename;
+    }
+
+    bool operator==(ConfigFileInfo const& rhs) const
+    {
+      return this->filename == rhs.filename;
+    }
+
+    bool operator!=(ConfigFileInfo const& rhs) const
+    {
+      return !(*this == rhs);
+    }
   };
   std::vector<ConfigFileInfo> ConsideredConfigs;
 };

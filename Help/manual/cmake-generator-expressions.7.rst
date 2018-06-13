@@ -51,6 +51,8 @@ Available logical expressions are:
   ``0`` if all ``?`` are ``0``, else ``1``
 ``$<NOT:?>``
   ``0`` if ``?`` is ``1``, else ``1``
+``$<IF:?,true-value...,false-value...>```
+  ``true-value...`` if ``?`` is ``1``, ``false-value...`` if ``?`` is ``0``
 ``$<STREQUAL:a,b>``
   ``1`` if ``a`` is STREQUAL ``b``, else ``0``
 ``$<EQUAL:a,b>``
@@ -66,12 +68,16 @@ Available logical expressions are:
   ``1`` if the CMake-id of the C compiler matches ``comp``, otherwise ``0``.
 ``$<CXX_COMPILER_ID:comp>``
   ``1`` if the CMake-id of the CXX compiler matches ``comp``, otherwise ``0``.
-``$<VERSION_GREATER:v1,v2>``
-  ``1`` if ``v1`` is a version greater than ``v2``, else ``0``.
 ``$<VERSION_LESS:v1,v2>``
   ``1`` if ``v1`` is a version less than ``v2``, else ``0``.
+``$<VERSION_GREATER:v1,v2>``
+  ``1`` if ``v1`` is a version greater than ``v2``, else ``0``.
 ``$<VERSION_EQUAL:v1,v2>``
   ``1`` if ``v1`` is the same version as ``v2``, else ``0``.
+``$<VERSION_LESS_EQUAL:v1,v2>``
+  ``1`` if ``v1`` is a version less than or equal to ``v2``, else ``0``.
+``$<VERSION_GREATER_EQUAL:v1,v2>``
+  ``1`` if ``v1`` is a version greater than or equal to ``v2``, else ``0``.
 ``$<C_COMPILER_VERSION:ver>``
   ``1`` if the version of the C compiler matches ``ver``, otherwise ``0``.
 ``$<CXX_COMPILER_VERSION:ver>``
@@ -91,44 +97,46 @@ Available logical expressions are:
   compile features and a list of supported compilers.
 ``$<COMPILE_LANGUAGE:lang>``
   ``1`` when the language used for compilation unit matches ``lang``,
-  otherwise ``0``.  This expression used to specify compile options for
-  source files of a particular language in a target. For example, to specify
-  the use of the ``-fno-exceptions`` compile option (compiler id checks
-  elided):
+  otherwise ``0``.  This expression may be used to specify compile options,
+  compile definitions, and include directories for source files of a
+  particular language in a target. For example:
 
   .. code-block:: cmake
 
-    add_executable(myapp main.cpp foo.c bar.cpp)
+    add_executable(myapp main.cpp foo.c bar.cpp zot.cu)
     target_compile_options(myapp
       PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
     )
-
-  This generator expression has limited use because it is not possible to
-  use it with the Visual Studio generators.  Portable buildsystems would
-  not use this expression, and would create separate libraries for each
-  source file language instead:
-
-  .. code-block:: cmake
-
-    add_library(myapp_c foo.c)
-    add_library(myapp_cxx foo.c)
-    target_compile_options(myapp_cxx PUBLIC -fno-exceptions)
-    add_executable(myapp main.cpp)
-    target_link_libraries(myapp myapp_c myapp_cxx)
-
-  The ``Makefile`` and ``Ninja`` based generators can also use this
-  expression to specify compile-language specific compile definitions
-  and include directories:
-
-  .. code-block:: cmake
-
-    add_executable(myapp main.cpp foo.c bar.cpp)
     target_compile_definitions(myapp
       PRIVATE $<$<COMPILE_LANGUAGE:CXX>:COMPILING_CXX>
+              $<$<COMPILE_LANGUAGE:CUDA>:COMPILING_CUDA>
     )
     target_include_directories(myapp
       PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/opt/foo/cxx_headers>
     )
+
+  This specifies the use of the ``-fno-exceptions`` compile option,
+  ``COMPILING_CXX`` compile definition, and ``cxx_headers`` include
+  directory for C++ only (compiler id checks elided).  It also specifies
+  a ``COMPILING_CUDA`` compile definition for CUDA.
+
+  Note that with :ref:`Visual Studio Generators` and :generator:`Xcode` there
+  is no way to represent target-wide compile definitions or include directories
+  separately for ``C`` and ``CXX`` languages.
+  Also, with :ref:`Visual Studio Generators` there is no way to represent
+  target-wide flags separately for ``C`` and ``CXX`` languages.  Under these
+  generators, expressions for both C and C++ sources will be evaluated
+  using ``CXX`` if there are any C++ sources and otherwise using ``C``.
+  A workaround is to create separate libraries for each source file language
+  instead:
+
+  .. code-block:: cmake
+
+    add_library(myapp_c foo.c)
+    add_library(myapp_cxx bar.cpp)
+    target_compile_options(myapp_cxx PUBLIC -fno-exceptions)
+    add_executable(myapp main.cpp)
+    target_link_libraries(myapp myapp_c myapp_cxx)
 
 Informational Expressions
 =========================
@@ -199,6 +207,15 @@ Available informational expressions are:
   Name of the linker generated program database file (.pdb).
 ``$<TARGET_PDB_FILE_DIR:tgt>``
   Directory of the linker generated program database file (.pdb).
+``$<TARGET_BUNDLE_DIR:tgt>``
+  Full path to the bundle directory (``my.app``, ``my.framework``, or
+  ``my.bundle``) where ``tgt`` is the name of a target.
+``$<TARGET_BUNDLE_CONTENT_DIR:tgt>``
+  Full path to the bundle content directory where ``tgt`` is the name of a
+  target. For the macOS SDK it leads to ``my.app/Contents``, ``my.framework``,
+  or ``my.bundle/Contents``. For all other SDKs (e.g. iOS) it leads to
+  ``my.app``, ``my.framework``, or ``my.bundle`` due to the flat bundle
+  structure.
 ``$<TARGET_PROPERTY:tgt,prop>``
   Value of the property ``prop`` on the target ``tgt``.
 
@@ -275,9 +292,7 @@ Available output expressions are:
   Content of ``...`` converted to a C identifier.
 ``$<TARGET_OBJECTS:objLib>``
   List of objects resulting from build of ``objLib``. ``objLib`` must be an
-  object of type ``OBJECT_LIBRARY``.  This expression may only be used in
-  the sources of :command:`add_library` and :command:`add_executable`
-  commands.
+  object of type ``OBJECT_LIBRARY``.
 ``$<SHELL_PATH:...>``
   Content of ``...`` converted to shell path style. For example, slashes are
   converted to backslashes in Windows shells and drive letters are converted

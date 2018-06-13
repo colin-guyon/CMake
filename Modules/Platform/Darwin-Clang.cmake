@@ -1,16 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
 
-#=============================================================================
-# Copyright 2002-2012 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 # This module is shared by multiple languages; use include blocker.
 if(__DARWIN_COMPILER_CLANG)
@@ -26,5 +16,20 @@ macro(__darwin_compiler_clang lang)
   set(CMAKE_${lang}_OSX_DEPLOYMENT_TARGET_FLAG "-mmacosx-version-min=")
   if(NOT CMAKE_${lang}_COMPILER_VERSION VERSION_LESS 3.2)
     set(CMAKE_${lang}_SYSTEM_FRAMEWORK_SEARCH_FLAG "-iframework ")
+  endif()
+  if(_CMAKE_OSX_SYSROOT_PATH MATCHES "/iPhoneOS")
+    set(CMAKE_${lang}_OSX_DEPLOYMENT_TARGET_FLAG "-miphoneos-version-min=")
+  elseif(_CMAKE_OSX_SYSROOT_PATH MATCHES "/iPhoneSimulator")
+    set(CMAKE_${lang}_OSX_DEPLOYMENT_TARGET_FLAG "-mios-simulator-version-min=")
+  elseif(_CMAKE_OSX_SYSROOT_PATH MATCHES "/AppleTVOS")
+    set(CMAKE_${lang}_OSX_DEPLOYMENT_TARGET_FLAG "-mtvos-version-min=")
+  elseif(_CMAKE_OSX_SYSROOT_PATH MATCHES "/AppleTVSimulator")
+    set(CMAKE_${lang}_OSX_DEPLOYMENT_TARGET_FLAG "-mtvos-simulator-version-min=")
+  elseif(_CMAKE_OSX_SYSROOT_PATH MATCHES "/WatchOS")
+    set(CMAKE_${lang}_OSX_DEPLOYMENT_TARGET_FLAG "-mwatchos-version-min=")
+  elseif(_CMAKE_OSX_SYSROOT_PATH MATCHES "/WatchSimulator")
+    set(CMAKE_${lang}_OSX_DEPLOYMENT_TARGET_FLAG "-mwatchos-simulator-version-min=")
+  else()
+    set(CMAKE_${lang}_OSX_DEPLOYMENT_TARGET_FLAG "-mmacosx-version-min=")
   endif()
 endmacro()

@@ -1,14 +1,5 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmScriptGenerator.h"
 
 #include "cmSystemTools.h"
@@ -19,7 +10,7 @@ cmScriptGenerator::cmScriptGenerator(
   : RuntimeConfigVariable(config_var)
   , Configurations(configurations)
   , ConfigurationName("")
-  , ConfigurationTypes(0)
+  , ConfigurationTypes(nullptr)
   , ActionsPerConfig(false)
 {
 }
@@ -35,8 +26,8 @@ void cmScriptGenerator::Generate(
   this->ConfigurationName = config;
   this->ConfigurationTypes = &configurationTypes;
   this->GenerateScript(os);
-  this->ConfigurationName = "";
-  this->ConfigurationTypes = 0;
+  this->ConfigurationName.clear();
+  this->ConfigurationTypes = nullptr;
 }
 
 static void cmScriptGeneratorEncodeConfig(const std::string& config,
@@ -78,11 +69,10 @@ std::string cmScriptGenerator::CreateConfigTest(
   result += this->RuntimeConfigVariable;
   result += "}\" MATCHES \"^(";
   const char* sep = "";
-  for (std::vector<std::string>::const_iterator ci = configs.begin();
-       ci != configs.end(); ++ci) {
+  for (std::string const& config : configs) {
     result += sep;
     sep = "|";
-    cmScriptGeneratorEncodeConfig(*ci, result);
+    cmScriptGeneratorEncodeConfig(config, result);
   }
   result += ")$\"";
   return result;
@@ -97,8 +87,7 @@ void cmScriptGenerator::GenerateScript(std::ostream& os)
   this->GenerateScriptConfigs(os, indent);
 }
 
-void cmScriptGenerator::GenerateScriptConfigs(std::ostream& os,
-                                              Indent const& indent)
+void cmScriptGenerator::GenerateScriptConfigs(std::ostream& os, Indent indent)
 {
   if (this->ActionsPerConfig) {
     this->GenerateScriptActionsPerConfig(os, indent);
@@ -107,8 +96,7 @@ void cmScriptGenerator::GenerateScriptConfigs(std::ostream& os,
   }
 }
 
-void cmScriptGenerator::GenerateScriptActions(std::ostream& os,
-                                              Indent const& indent)
+void cmScriptGenerator::GenerateScriptActions(std::ostream& os, Indent indent)
 {
   if (this->ActionsPerConfig) {
     // This is reached for single-configuration build generators in a
@@ -117,9 +105,9 @@ void cmScriptGenerator::GenerateScriptActions(std::ostream& os,
   }
 }
 
-void cmScriptGenerator::GenerateScriptForConfig(std::ostream&,
-                                                const std::string&,
-                                                Indent const&)
+void cmScriptGenerator::GenerateScriptForConfig(std::ostream& /*unused*/,
+                                                const std::string& /*unused*/,
+                                                Indent /*unused*/)
 {
   // No actions for this generator.
 }
@@ -134,10 +122,8 @@ bool cmScriptGenerator::GeneratesForConfig(const std::string& config)
   // This is a configuration-specific rule.  Check if the config
   // matches this rule.
   std::string config_upper = cmSystemTools::UpperCase(config);
-  for (std::vector<std::string>::const_iterator i =
-         this->Configurations.begin();
-       i != this->Configurations.end(); ++i) {
-    if (cmSystemTools::UpperCase(*i) == config_upper) {
+  for (std::string const& cfg : this->Configurations) {
+    if (cmSystemTools::UpperCase(cfg) == config_upper) {
       return true;
     }
   }
@@ -145,7 +131,7 @@ bool cmScriptGenerator::GeneratesForConfig(const std::string& config)
 }
 
 void cmScriptGenerator::GenerateScriptActionsOnce(std::ostream& os,
-                                                  Indent const& indent)
+                                                  Indent indent)
 {
   if (this->Configurations.empty()) {
     // This rule is for all configurations.
@@ -160,7 +146,7 @@ void cmScriptGenerator::GenerateScriptActionsOnce(std::ostream& os,
 }
 
 void cmScriptGenerator::GenerateScriptActionsPerConfig(std::ostream& os,
-                                                       Indent const& indent)
+                                                       Indent indent)
 {
   if (this->ConfigurationTypes->empty()) {
     // In a single-configuration generator there is only one action
@@ -174,15 +160,12 @@ void cmScriptGenerator::GenerateScriptActionsPerConfig(std::ostream& os,
     // in a block for each configuration that is built.  We restrict
     // the list of configurations to those to which this rule applies.
     bool first = true;
-    for (std::vector<std::string>::const_iterator i =
-           this->ConfigurationTypes->begin();
-         i != this->ConfigurationTypes->end(); ++i) {
-      const char* config = i->c_str();
-      if (this->GeneratesForConfig(config)) {
+    for (std::string const& cfgType : *this->ConfigurationTypes) {
+      if (this->GeneratesForConfig(cfgType)) {
         // Generate a per-configuration block.
-        std::string config_test = this->CreateConfigTest(config);
+        std::string config_test = this->CreateConfigTest(cfgType);
         os << indent << (first ? "if(" : "elseif(") << config_test << ")\n";
-        this->GenerateScriptForConfig(os, config, indent.Next());
+        this->GenerateScriptForConfig(os, cfgType, indent.Next());
         first = false;
       }
     }

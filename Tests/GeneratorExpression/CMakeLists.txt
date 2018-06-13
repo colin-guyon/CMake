@@ -145,13 +145,13 @@ add_library(imported1 SHARED IMPORTED)
 set_property(TARGET imported1 PROPERTY IMPORTED_LOCATION_RELEASE release_loc)
 set_property(TARGET imported1 PROPERTY IMPORTED_LOCATION_DEBUG debug_loc)
 set_property(TARGET imported1 PROPERTY IMPORTED_CONFIGURATIONS RELEASE DEBUG)
-set_property(TARGET imported1 PROPERTY INTERFACE_INCLUDE_DIRECTORIES /imported1/include)
+set_property(TARGET imported1 PROPERTY INTERFACE_INCLUDE_DIRECTORIES "/imported1/include/with space")
 
 add_library(imported2 SHARED IMPORTED)
 set_property(TARGET imported2 PROPERTY IMPORTED_LOCATION_RELEASE release_loc)
 set_property(TARGET imported2 PROPERTY IMPORTED_LOCATION_DEBUG debug_loc)
 set_property(TARGET imported2 PROPERTY IMPORTED_CONFIGURATIONS RELEASE DEBUG)
-set_property(TARGET imported2 PROPERTY INTERFACE_INCLUDE_DIRECTORIES /imported2/include)
+set_property(TARGET imported2 PROPERTY INTERFACE_INCLUDE_DIRECTORIES "/imported2/include/with space")
 
 add_library(imported3 SHARED IMPORTED)
 set_property(TARGET imported3 PROPERTY IMPORTED_LOCATION_RELEASE release_loc)
@@ -161,6 +161,10 @@ set_property(TARGET imported3 APPEND PROPERTY
   INTERFACE_INCLUDE_DIRECTORIES $<$<CONFIG:DEBUG>:$<TARGET_PROPERTY:imported1,INTERFACE_INCLUDE_DIRECTORIES>>)
 set_property(TARGET imported3 APPEND PROPERTY
   INTERFACE_INCLUDE_DIRECTORIES $<$<CONFIG:RELEASE>:$<TARGET_PROPERTY:imported2,INTERFACE_INCLUDE_DIRECTORIES>>)
+set_property(TARGET imported3 APPEND PROPERTY
+  INTERFACE_INCLUDE_DIRECTORIES $<$<CONFIG:RELWITHDEBINFO>:$<TARGET_PROPERTY:imported2,INTERFACE_INCLUDE_DIRECTORIES>>)
+set_property(TARGET imported3 APPEND PROPERTY
+  INTERFACE_INCLUDE_DIRECTORIES $<$<CONFIG:MINSIZEREL>:$<TARGET_PROPERTY:imported2,INTERFACE_INCLUDE_DIRECTORIES>>)
 
 add_library(imported4 SHARED IMPORTED)
 set_property(TARGET imported4 APPEND PROPERTY
@@ -171,6 +175,13 @@ add_executable(Alias::SomeExe ALIAS someexe)
 
 add_library(Alias::SomeLib ALIAS empty1)
 
+add_library(importedFallback STATIC IMPORTED)
+set_property(TARGET importedFallback PROPERTY IMPORTED_LOCATION_DEBUG debug_loc)
+set_property(TARGET importedFallback PROPERTY IMPORTED_LOCATION_RELEASE release_loc)
+set_property(TARGET importedFallback PROPERTY IMPORTED_LOCATION fallback_loc)
+set_property(TARGET importedFallback PROPERTY MAP_IMPORTED_CONFIG_DEBUG "" DEBUG)
+set_property(TARGET importedFallback PROPERTY MAP_IMPORTED_CONFIG_RELEASE "")
+
 add_custom_target(check-part3 ALL
   COMMAND ${CMAKE_COMMAND}
     -Dtest_version_greater_1=$<VERSION_GREATER:1.0,1.1.1>
@@ -180,10 +191,8 @@ add_custom_target(check-part3 ALL
     -Dtest_version_equal_1=$<VERSION_EQUAL:1.0.1,1.1>
     -Dtest_version_equal_2=$<VERSION_EQUAL:1.1,1.1>
     -Dconfig=$<CONFIGURATION>
-    -Dtest_imported_debug=$<TARGET_PROPERTY:imported4,INCLUDE_DIRECTORIES>
-    -Dtest_imported_release=$<TARGET_PROPERTY:imported4,INCLUDE_DIRECTORIES>
-    -Dtest_imported_relwithdebinfo=$<TARGET_PROPERTY:imported4,INCLUDE_DIRECTORIES>
-    -Dtest_imported_minsizerel=$<TARGET_PROPERTY:imported4,INCLUDE_DIRECTORIES>
+    -Dtest_imported_includes=$<TARGET_PROPERTY:imported4,INCLUDE_DIRECTORIES>
+    -Dtest_imported_fallback=$<STREQUAL:$<TARGET_FILE_NAME:importedFallback>,fallback_loc>
     -Dtest_alias_file_exe=$<STREQUAL:$<TARGET_FILE:Alias::SomeExe>,$<TARGET_FILE:someexe>>
     -Dtest_alias_file_lib=$<STREQUAL:$<TARGET_FILE:Alias::SomeLib>,$<TARGET_FILE:empty1>>
     -Dtest_alias_target_name=$<STREQUAL:$<TARGET_PROPERTY:Alias::SomeLib,NAME>,$<TARGET_PROPERTY:empty1,NAME>>
@@ -238,12 +247,62 @@ add_custom_target(check-part4 ALL
     # CMake as command-line argument
     -Dtest_shell_path=${path_prefix}$<SHELL_PATH:${test_shell_path}>
     -Dpath_prefix=${path_prefix}
+    -Dif_1=$<IF:1,a,b>
+    -Dif_2=$<IF:0,a,b>
+    -Dif_3=$<IF:$<EQUAL:10,30>,a,b>
+    -Dif_4=$<IF:$<EQUAL:30,30>,a,b>
     -DWIN32=${WIN32}
     -DCMAKE_GENERATOR=${CMAKE_GENERATOR}
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check-part4.cmake
   COMMAND ${CMAKE_COMMAND} -E echo "check done (part 4 of 4)"
   VERBATIM
   )
+
+#-----------------------------------------------------------------------------
+# Cover source file properties with generator expressions.
+## generate various source files
+foreach (item IN ITEMS flags flags_COMPILE_LANGUAGE
+                       options options_COMPILE_LANGUAGE
+                       defs defs_COMPILE_LANGUAGE)
+  set(TARGET_NAME srcgenex_${item})
+  configure_file(srcgenex.c.in ${TARGET_NAME}.c @ONLY)
+endforeach()
+add_executable(srcgenex_flags "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_flags.c")
+set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_flags.c"
+             PROPERTY COMPILE_FLAGS "-DNAME=$<TARGET_PROPERTY:NAME>")
+add_executable(srcgenex_flags_COMPILE_LANGUAGE "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_flags_COMPILE_LANGUAGE.c")
+set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_flags_COMPILE_LANGUAGE.c"
+             PROPERTY COMPILE_FLAGS "$<$<COMPILE_LANGUAGE:C>:-DNAME=$<TARGET_PROPERTY:NAME>>")
+
+add_executable(srcgenex_options "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_options.c")
+set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_options.c"
+             PROPERTY COMPILE_OPTIONS -DUNUSED -DNAME=$<TARGET_PROPERTY:NAME>)
+add_executable(srcgenex_options_COMPILE_LANGUAGE "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_options_COMPILE_LANGUAGE.c")
+set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_options_COMPILE_LANGUAGE.c"
+             PROPERTY COMPILE_OPTIONS $<$<COMPILE_LANGUAGE:C>:-DNAME=$<TARGET_PROPERTY:NAME>>)
+
+add_executable(srcgenex_defs "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_defs.c")
+set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_defs.c"
+             PROPERTY COMPILE_DEFINITIONS UNUSED NAME=$<TARGET_PROPERTY:NAME>)
+add_executable(srcgenex_defs_COMPILE_LANGUAGE "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_defs_COMPILE_LANGUAGE.c")
+set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_defs_COMPILE_LANGUAGE.c"
+               PROPERTY COMPILE_DEFINITIONS $<$<COMPILE_LANGUAGE:C>:NAME=$<TARGET_PROPERTY:NAME>>)
+
+foreach (item IN ITEMS basic COMPILE_LANGUAGE)
+  set(TARGET_NAME srcgenex_includes_${item})
+  configure_file(srcgenex_includes.h.in "sf_includes_${item}/${TARGET_NAME}.h" @ONLY)
+  configure_file(srcgenex_includes.c.in ${TARGET_NAME}.c @ONLY)
+endforeach()
+add_executable(srcgenex_includes_basic "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_includes_basic.c")
+# first include directory is useless but ensure list aspect is tested
+set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_includes_basic.c"
+             PROPERTY INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/sf_includes_basic")
+if (CMAKE_GENERATOR MATCHES "Makefiles|Ninja|Watcom WMake")
+  add_executable(srcgenex_includes_COMPILE_LANGUAGE "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_includes_COMPILE_LANGUAGE.c")
+  # first include directory is useless but ensure list aspect is tested
+  set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/srcgenex_includes_COMPILE_LANGUAGE.c"
+               PROPERTY INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}" $<$<COMPILE_LANGUAGE:C>:${CMAKE_CURRENT_BINARY_DIR}/sf_includes_COMPILE_LANGUAGE>)
+endif()
 
 #-----------------------------------------------------------------------------
 # Cover test properties with generator expressions.
@@ -278,3 +337,19 @@ set(CMP0044_TYPE NEW)
 add_subdirectory(CMP0044 ${CMAKE_BINARY_DIR}/CMP0044-NEW)
 set(CMP0044_TYPE OLD)
 add_subdirectory(CMP0044 ${CMAKE_BINARY_DIR}/CMP0044-OLD)
+
+if(NOT CMAKE_GENERATOR STREQUAL Xcode OR NOT CMAKE_OSX_ARCHITECTURES MATCHES "[;$]")
+  add_library(objlib OBJECT objlib1.c objlib2.c)
+  file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/objlib_files_$<CONFIGURATION>"
+    CONTENT "$<JOIN:$<TARGET_OBJECTS:objlib>,\n>\n"
+  )
+
+  add_custom_target(check_object_files ALL
+    COMMAND ${CMAKE_COMMAND}
+      "-DOBJLIB_LISTFILE=${CMAKE_CURRENT_BINARY_DIR}/objlib_files_$<CONFIGURATION>"
+      -DEXPECTED_NUM_OBJECTFILES=2
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/check_object_files.cmake"
+    DEPENDS objlib
+  )
+endif()

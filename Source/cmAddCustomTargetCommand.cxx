@@ -1,32 +1,34 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmAddCustomTargetCommand.h"
 
+#include <sstream>
+#include <utility>
+
+#include "cmCustomCommandLines.h"
 #include "cmGeneratorExpression.h"
 #include "cmGlobalGenerator.h"
+#include "cmMakefile.h"
+#include "cmStateTypes.h"
+#include "cmSystemTools.h"
+#include "cmTarget.h"
+#include "cmake.h"
+
+class cmExecutionStatus;
 
 // cmAddCustomTargetCommand
 bool cmAddCustomTargetCommand::InitialPass(
   std::vector<std::string> const& args, cmExecutionStatus&)
 {
-  if (args.size() < 1) {
+  if (args.empty()) {
     this->SetError("called with incorrect number of arguments");
     return false;
   }
 
-  std::string targetName = args[0];
+  std::string const& targetName = args[0];
 
   // Check the target name.
-  if (targetName.find_first_of("/\\") != targetName.npos) {
+  if (targetName.find_first_of("/\\") != std::string::npos) {
     std::ostringstream e;
     e << "called with invalid target name \"" << targetName
       << "\".  Target names may not contain a slash.  "
@@ -46,8 +48,9 @@ bool cmAddCustomTargetCommand::InitialPass(
   std::string working_directory;
   bool verbatim = false;
   bool uses_terminal = false;
+  bool command_expand_lists = false;
   std::string comment_buffer;
-  const char* comment = 0;
+  const char* comment = nullptr;
   std::vector<std::string> sources;
 
   // Keep track of parser state.
@@ -89,6 +92,9 @@ bool cmAddCustomTargetCommand::InitialPass(
     } else if (copy == "USES_TERMINAL") {
       doing = doing_nothing;
       uses_terminal = true;
+    } else if (copy == "COMMAND_EXPAND_LISTS") {
+      doing = doing_nothing;
+      command_expand_lists = true;
     } else if (copy == "COMMENT") {
       doing = doing_comment;
     } else if (copy == "COMMAND") {
@@ -111,7 +117,7 @@ bool cmAddCustomTargetCommand::InitialPass(
           break;
         case doing_byproducts: {
           std::string filename;
-          if (!cmSystemTools::FileIsFullPath(copy.c_str())) {
+          if (!cmSystemTools::FileIsFullPath(copy)) {
             filename = this->Makefile->GetCurrentBinaryDirectory();
             filename += "/";
           }
@@ -122,7 +128,7 @@ bool cmAddCustomTargetCommand::InitialPass(
         case doing_depends: {
           std::string dep = copy;
           cmSystemTools::ConvertToUnixSlashes(dep);
-          depends.push_back(dep);
+          depends.push_back(std::move(dep));
         } break;
         case doing_comment:
           comment_buffer = copy;
@@ -139,7 +145,7 @@ bool cmAddCustomTargetCommand::InitialPass(
   }
 
   std::string::size_type pos = targetName.find_first_of("#<>");
-  if (pos != targetName.npos) {
+  if (pos != std::string::npos) {
     std::ostringstream msg;
     msg << "called with target name containing a \"" << targetName[pos]
         << "\".  This character is not allowed.";
@@ -153,37 +159,11 @@ bool cmAddCustomTargetCommand::InitialPass(
   bool nameOk = cmGeneratorExpression::IsValidTargetName(targetName) &&
     !cmGlobalGenerator::IsReservedTarget(targetName);
   if (nameOk) {
-    nameOk = targetName.find(":") == std::string::npos;
+    nameOk = targetName.find(':') == std::string::npos;
   }
-  if (!nameOk) {
-    cmake::MessageType messageType = cmake::AUTHOR_WARNING;
-    std::ostringstream e;
-    bool issueMessage = false;
-    switch (this->Makefile->GetPolicyStatus(cmPolicies::CMP0037)) {
-      case cmPolicies::WARN:
-        e << cmPolicies::GetPolicyWarning(cmPolicies::CMP0037) << "\n";
-        issueMessage = true;
-      case cmPolicies::OLD:
-        break;
-      case cmPolicies::NEW:
-      case cmPolicies::REQUIRED_IF_USED:
-      case cmPolicies::REQUIRED_ALWAYS:
-        issueMessage = true;
-        messageType = cmake::FATAL_ERROR;
-    }
-    if (issueMessage) {
-      /* clang-format off */
-      e << "The target name \"" << targetName <<
-          "\" is reserved or not valid for certain "
-          "CMake features, such as generator expressions, and may result "
-          "in undefined behavior.";
-      /* clang-format on */
-      this->Makefile->IssueMessage(messageType, e.str());
-
-      if (messageType == cmake::FATAL_ERROR) {
-        return false;
-      }
-    }
+  if (!nameOk &&
+      !this->Makefile->CheckCMP0037(targetName, cmStateEnums::UTILITY)) {
+    return false;
   }
 
   // Store the last command line finished.
@@ -220,12 +200,19 @@ bool cmAddCustomTargetCommand::InitialPass(
       "USES_TERMINAL may not be specified without any COMMAND");
     return true;
   }
+  if (commandLines.empty() && command_expand_lists) {
+    this->Makefile->IssueMessage(
+      cmake::FATAL_ERROR,
+      "COMMAND_EXPAND_LISTS may not be specified without any COMMAND");
+    return true;
+  }
 
   // Add the utility target to the makefile.
   bool escapeOldStyle = !verbatim;
   cmTarget* target = this->Makefile->AddUtilityCommand(
-    targetName, excludeFromAll, working_directory.c_str(), byproducts, depends,
-    commandLines, escapeOldStyle, comment, uses_terminal);
+    targetName, cmMakefile::TargetOrigin::Project, excludeFromAll,
+    working_directory.c_str(), byproducts, depends, commandLines,
+    escapeOldStyle, comment, uses_terminal, command_expand_lists);
 
   // Add additional user-specified source files to the target.
   target->AddSources(sources);

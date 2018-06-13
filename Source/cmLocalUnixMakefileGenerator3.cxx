@@ -1,24 +1,33 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmLocalUnixMakefileGenerator3.h"
+
+#include "cmsys/FStream.hxx"
+#include "cmsys/Terminal.h"
+#include <algorithm>
+#include <memory> // IWYU pragma: keep
+#include <sstream>
+#include <stdio.h>
+#include <utility>
 
 #include "cmAlgorithms.h"
 #include "cmCustomCommandGenerator.h"
 #include "cmFileTimeComparison.h"
 #include "cmGeneratedFileStream.h"
+#include "cmGeneratorTarget.h"
+#include "cmGlobalGenerator.h"
 #include "cmGlobalUnixMakefileGenerator3.h"
+#include "cmLocalGenerator.h"
 #include "cmMakefile.h"
 #include "cmMakefileTargetGenerator.h"
+#include "cmOutputConverter.h"
+#include "cmRulePlaceholderExpander.h"
 #include "cmSourceFile.h"
+#include "cmState.h"
+#include "cmStateDirectory.h"
+#include "cmStateSnapshot.h"
+#include "cmStateTypes.h"
+#include "cmSystemTools.h"
 #include "cmVersion.h"
 #include "cmake.h"
 
@@ -29,12 +38,6 @@
 #include "cmDependsFortran.h"
 #include "cmDependsJava.h"
 #endif
-
-#include <cmsys/Terminal.h>
-#include <cmsys/auto_ptr.hxx>
-
-#include <algorithm>
-#include <queue>
 
 // Escape special characters in Makefile dependency lines
 class cmMakeSafe
@@ -74,7 +77,7 @@ static std::string cmSplitExtension(std::string const& in, std::string& base)
   std::string::size_type dot_pos = in.rfind('.');
   if (dot_pos != std::string::npos) {
     // Remove the extension first in case &base == &in.
-    ext = in.substr(dot_pos, std::string::npos);
+    ext = in.substr(dot_pos);
     base = in.substr(0, dot_pos);
   } else {
     base = in;
@@ -84,7 +87,7 @@ static std::string cmSplitExtension(std::string const& in, std::string& base)
 
 cmLocalUnixMakefileGenerator3::cmLocalUnixMakefileGenerator3(
   cmGlobalGenerator* gg, cmMakefile* mf)
-  : cmLocalCommonGenerator(gg, mf)
+  : cmLocalCommonGenerator(gg, mf, mf->GetCurrentBinaryDirectory())
 {
   this->MakefileVariableSize = 0;
   this->ColorMakefile = false;
@@ -100,8 +103,6 @@ cmLocalUnixMakefileGenerator3::~cmLocalUnixMakefileGenerator3()
 
 void cmLocalUnixMakefileGenerator3::Generate()
 {
-  this->SetConfigName();
-
   // Record whether some options are enabled to avoid checking many
   // times later.
   if (!this->GetGlobalGenerator()->GetCMakeInstance()->GetIsInTryCompile()) {
@@ -113,17 +114,16 @@ void cmLocalUnixMakefileGenerator3::Generate()
     this->Makefile->IsOn("CMAKE_SKIP_ASSEMBLY_SOURCE_RULES");
 
   // Generate the rule files for each target.
-  std::vector<cmGeneratorTarget*> targets = this->GetGeneratorTargets();
+  const std::vector<cmGeneratorTarget*>& targets = this->GetGeneratorTargets();
   cmGlobalUnixMakefileGenerator3* gg =
     static_cast<cmGlobalUnixMakefileGenerator3*>(this->GlobalGenerator);
-  for (std::vector<cmGeneratorTarget*>::iterator t = targets.begin();
-       t != targets.end(); ++t) {
-    if ((*t)->GetType() == cmState::INTERFACE_LIBRARY) {
+  for (cmGeneratorTarget* target : targets) {
+    if (target->GetType() == cmStateEnums::INTERFACE_LIBRARY) {
       continue;
     }
-    cmsys::auto_ptr<cmMakefileTargetGenerator> tg(
-      cmMakefileTargetGenerator::New(*t));
-    if (tg.get()) {
+    std::unique_ptr<cmMakefileTargetGenerator> tg(
+      cmMakefileTargetGenerator::New(target));
+    if (tg) {
       tg->WriteRuleFiles();
       gg->RecordTargetProgress(tg.get());
     }
@@ -140,37 +140,22 @@ void cmLocalUnixMakefileGenerator3::ComputeHomeRelativeOutputPath()
 {
   // Compute the path to use when referencing the current output
   // directory from the top output directory.
-  this->HomeRelativeOutputPath = this->Convert(
-    this->GetCurrentBinaryDirectory(), cmOutputConverter::HOME_OUTPUT);
+  this->HomeRelativeOutputPath = this->MaybeConvertToRelativePath(
+    this->GetBinaryDirectory(), this->GetCurrentBinaryDirectory());
   if (this->HomeRelativeOutputPath == ".") {
-    this->HomeRelativeOutputPath = "";
+    this->HomeRelativeOutputPath.clear();
   }
   if (!this->HomeRelativeOutputPath.empty()) {
     this->HomeRelativeOutputPath += "/";
   }
 }
 
-void cmLocalUnixMakefileGenerator3::ComputeObjectFilenames(
-  std::map<cmSourceFile const*, std::string>& mapping,
-  cmGeneratorTarget const* gt)
-{
-  for (std::map<cmSourceFile const*, std::string>::iterator si =
-         mapping.begin();
-       si != mapping.end(); ++si) {
-    cmSourceFile const* sf = si->first;
-    si->second =
-      this->GetObjectFileNameWithoutTarget(*sf, gt->ObjectDirectory);
-  }
-}
-
 void cmLocalUnixMakefileGenerator3::GetLocalObjectFiles(
   std::map<std::string, LocalObjectInfo>& localObjectFiles)
 {
-  std::vector<cmGeneratorTarget*> targets = this->GetGeneratorTargets();
-  for (std::vector<cmGeneratorTarget*>::iterator ti = targets.begin();
-       ti != targets.end(); ++ti) {
-    cmGeneratorTarget* gt = *ti;
-    if (gt->GetType() == cmState::INTERFACE_LIBRARY) {
+  const std::vector<cmGeneratorTarget*>& targets = this->GetGeneratorTargets();
+  for (cmGeneratorTarget* gt : targets) {
+    if (gt->GetType() == cmStateEnums::INTERFACE_LIBRARY) {
       continue;
     }
     std::vector<cmSourceFile const*> objectSources;
@@ -183,18 +168,16 @@ void cmLocalUnixMakefileGenerator3::GetLocalObjectFiles(
     dir += this->GetTargetDirectory(gt);
     dir += "/";
     // Compute the name of each object file.
-    for (std::vector<cmSourceFile const*>::iterator si = objectSources.begin();
-         si != objectSources.end(); ++si) {
-      cmSourceFile const* sf = *si;
+    for (cmSourceFile const* sf : objectSources) {
       bool hasSourceExtension = true;
       std::string objectName =
         this->GetObjectFileNameWithoutTarget(*sf, dir, &hasSourceExtension);
-      if (cmSystemTools::FileIsFullPath(objectName.c_str())) {
+      if (cmSystemTools::FileIsFullPath(objectName)) {
         objectName = cmSystemTools::GetFilenameName(objectName);
       }
       LocalObjectInfo& info = localObjectFiles[objectName];
       info.HasSourceExtension = hasSourceExtension;
-      info.push_back(LocalObjectEntry(gt, sf->GetLanguage()));
+      info.emplace_back(gt, sf->GetLanguage());
     }
   }
 }
@@ -204,18 +187,16 @@ void cmLocalUnixMakefileGenerator3::GetIndividualFileTargets(
 {
   std::map<std::string, LocalObjectInfo> localObjectFiles;
   this->GetLocalObjectFiles(localObjectFiles);
-  for (std::map<std::string, LocalObjectInfo>::iterator lo =
-         localObjectFiles.begin();
-       lo != localObjectFiles.end(); ++lo) {
-    targets.push_back(lo->first);
+  for (auto const& localObjectFile : localObjectFiles) {
+    targets.push_back(localObjectFile.first);
 
-    std::string::size_type dot_pos = lo->first.rfind(".");
-    std::string base = lo->first.substr(0, dot_pos);
-    if (lo->second.HasPreprocessRule) {
+    std::string::size_type dot_pos = localObjectFile.first.rfind(".");
+    std::string base = localObjectFile.first.substr(0, dot_pos);
+    if (localObjectFile.second.HasPreprocessRule) {
       targets.push_back(base + ".i");
     }
 
-    if (lo->second.HasAssembleRule) {
+    if (localObjectFile.second.HasAssembleRule) {
       targets.push_back(base + ".s");
     }
   }
@@ -229,7 +210,9 @@ void cmLocalUnixMakefileGenerator3::WriteLocalMakefile()
   // Open the rule file.  This should be copy-if-different because the
   // rules may depend on this file itself.
   std::string ruleFileNameFull = this->ConvertToFullPath(ruleFileName);
-  cmGeneratedFileStream ruleFileStream(ruleFileNameFull.c_str());
+  cmGeneratedFileStream ruleFileStream(
+    ruleFileNameFull.c_str(), false,
+    this->GlobalGenerator->GetMakefileEncoding());
   if (!ruleFileStream) {
     return;
   }
@@ -262,24 +245,21 @@ void cmLocalUnixMakefileGenerator3::WriteLocalMakefile()
 
   // now write out the object rules
   // for each object file name
-  for (std::map<std::string, LocalObjectInfo>::iterator lo =
-         localObjectFiles.begin();
-       lo != localObjectFiles.end(); ++lo) {
+  for (auto& localObjectFile : localObjectFiles) {
     // Add a convenience rule for building the object file.
-    this->WriteObjectConvenienceRule(ruleFileStream,
-                                     "target to build an object file",
-                                     lo->first.c_str(), lo->second);
+    this->WriteObjectConvenienceRule(
+      ruleFileStream, "target to build an object file",
+      localObjectFile.first.c_str(), localObjectFile.second);
 
     // Check whether preprocessing and assembly rules make sense.
     // They make sense only for C and C++ sources.
     bool lang_has_preprocessor = false;
     bool lang_has_assembly = false;
 
-    for (std::vector<LocalObjectEntry>::const_iterator ei = lo->second.begin();
-         ei != lo->second.end(); ++ei) {
-      if (ei->Language == "C" || ei->Language == "CXX" ||
-          ei->Language == "Fortran") {
-        // Right now, C, C++ and Fortran have both a preprocessor and the
+    for (LocalObjectEntry const& entry : localObjectFile.second) {
+      if (entry.Language == "C" || entry.Language == "CXX" ||
+          entry.Language == "CUDA" || entry.Language == "Fortran") {
+        // Right now, C, C++, Fortran and CUDA have both a preprocessor and the
         // ability to generate assembly code
         lang_has_preprocessor = true;
         lang_has_assembly = true;
@@ -289,21 +269,21 @@ void cmLocalUnixMakefileGenerator3::WriteLocalMakefile()
 
     // Add convenience rules for preprocessed and assembly files.
     if (lang_has_preprocessor && do_preprocess_rules) {
-      std::string::size_type dot_pos = lo->first.rfind(".");
-      std::string base = lo->first.substr(0, dot_pos);
-      this->WriteObjectConvenienceRule(ruleFileStream,
-                                       "target to preprocess a source file",
-                                       (base + ".i").c_str(), lo->second);
-      lo->second.HasPreprocessRule = true;
+      std::string::size_type dot_pos = localObjectFile.first.rfind(".");
+      std::string base = localObjectFile.first.substr(0, dot_pos);
+      this->WriteObjectConvenienceRule(
+        ruleFileStream, "target to preprocess a source file",
+        (base + ".i").c_str(), localObjectFile.second);
+      localObjectFile.second.HasPreprocessRule = true;
     }
 
     if (lang_has_assembly && do_assembly_rules) {
-      std::string::size_type dot_pos = lo->first.rfind(".");
-      std::string base = lo->first.substr(0, dot_pos);
+      std::string::size_type dot_pos = localObjectFile.first.rfind(".");
+      std::string base = localObjectFile.first.substr(0, dot_pos);
       this->WriteObjectConvenienceRule(
         ruleFileStream, "target to generate assembly for a file",
-        (base + ".s").c_str(), lo->second);
-      lo->second.HasAssembleRule = true;
+        (base + ".s").c_str(), localObjectFile.second);
+      localObjectFile.second.HasAssembleRule = true;
     }
   }
 
@@ -340,16 +320,15 @@ void cmLocalUnixMakefileGenerator3::WriteObjectConvenienceRule(
     std::vector<std::string> depends;
     depends.push_back(output);
     std::vector<std::string> no_commands;
-    this->WriteMakeRule(ruleFileStream, 0, outNoExt, depends, no_commands,
-                        true, true);
+    this->WriteMakeRule(ruleFileStream, nullptr, outNoExt, depends,
+                        no_commands, true, true);
     inHelp = false;
   }
 
   // Recursively make the rule for each target using the object file.
   std::vector<std::string> commands;
-  for (std::vector<LocalObjectEntry>::const_iterator t = info.begin();
-       t != info.end(); ++t) {
-    std::string tgtMakefileName = this->GetRelativeTargetDirectory(t->Target);
+  for (LocalObjectEntry const& t : info) {
+    std::string tgtMakefileName = this->GetRelativeTargetDirectory(t.Target);
     std::string targetName = tgtMakefileName;
     tgtMakefileName += "/build.make";
     targetName += "/";
@@ -358,7 +337,7 @@ void cmLocalUnixMakefileGenerator3::WriteObjectConvenienceRule(
       this->GetRecursiveMakeCall(tgtMakefileName.c_str(), targetName));
   }
   this->CreateCDCommand(commands, this->GetBinaryDirectory(),
-                        cmOutputConverter::START_OUTPUT);
+                        this->GetCurrentBinaryDirectory());
 
   // Write the rule to the makefile.
   std::vector<std::string> no_depends;
@@ -374,20 +353,19 @@ void cmLocalUnixMakefileGenerator3::WriteLocalMakefileTargets(
 
   // for each target we just provide a rule to cd up to the top and do a make
   // on the target
-  std::vector<cmGeneratorTarget*> targets = this->GetGeneratorTargets();
+  const std::vector<cmGeneratorTarget*>& targets = this->GetGeneratorTargets();
   std::string localName;
-  for (std::vector<cmGeneratorTarget*>::iterator t = targets.begin();
-       t != targets.end(); ++t) {
-    if (((*t)->GetType() == cmState::EXECUTABLE) ||
-        ((*t)->GetType() == cmState::STATIC_LIBRARY) ||
-        ((*t)->GetType() == cmState::SHARED_LIBRARY) ||
-        ((*t)->GetType() == cmState::MODULE_LIBRARY) ||
-        ((*t)->GetType() == cmState::OBJECT_LIBRARY) ||
-        ((*t)->GetType() == cmState::UTILITY)) {
-      emitted.insert((*t)->GetName());
+  for (cmGeneratorTarget* target : targets) {
+    if ((target->GetType() == cmStateEnums::EXECUTABLE) ||
+        (target->GetType() == cmStateEnums::STATIC_LIBRARY) ||
+        (target->GetType() == cmStateEnums::SHARED_LIBRARY) ||
+        (target->GetType() == cmStateEnums::MODULE_LIBRARY) ||
+        (target->GetType() == cmStateEnums::OBJECT_LIBRARY) ||
+        (target->GetType() == cmStateEnums::UTILITY)) {
+      emitted.insert(target->GetName());
 
       // for subdirs add a rule to build this specific target by name.
-      localName = this->GetRelativeTargetDirectory(*t);
+      localName = this->GetRelativeTargetDirectory(target);
       localName += "/rule";
       commands.clear();
       depends.clear();
@@ -398,48 +376,48 @@ void cmLocalUnixMakefileGenerator3::WriteLocalMakefileTargets(
       commands.push_back(
         this->GetRecursiveMakeCall(makefile2.c_str(), localName));
       this->CreateCDCommand(commands, this->GetBinaryDirectory(),
-                            cmOutputConverter::START_OUTPUT);
+                            this->GetCurrentBinaryDirectory());
       this->WriteMakeRule(ruleFileStream, "Convenience name for target.",
                           localName, depends, commands, true);
 
       // Add a target with the canonical name (no prefix, suffix or path).
-      if (localName != (*t)->GetName()) {
+      if (localName != target->GetName()) {
         commands.clear();
         depends.push_back(localName);
         this->WriteMakeRule(ruleFileStream, "Convenience name for target.",
-                            (*t)->GetName(), depends, commands, true);
+                            target->GetName(), depends, commands, true);
       }
 
       // Add a fast rule to build the target
-      std::string makefileName = this->GetRelativeTargetDirectory(*t);
+      std::string makefileName = this->GetRelativeTargetDirectory(target);
       makefileName += "/build.make";
       // make sure the makefile name is suitable for a makefile
-      std::string makeTargetName = this->GetRelativeTargetDirectory(*t);
+      std::string makeTargetName = this->GetRelativeTargetDirectory(target);
       makeTargetName += "/build";
-      localName = (*t)->GetName();
+      localName = target->GetName();
       localName += "/fast";
       depends.clear();
       commands.clear();
       commands.push_back(
         this->GetRecursiveMakeCall(makefileName.c_str(), makeTargetName));
       this->CreateCDCommand(commands, this->GetBinaryDirectory(),
-                            cmOutputConverter::START_OUTPUT);
+                            this->GetCurrentBinaryDirectory());
       this->WriteMakeRule(ruleFileStream, "fast build rule for target.",
                           localName, depends, commands, true);
 
       // Add a local name for the rule to relink the target before
       // installation.
-      if ((*t)->NeedRelinkBeforeInstall(this->ConfigName)) {
-        makeTargetName = this->GetRelativeTargetDirectory(*t);
+      if (target->NeedRelinkBeforeInstall(this->ConfigName)) {
+        makeTargetName = this->GetRelativeTargetDirectory(target);
         makeTargetName += "/preinstall";
-        localName = (*t)->GetName();
+        localName = target->GetName();
         localName += "/preinstall";
         depends.clear();
         commands.clear();
         commands.push_back(
           this->GetRecursiveMakeCall(makefile2.c_str(), makeTargetName));
         this->CreateCDCommand(commands, this->GetBinaryDirectory(),
-                              cmOutputConverter::START_OUTPUT);
+                              this->GetCurrentBinaryDirectory());
         this->WriteMakeRule(ruleFileStream,
                             "Manual pre-install relink rule for target.",
                             localName, depends, commands, true);
@@ -546,8 +524,8 @@ void cmLocalUnixMakefileGenerator3::WriteMakeRule(
   }
 
   // Construct the left hand side of the rule.
-  std::string tgt = this->Convert(target, cmOutputConverter::HOME_OUTPUT,
-                                  cmOutputConverter::MAKERULE);
+  std::string tgt = cmSystemTools::ConvertToOutputPath(
+    this->MaybeConvertToRelativePath(this->GetBinaryDirectory(), target));
 
   const char* space = "";
   if (tgt.size() == 1) {
@@ -571,11 +549,11 @@ void cmLocalUnixMakefileGenerator3::WriteMakeRule(
   } else {
     // Split dependencies into multiple rule lines.  This allows for
     // very long dependency lists even on older make implementations.
-    for (std::vector<std::string>::const_iterator dep = depends.begin();
-         dep != depends.end(); ++dep) {
-      replace = *dep;
-      replace = this->Convert(replace, cmOutputConverter::HOME_OUTPUT,
-                              cmOutputConverter::MAKERULE);
+    std::string binDir = this->GetBinaryDirectory();
+    for (std::string const& depend : depends) {
+      replace = depend;
+      replace = cmSystemTools::ConvertToOutputPath(
+        this->MaybeConvertToRelativePath(binDir, replace));
       os << cmMakeSafe(tgt) << space << ": " << cmMakeSafe(replace) << "\n";
     }
   }
@@ -592,21 +570,20 @@ void cmLocalUnixMakefileGenerator3::WriteMakeRule(
   }
 }
 
-std::string cmLocalUnixMakefileGenerator3::ConvertShellCommand(
-  std::string const& cmd, cmOutputConverter::RelativeRoot root)
+std::string cmLocalUnixMakefileGenerator3::MaybeConvertWatcomShellCommand(
+  std::string const& cmd)
 {
-  if (this->IsWatcomWMake() && cmSystemTools::FileIsFullPath(cmd.c_str()) &&
-      cmd.find_first_of("( )") != cmd.npos) {
+  if (this->IsWatcomWMake() && cmSystemTools::FileIsFullPath(cmd) &&
+      cmd.find_first_of("( )") != std::string::npos) {
     // On Watcom WMake use the windows short path for the command
     // name.  This is needed to avoid funny quoting problems on
     // lines with shell redirection operators.
     std::string scmd;
     if (cmSystemTools::GetShortPath(cmd, scmd)) {
-      return this->Convert(scmd, cmOutputConverter::NONE,
-                           cmOutputConverter::SHELL);
+      return this->ConvertToOutputFormat(scmd, cmOutputConverter::SHELL);
     }
   }
-  return this->Convert(cmd, root, cmOutputConverter::SHELL);
+  return std::string();
 }
 
 void cmLocalUnixMakefileGenerator3::WriteMakeVariables(
@@ -638,19 +615,25 @@ void cmLocalUnixMakefileGenerator3::WriteMakeVariables(
 #endif
   }
 
+  std::string cmakeShellCommand =
+    this->MaybeConvertWatcomShellCommand(cmSystemTools::GetCMakeCommand());
+  if (cmakeShellCommand.empty()) {
+    cmakeShellCommand = this->ConvertToOutputFormat(
+      cmSystemTools::CollapseFullPath(cmSystemTools::GetCMakeCommand()),
+      cmOutputConverter::SHELL);
+  }
+
   /* clang-format off */
   makefileStream
     << "# The CMake executable.\n"
     << "CMAKE_COMMAND = "
-    << this->ConvertShellCommand(cmSystemTools::GetCMakeCommand(),
-                                 cmOutputConverter::FULL)
+    << cmakeShellCommand
     << "\n"
     << "\n";
   makefileStream
     << "# The command to remove a file.\n"
     << "RM = "
-    << this->ConvertShellCommand(cmSystemTools::GetCMakeCommand(),
-                                 cmOutputConverter::FULL)
+    << cmakeShellCommand
     << " -E remove -f\n"
     << "\n";
   makefileStream
@@ -660,16 +643,16 @@ void cmLocalUnixMakefileGenerator3::WriteMakeVariables(
   makefileStream
     << "# The top-level source directory on which CMake was run.\n"
     << "CMAKE_SOURCE_DIR = "
-    << this->Convert(this->GetSourceDirectory(),
-                     cmOutputConverter::FULL,
+    << this->ConvertToOutputFormat(
+      cmSystemTools::CollapseFullPath(this->GetSourceDirectory()),
                      cmOutputConverter::SHELL)
     << "\n"
     << "\n";
   makefileStream
     << "# The top-level build directory on which CMake was run.\n"
     << "CMAKE_BINARY_DIR = "
-    << this->Convert(this->GetBinaryDirectory(),
-                     cmOutputConverter::FULL,
+    << this->ConvertToOutputFormat(
+      cmSystemTools::CollapseFullPath(this->GetBinaryDirectory()),
                      cmOutputConverter::SHELL)
     << "\n"
     << "\n";
@@ -703,8 +686,8 @@ void cmLocalUnixMakefileGenerator3::WriteSpecialTargetsTop(
   // Add a fake suffix to keep HP happy.  Must be max 32 chars for SGI make.
   std::vector<std::string> depends;
   depends.push_back(".hpux_make_needs_suffix_list");
-  this->WriteMakeRule(makefileStream, 0, ".SUFFIXES", depends, no_commands,
-                      false);
+  this->WriteMakeRule(makefileStream, nullptr, ".SUFFIXES", depends,
+                      no_commands, false);
   if (this->IsWatcomWMake()) {
     // Switch on WMake feature, if an error or interrupt occurs during
     // makefile processing, the current target being made may be deleted
@@ -752,11 +735,11 @@ void cmLocalUnixMakefileGenerator3::WriteSpecialTargetsTop(
     static_cast<cmGlobalUnixMakefileGenerator3*>(this->GlobalGenerator);
   std::string hack = gg->GetEmptyRuleHackDepends();
   if (!hack.empty()) {
-    no_depends.push_back(hack);
+    no_depends.push_back(std::move(hack));
   }
   std::string hack_cmd = gg->GetEmptyRuleHackCommand();
   if (!hack_cmd.empty()) {
-    no_commands.push_back(hack_cmd);
+    no_commands.push_back(std::move(hack_cmd));
   }
 
   // Special symbolic target that never exists to force dependers to
@@ -784,16 +767,16 @@ void cmLocalUnixMakefileGenerator3::WriteSpecialTargetsBottom(
     std::string runRule =
       "$(CMAKE_COMMAND) -H$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR)";
     runRule += " --check-build-system ";
-    runRule += this->Convert(cmakefileName, cmOutputConverter::NONE,
-                             cmOutputConverter::SHELL);
+    runRule +=
+      this->ConvertToOutputFormat(cmakefileName, cmOutputConverter::SHELL);
     runRule += " 0";
 
     std::vector<std::string> no_depends;
     std::vector<std::string> commands;
-    commands.push_back(runRule);
+    commands.push_back(std::move(runRule));
     if (!this->IsRootMakefile()) {
       this->CreateCDCommand(commands, this->GetBinaryDirectory(),
-                            cmOutputConverter::START_OUTPUT);
+                            this->GetCurrentBinaryDirectory());
     }
     this->WriteMakeRule(
       makefileStream, "Special rule to run CMake to check the build system "
@@ -829,16 +812,15 @@ std::string cmLocalUnixMakefileGenerator3::GetRelativeTargetDirectory(
 {
   std::string dir = this->HomeRelativeOutputPath;
   dir += this->GetTargetDirectory(target);
-  return this->Convert(dir, cmOutputConverter::NONE,
-                       cmOutputConverter::UNCHANGED);
+  return dir;
 }
 
-void cmLocalUnixMakefileGenerator3::AppendFlags(std::string& flags,
-                                                const std::string& newFlags)
+void cmLocalUnixMakefileGenerator3::AppendFlags(
+  std::string& flags, const std::string& newFlags) const
 {
   if (this->IsWatcomWMake() && !newFlags.empty()) {
     std::string newf = newFlags;
-    if (newf.find("\\\"") != newf.npos) {
+    if (newf.find("\\\"") != std::string::npos) {
       cmSystemTools::ReplaceString(newf, "\\\"", "\"");
       this->cmLocalGenerator::AppendFlags(flags, newf);
       return;
@@ -848,7 +830,7 @@ void cmLocalUnixMakefileGenerator3::AppendFlags(std::string& flags,
 }
 
 void cmLocalUnixMakefileGenerator3::AppendFlags(std::string& flags,
-                                                const char* newFlags)
+                                                const char* newFlags) const
 {
   this->cmLocalGenerator::AppendFlags(flags, newFlags);
 }
@@ -878,9 +860,8 @@ void cmLocalUnixMakefileGenerator3::AppendRuleDepends(
 void cmLocalUnixMakefileGenerator3::AppendCustomDepends(
   std::vector<std::string>& depends, const std::vector<cmCustomCommand>& ccs)
 {
-  for (std::vector<cmCustomCommand>::const_iterator i = ccs.begin();
-       i != ccs.end(); ++i) {
-    cmCustomCommandGenerator ccg(*i, this->ConfigName, this);
+  for (cmCustomCommand const& cc : ccs) {
+    cmCustomCommandGenerator ccg(cc, this->ConfigName, this);
     this->AppendCustomDepend(depends, ccg);
   }
 }
@@ -888,31 +869,29 @@ void cmLocalUnixMakefileGenerator3::AppendCustomDepends(
 void cmLocalUnixMakefileGenerator3::AppendCustomDepend(
   std::vector<std::string>& depends, cmCustomCommandGenerator const& ccg)
 {
-  for (std::vector<std::string>::const_iterator d = ccg.GetDepends().begin();
-       d != ccg.GetDepends().end(); ++d) {
+  for (std::string const& d : ccg.GetDepends()) {
     // Lookup the real name of the dependency in case it is a CMake target.
     std::string dep;
-    if (this->GetRealDependency(*d, this->ConfigName, dep)) {
-      depends.push_back(dep);
+    if (this->GetRealDependency(d, this->ConfigName, dep)) {
+      depends.push_back(std::move(dep));
     }
   }
 }
 
 void cmLocalUnixMakefileGenerator3::AppendCustomCommands(
   std::vector<std::string>& commands, const std::vector<cmCustomCommand>& ccs,
-  cmGeneratorTarget* target, cmOutputConverter::RelativeRoot relative)
+  cmGeneratorTarget* target, std::string const& relative)
 {
-  for (std::vector<cmCustomCommand>::const_iterator i = ccs.begin();
-       i != ccs.end(); ++i) {
-    cmCustomCommandGenerator ccg(*i, this->ConfigName, this);
-    this->AppendCustomCommand(commands, ccg, target, true, relative);
+  for (cmCustomCommand const& cc : ccs) {
+    cmCustomCommandGenerator ccg(cc, this->ConfigName, this);
+    this->AppendCustomCommand(commands, ccg, target, relative, true);
   }
 }
 
 void cmLocalUnixMakefileGenerator3::AppendCustomCommand(
   std::vector<std::string>& commands, cmCustomCommandGenerator const& ccg,
-  cmGeneratorTarget* target, bool echo_comment,
-  cmOutputConverter::RelativeRoot relative, std::ostream* content)
+  cmGeneratorTarget* target, std::string const& relative, bool echo_comment,
+  std::ostream* content)
 {
   // Optionally create a command to display the custom command's
   // comment text.  This is used for pre-build, pre-link, and
@@ -936,8 +915,12 @@ void cmLocalUnixMakefileGenerator3::AppendCustomCommand(
     *content << dir;
   }
 
+  std::unique_ptr<cmRulePlaceholderExpander> rulePlaceholderExpander(
+    this->CreateRulePlaceholderExpander());
+
   // Add each command line to the set of commands.
   std::vector<std::string> commands1;
+  std::string currentBinDir = this->GetCurrentBinaryDirectory();
   for (unsigned int c = 0; c < ccg.GetNumberOfCommands(); ++c) {
     // Build the command line in a single string.
     std::string cmd = ccg.GetCommand(c);
@@ -960,21 +943,54 @@ void cmLocalUnixMakefileGenerator3::AppendCustomCommand(
       cmSystemTools::ReplaceString(cmd, "/./", "/");
       // Convert the command to a relative path only if the current
       // working directory will be the start-output directory.
-      bool had_slash = cmd.find('/') != cmd.npos;
+      bool had_slash = cmd.find('/') != std::string::npos;
       if (workingDir.empty()) {
-        cmd = this->Convert(cmd, cmOutputConverter::START_OUTPUT);
+        cmd = this->MaybeConvertToRelativePath(currentBinDir, cmd);
       }
-      bool has_slash = cmd.find('/') != cmd.npos;
+      bool has_slash = cmd.find('/') != std::string::npos;
       if (had_slash && !has_slash) {
         // This command was specified as a path to a file in the
         // current directory.  Add a leading "./" so it can run
         // without the current directory being in the search path.
         cmd = "./" + cmd;
       }
-      std::string launcher = this->MakeLauncher(
-        ccg, target, workingDir.empty() ? cmOutputConverter::START_OUTPUT
-                                        : cmOutputConverter::NONE);
-      cmd = launcher + this->ConvertShellCommand(cmd, cmOutputConverter::NONE);
+
+      std::string launcher;
+      // Short-circuit if there is no launcher.
+      const char* val = this->GetRuleLauncher(target, "RULE_LAUNCH_CUSTOM");
+      if (val && *val) {
+        // Expand rules in the empty string.  It may insert the launcher and
+        // perform replacements.
+        cmRulePlaceholderExpander::RuleVariables vars;
+        vars.CMTargetName = target->GetName().c_str();
+        vars.CMTargetType = cmState::GetTargetTypeName(target->GetType());
+        std::string output;
+        const std::vector<std::string>& outputs = ccg.GetOutputs();
+        if (!outputs.empty()) {
+          output = outputs[0];
+          if (workingDir.empty()) {
+            output = this->MaybeConvertToRelativePath(
+              this->GetCurrentBinaryDirectory(), output);
+          }
+          output =
+            this->ConvertToOutputFormat(output, cmOutputConverter::SHELL);
+        }
+        vars.Output = output.c_str();
+
+        launcher = val;
+        launcher += " ";
+        rulePlaceholderExpander->ExpandRuleVariables(this, launcher, vars);
+        if (!launcher.empty()) {
+          launcher += " ";
+        }
+      }
+
+      std::string shellCommand = this->MaybeConvertWatcomShellCommand(cmd);
+      if (shellCommand.empty()) {
+        shellCommand =
+          this->ConvertToOutputFormat(cmd, cmOutputConverter::SHELL);
+      }
+      cmd = launcher + shellCommand;
 
       ccg.AppendArguments(c, cmd);
       if (content) {
@@ -988,9 +1004,9 @@ void cmLocalUnixMakefileGenerator3::AppendCustomCommand(
         // curly braces are removed.  The hack can be skipped if the
         // first curly brace is the last character.
         std::string::size_type lcurly = cmd.find('{');
-        if (lcurly != cmd.npos && lcurly < (cmd.size() - 1)) {
+        if (lcurly != std::string::npos && lcurly < (cmd.size() - 1)) {
           std::string::size_type rcurly = cmd.find('}');
-          if (rcurly == cmd.npos || rcurly > lcurly) {
+          if (rcurly == std::string::npos || rcurly > lcurly) {
             // The first curly is a left curly.  Use the hack.
             std::string hack_cmd = cmd.substr(0, lcurly);
             hack_cmd += "{{}";
@@ -1006,53 +1022,23 @@ void cmLocalUnixMakefileGenerator3::AppendCustomCommand(
           cmd = "echo >nul && " + cmd;
         }
       }
-      commands1.push_back(cmd);
+      commands1.push_back(std::move(cmd));
     }
   }
 
   // Setup the proper working directory for the commands.
-  this->CreateCDCommand(commands1, dir.c_str(), relative);
+  this->CreateCDCommand(commands1, dir, relative);
 
   // push back the custom commands
   commands.insert(commands.end(), commands1.begin(), commands1.end());
-}
-
-std::string cmLocalUnixMakefileGenerator3::MakeLauncher(
-  cmCustomCommandGenerator const& ccg, cmGeneratorTarget* target,
-  cmOutputConverter::RelativeRoot relative)
-{
-  // Short-circuit if there is no launcher.
-  const char* prop = "RULE_LAUNCH_CUSTOM";
-  const char* val = this->GetRuleLauncher(target, prop);
-  if (!(val && *val)) {
-    return "";
-  }
-
-  // Expand rules in the empty string.  It may insert the launcher and
-  // perform replacements.
-  RuleVariables vars;
-  vars.RuleLauncher = prop;
-  vars.CMTarget = target;
-  std::string output;
-  const std::vector<std::string>& outputs = ccg.GetOutputs();
-  if (!outputs.empty()) {
-    output = this->Convert(outputs[0], relative, cmOutputConverter::SHELL);
-  }
-  vars.Output = output.c_str();
-
-  std::string launcher;
-  this->ExpandRuleVariables(launcher, vars);
-  if (!launcher.empty()) {
-    launcher += " ";
-  }
-  return launcher;
 }
 
 void cmLocalUnixMakefileGenerator3::AppendCleanCommand(
   std::vector<std::string>& commands, const std::vector<std::string>& files,
   cmGeneratorTarget* target, const char* filename)
 {
-  std::string cleanfile = this->GetCurrentBinaryDirectory();
+  std::string currentBinDir = this->GetCurrentBinaryDirectory();
+  std::string cleanfile = currentBinDir;
   cleanfile += "/";
   cleanfile += this->GetTargetDirectory(target);
   cleanfile += "/cmake_clean";
@@ -1061,26 +1047,27 @@ void cmLocalUnixMakefileGenerator3::AppendCleanCommand(
     cleanfile += filename;
   }
   cleanfile += ".cmake";
-  std::string cleanfilePath =
-    this->Convert(cleanfile, cmOutputConverter::FULL);
+  std::string cleanfilePath = cmSystemTools::CollapseFullPath(cleanfile);
   cmsys::ofstream fout(cleanfilePath.c_str());
   if (!fout) {
     cmSystemTools::Error("Could not create ", cleanfilePath.c_str());
   }
   if (!files.empty()) {
     fout << "file(REMOVE_RECURSE\n";
-    for (std::vector<std::string>::const_iterator f = files.begin();
-         f != files.end(); ++f) {
-      std::string fc = this->Convert(*f, cmOutputConverter::START_OUTPUT,
-                                     cmOutputConverter::UNCHANGED);
+    for (std::string const& file : files) {
+      std::string fc = this->MaybeConvertToRelativePath(currentBinDir, file);
       fout << "  " << cmOutputConverter::EscapeForCMake(fc) << "\n";
     }
     fout << ")\n";
   }
-  std::string remove = "$(CMAKE_COMMAND) -P ";
-  remove += this->Convert(cleanfile, cmOutputConverter::START_OUTPUT,
-                          cmOutputConverter::SHELL);
-  commands.push_back(remove);
+  {
+    std::string remove = "$(CMAKE_COMMAND) -P ";
+    remove += this->ConvertToOutputFormat(
+      this->MaybeConvertToRelativePath(this->GetCurrentBinaryDirectory(),
+                                       cleanfile),
+      cmOutputConverter::SHELL);
+    commands.push_back(std::move(remove));
+  }
 
   // For the main clean rule add per-language cleaning.
   if (!filename) {
@@ -1148,8 +1135,9 @@ void cmLocalUnixMakefileGenerator3::AppendEcho(
           cmd += color_name;
           if (progress) {
             cmd += "--progress-dir=";
-            cmd += this->Convert(progress->Dir, cmOutputConverter::FULL,
-                                 cmOutputConverter::SHELL);
+            cmd += this->ConvertToOutputFormat(
+              cmSystemTools::CollapseFullPath(progress->Dir),
+              cmOutputConverter::SHELL);
             cmd += " ";
             cmd += "--progress-num=";
             cmd += progress->Arg;
@@ -1157,14 +1145,14 @@ void cmLocalUnixMakefileGenerator3::AppendEcho(
           }
           cmd += this->EscapeForShell(line);
         }
-        commands.push_back(cmd);
+        commands.push_back(std::move(cmd));
       }
 
-      // Reset the line to emtpy.
-      line = "";
+      // Reset the line to empty.
+      line.clear();
 
       // Progress appears only on first line.
-      progress = 0;
+      progress = nullptr;
 
       // Terminate on end-of-string.
       if (*c == '\0') {
@@ -1178,17 +1166,19 @@ void cmLocalUnixMakefileGenerator3::AppendEcho(
 }
 
 std::string cmLocalUnixMakefileGenerator3::CreateMakeVariable(
-  const std::string& sin, const std::string& s2)
+  std::string const& s, std::string const& s2)
 {
-  std::string s = sin;
   std::string unmodified = s;
   unmodified += s2;
   // if there is no restriction on the length of make variables
   // and there are no "." characters in the string, then return the
   // unmodified combination.
-  if ((!this->MakefileVariableSize && unmodified.find('.') == s.npos) &&
-      (!this->MakefileVariableSize && unmodified.find('+') == s.npos) &&
-      (!this->MakefileVariableSize && unmodified.find('-') == s.npos)) {
+  if ((!this->MakefileVariableSize &&
+       unmodified.find('.') == std::string::npos) &&
+      (!this->MakefileVariableSize &&
+       unmodified.find('+') == std::string::npos) &&
+      (!this->MakefileVariableSize &&
+       unmodified.find('-') == std::string::npos)) {
     return unmodified;
   }
 
@@ -1322,7 +1312,7 @@ bool cmLocalUnixMakefileGenerator3::UpdateDependencies(const char* tgtInfo,
   // not be considered.
   std::map<std::string, cmDepends::DependencyVector> validDependencies;
   bool needRescanDependencies = false;
-  if (needRescanDirInfo == false) {
+  if (!needRescanDirInfo) {
     cmDependsC checker;
     checker.SetVerbose(verbose);
     checker.SetFileComparison(ftc);
@@ -1403,7 +1393,9 @@ bool cmLocalUnixMakefileGenerator3::ScanDependencies(
   // because the make tool may try to reload it needlessly otherwise.
   std::string ruleFileNameFull = dir;
   ruleFileNameFull += "/depend.make";
-  cmGeneratedFileStream ruleFileStream(ruleFileNameFull.c_str());
+  cmGeneratedFileStream ruleFileStream(
+    ruleFileNameFull.c_str(), false,
+    this->GlobalGenerator->GetMakefileEncoding());
   ruleFileStream.SetCopyIfDifferent(true);
   if (!ruleFileStream) {
     return false;
@@ -1415,7 +1407,8 @@ bool cmLocalUnixMakefileGenerator3::ScanDependencies(
   std::string internalRuleFileNameFull = dir;
   internalRuleFileNameFull += "/depend.internal";
   cmGeneratedFileStream internalRuleFileStream(
-    internalRuleFileNameFull.c_str());
+    internalRuleFileNameFull.c_str(), false,
+    this->GlobalGenerator->GetMakefileEncoding());
   if (!internalRuleFileStream) {
     return false;
   }
@@ -1427,19 +1420,19 @@ bool cmLocalUnixMakefileGenerator3::ScanDependencies(
   const char* langStr = mf->GetSafeDefinition("CMAKE_DEPENDS_LANGUAGES");
   std::vector<std::string> langs;
   cmSystemTools::ExpandListArgument(langStr, langs);
-  for (std::vector<std::string>::iterator li = langs.begin();
-       li != langs.end(); ++li) {
+  for (std::string const& lang : langs) {
     // construct the checker
-    std::string lang = *li;
-
     // Create the scanner for this language
-    cmDepends* scanner = 0;
-    if (lang == "C" || lang == "CXX" || lang == "RC" || lang == "ASM") {
+    cmDepends* scanner = nullptr;
+    if (lang == "C" || lang == "CXX" || lang == "RC" || lang == "ASM" ||
+        lang == "CUDA") {
       // TODO: Handle RC (resource files) dependencies correctly.
       scanner = new cmDependsC(this, targetDir, lang, &validDeps);
     }
 #ifdef CMAKE_BUILD_WITH_CMAKE
     else if (lang == "Fortran") {
+      ruleFileStream << "# Note that incremental build could trigger "
+                     << "a call to cmake_copy_f90_mod on each re-build\n";
       scanner = new cmDependsFortran(this);
     } else if (lang == "Java") {
       scanner = new cmDependsJava();
@@ -1482,8 +1475,8 @@ void cmLocalUnixMakefileGenerator3::CheckMultipleOutputs(bool verbose)
 
     // If the depender is missing then delete the dependee to make
     // sure both will be regenerated.
-    if (cmSystemTools::FileExists(dependee.c_str()) &&
-        !cmSystemTools::FileExists(depender.c_str())) {
+    if (cmSystemTools::FileExists(dependee) &&
+        !cmSystemTools::FileExists(depender)) {
       if (verbose) {
         std::ostringstream msg;
         msg << "Deleting primary custom command output \"" << dependee
@@ -1534,41 +1527,38 @@ void cmLocalUnixMakefileGenerator3::WriteLocalAllRules(
   this->WriteDivider(ruleFileStream);
   ruleFileStream << "# Targets provided globally by CMake.\n"
                  << "\n";
-  std::vector<cmGeneratorTarget*> targets = this->GetGeneratorTargets();
-  std::vector<cmGeneratorTarget*>::iterator glIt;
-  for (glIt = targets.begin(); glIt != targets.end(); ++glIt) {
-    if ((*glIt)->GetType() == cmState::GLOBAL_TARGET) {
+  const std::vector<cmGeneratorTarget*>& targets = this->GetGeneratorTargets();
+  for (cmGeneratorTarget* gt : targets) {
+    if (gt->GetType() == cmStateEnums::GLOBAL_TARGET) {
       std::string targetString =
-        "Special rule for the target " + (*glIt)->GetName();
+        "Special rule for the target " + gt->GetName();
       std::vector<std::string> commands;
       std::vector<std::string> depends;
 
-      const char* text = (*glIt)->GetProperty("EchoString");
+      const char* text = gt->GetProperty("EchoString");
       if (!text) {
         text = "Running external command ...";
       }
-      depends.insert(depends.end(), (*glIt)->GetUtilities().begin(),
-                     (*glIt)->GetUtilities().end());
+      depends.insert(depends.end(), gt->GetUtilities().begin(),
+                     gt->GetUtilities().end());
       this->AppendEcho(commands, text,
                        cmLocalUnixMakefileGenerator3::EchoGlobal);
-
-      cmGeneratorTarget* gt = *glIt;
 
       // Global targets store their rules in pre- and post-build commands.
       this->AppendCustomDepends(depends, gt->GetPreBuildCommands());
       this->AppendCustomDepends(depends, gt->GetPostBuildCommands());
       this->AppendCustomCommands(commands, gt->GetPreBuildCommands(), gt,
-                                 cmOutputConverter::START_OUTPUT);
+                                 this->GetCurrentBinaryDirectory());
       this->AppendCustomCommands(commands, gt->GetPostBuildCommands(), gt,
-                                 cmOutputConverter::START_OUTPUT);
+                                 this->GetCurrentBinaryDirectory());
       std::string targetName = gt->GetName();
       this->WriteMakeRule(ruleFileStream, targetString.c_str(), targetName,
                           depends, commands, true);
 
       // Provide a "/fast" version of the target.
       depends.clear();
-      if ((targetName == "install") || (targetName == "install_local") ||
-          (targetName == "install_strip")) {
+      if ((targetName == "install") || (targetName == "install/local") ||
+          (targetName == "install/strip")) {
         // Provide a fast install target that does not depend on all
         // but has the same command.
         depends.push_back("preinstall/fast");
@@ -1597,15 +1587,16 @@ void cmLocalUnixMakefileGenerator3::WriteLocalAllRules(
   {
     std::ostringstream progCmd;
     progCmd << "$(CMAKE_COMMAND) -E cmake_progress_start ";
-    progCmd << this->Convert(progressDir, cmOutputConverter::FULL,
-                             cmOutputConverter::SHELL);
+    progCmd << this->ConvertToOutputFormat(
+      cmSystemTools::CollapseFullPath(progressDir), cmOutputConverter::SHELL);
 
     std::string progressFile = cmake::GetCMakeFilesDirectory();
     progressFile += "/progress.marks";
     std::string progressFileNameFull = this->ConvertToFullPath(progressFile);
     progCmd << " "
-            << this->Convert(progressFileNameFull, cmOutputConverter::FULL,
-                             cmOutputConverter::SHELL);
+            << this->ConvertToOutputFormat(
+                 cmSystemTools::CollapseFullPath(progressFileNameFull),
+                 cmOutputConverter::SHELL);
     commands.push_back(progCmd.str());
   }
   std::string mf2Dir = cmake::GetCMakeFilesDirectoryPostSlash();
@@ -1613,12 +1604,12 @@ void cmLocalUnixMakefileGenerator3::WriteLocalAllRules(
   commands.push_back(
     this->GetRecursiveMakeCall(mf2Dir.c_str(), recursiveTarget));
   this->CreateCDCommand(commands, this->GetBinaryDirectory(),
-                        cmOutputConverter::START_OUTPUT);
+                        this->GetCurrentBinaryDirectory());
   {
     std::ostringstream progCmd;
     progCmd << "$(CMAKE_COMMAND) -E cmake_progress_start "; // # 0
-    progCmd << this->Convert(progressDir, cmOutputConverter::FULL,
-                             cmOutputConverter::SHELL);
+    progCmd << this->ConvertToOutputFormat(
+      cmSystemTools::CollapseFullPath(progressDir), cmOutputConverter::SHELL);
     progCmd << " 0";
     commands.push_back(progCmd.str());
   }
@@ -1633,7 +1624,7 @@ void cmLocalUnixMakefileGenerator3::WriteLocalAllRules(
   commands.push_back(
     this->GetRecursiveMakeCall(mf2Dir.c_str(), recursiveTarget));
   this->CreateCDCommand(commands, this->GetBinaryDirectory(),
-                        cmOutputConverter::START_OUTPUT);
+                        this->GetCurrentBinaryDirectory());
   this->WriteMakeRule(ruleFileStream, "The main clean target", "clean",
                       depends, commands, true);
   commands.clear();
@@ -1659,7 +1650,7 @@ void cmLocalUnixMakefileGenerator3::WriteLocalAllRules(
   commands.push_back(
     this->GetRecursiveMakeCall(mf2Dir.c_str(), recursiveTarget));
   this->CreateCDCommand(commands, this->GetBinaryDirectory(),
-                        cmOutputConverter::START_OUTPUT);
+                        this->GetCurrentBinaryDirectory());
   this->WriteMakeRule(ruleFileStream, "Prepare targets for installation.",
                       "preinstall", depends, commands, true);
   depends.clear();
@@ -1671,15 +1662,17 @@ void cmLocalUnixMakefileGenerator3::WriteLocalAllRules(
   commands.clear();
   std::string cmakefileName = cmake::GetCMakeFilesDirectoryPostSlash();
   cmakefileName += "Makefile.cmake";
-  std::string runRule =
-    "$(CMAKE_COMMAND) -H$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR)";
-  runRule += " --check-build-system ";
-  runRule += this->Convert(cmakefileName, cmOutputConverter::NONE,
-                           cmOutputConverter::SHELL);
-  runRule += " 1";
-  commands.push_back(runRule);
+  {
+    std::string runRule =
+      "$(CMAKE_COMMAND) -H$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR)";
+    runRule += " --check-build-system ";
+    runRule +=
+      this->ConvertToOutputFormat(cmakefileName, cmOutputConverter::SHELL);
+    runRule += " 1";
+    commands.push_back(std::move(runRule));
+  }
   this->CreateCDCommand(commands, this->GetBinaryDirectory(),
-                        cmOutputConverter::START_OUTPUT);
+                        this->GetCurrentBinaryDirectory());
   this->WriteMakeRule(ruleFileStream, "clear depends", "depend", depends,
                       commands, true);
 }
@@ -1699,9 +1692,8 @@ void cmLocalUnixMakefileGenerator3::ClearDependencies(cmMakefile* mf,
   // dependencies for that target.
   cmDepends clearer;
   clearer.SetVerbose(verbose);
-  for (std::vector<std::string>::iterator l = files.begin(); l != files.end();
-       ++l) {
-    std::string dir = cmSystemTools::GetFilenamePath(*l);
+  for (std::string const& file : files) {
+    std::string dir = cmSystemTools::GetFilenamePath(file);
 
     // Clear the implicit dependency makefile.
     std::string dependFile = dir + "/depend.make";
@@ -1773,54 +1765,51 @@ void cmLocalUnixMakefileGenerator3::WriteDependLanguageInfo(
   cmakefileStream
     << "# The set of languages for which implicit dependencies are needed:\n";
   cmakefileStream << "set(CMAKE_DEPENDS_LANGUAGES\n";
-  for (ImplicitDependLanguageMap::const_iterator l = implicitLangs.begin();
-       l != implicitLangs.end(); ++l) {
-    cmakefileStream << "  \"" << l->first << "\"\n";
+  for (auto const& implicitLang : implicitLangs) {
+    cmakefileStream << "  \"" << implicitLang.first << "\"\n";
   }
   cmakefileStream << "  )\n";
 
   // now list the files for each language
   cmakefileStream
     << "# The set of files for implicit dependencies of each language:\n";
-  for (ImplicitDependLanguageMap::const_iterator l = implicitLangs.begin();
-       l != implicitLangs.end(); ++l) {
-    cmakefileStream << "set(CMAKE_DEPENDS_CHECK_" << l->first << "\n";
-    ImplicitDependFileMap const& implicitPairs = l->second;
+  for (auto const& implicitLang : implicitLangs) {
+    cmakefileStream << "set(CMAKE_DEPENDS_CHECK_" << implicitLang.first
+                    << "\n";
+    ImplicitDependFileMap const& implicitPairs = implicitLang.second;
 
     // for each file pair
-    for (ImplicitDependFileMap::const_iterator pi = implicitPairs.begin();
-         pi != implicitPairs.end(); ++pi) {
-      for (cmDepends::DependencyVector::const_iterator di = pi->second.begin();
-           di != pi->second.end(); ++di) {
-        cmakefileStream << "  \"" << *di << "\" ";
-        cmakefileStream << "\"" << pi->first << "\"\n";
+    for (auto const& implicitPair : implicitPairs) {
+      for (auto const& di : implicitPair.second) {
+        cmakefileStream << "  \"" << di << "\" ";
+        cmakefileStream << "\"" << implicitPair.first << "\"\n";
       }
     }
     cmakefileStream << "  )\n";
 
     // Tell the dependency scanner what compiler is used.
     std::string cidVar = "CMAKE_";
-    cidVar += l->first;
+    cidVar += implicitLang.first;
     cidVar += "_COMPILER_ID";
     const char* cid = this->Makefile->GetDefinition(cidVar);
     if (cid && *cid) {
-      cmakefileStream << "set(CMAKE_" << l->first << "_COMPILER_ID \"" << cid
-                      << "\")\n";
+      cmakefileStream << "set(CMAKE_" << implicitLang.first
+                      << "_COMPILER_ID \"" << cid << "\")\n";
     }
 
     // Build a list of preprocessor definitions for the target.
     std::set<std::string> defines;
-    this->AddCompileDefinitions(defines, target, this->ConfigName, l->first);
+    this->AddCompileDefinitions(defines, target, this->ConfigName,
+                                implicitLang.first);
     if (!defines.empty()) {
       /* clang-format off */
       cmakefileStream
         << "\n"
         << "# Preprocessor definitions for this target.\n"
-        << "set(CMAKE_TARGET_DEFINITIONS_" << l->first << "\n";
+        << "set(CMAKE_TARGET_DEFINITIONS_" << implicitLang.first << "\n";
       /* clang-format on */
-      for (std::set<std::string>::const_iterator di = defines.begin();
-           di != defines.end(); ++di) {
-        cmakefileStream << "  " << cmOutputConverter::EscapeForCMake(*di)
+      for (std::string const& define : defines) {
+        cmakefileStream << "  " << cmOutputConverter::EscapeForCMake(define)
                         << "\n";
       }
       cmakefileStream << "  )\n";
@@ -1829,24 +1818,21 @@ void cmLocalUnixMakefileGenerator3::WriteDependLanguageInfo(
     // Target-specific include directories:
     cmakefileStream << "\n"
                     << "# The include file search paths:\n";
-    cmakefileStream << "set(CMAKE_" << l->first << "_TARGET_INCLUDE_PATH\n";
+    cmakefileStream << "set(CMAKE_" << implicitLang.first
+                    << "_TARGET_INCLUDE_PATH\n";
     std::vector<std::string> includes;
 
     const std::string& config =
       this->Makefile->GetSafeDefinition("CMAKE_BUILD_TYPE");
-    this->GetIncludeDirectories(includes, target, l->first, config);
+    this->GetIncludeDirectories(includes, target, implicitLang.first, config);
+    std::string binaryDir = this->GetState()->GetBinaryDirectory();
     if (this->Makefile->IsOn("CMAKE_DEPENDS_IN_PROJECT_ONLY")) {
-      const char* sourceDir = this->GetState()->GetSourceDirectory();
-      const char* binaryDir = this->GetState()->GetBinaryDirectory();
-      std::vector<std::string>::iterator itr =
-        std::remove_if(includes.begin(), includes.end(),
-                       ::NotInProjectDir(sourceDir, binaryDir));
-      includes.erase(itr, includes.end());
+      std::string const& sourceDir = this->GetState()->GetSourceDirectory();
+      cmEraseIf(includes, ::NotInProjectDir(sourceDir, binaryDir));
     }
-    for (std::vector<std::string>::iterator i = includes.begin();
-         i != includes.end(); ++i) {
+    for (std::string const& include : includes) {
       cmakefileStream << "  \""
-                      << this->Convert(*i, cmOutputConverter::HOME_OUTPUT)
+                      << this->MaybeConvertToRelativePath(binaryDir, include)
                       << "\"\n";
     }
     cmakefileStream << "  )\n";
@@ -1865,10 +1851,8 @@ void cmLocalUnixMakefileGenerator3::WriteDependLanguageInfo(
   }
   if (!transformRules.empty()) {
     cmakefileStream << "set(CMAKE_INCLUDE_TRANSFORMS\n";
-    for (std::vector<std::string>::const_iterator tri = transformRules.begin();
-         tri != transformRules.end(); ++tri) {
-      cmakefileStream << "  " << cmOutputConverter::EscapeForCMake(*tri)
-                      << "\n";
+    for (std::string const& tr : transformRules) {
+      cmakefileStream << "  " << cmOutputConverter::EscapeForCMake(tr) << "\n";
     }
     cmakefileStream << "  )\n";
   }
@@ -1888,8 +1872,7 @@ std::string cmLocalUnixMakefileGenerator3::GetRecursiveMakeCall(
   // Call make on the given file.
   std::string cmd;
   cmd += "$(MAKE) -f ";
-  cmd +=
-    this->Convert(makefile, cmOutputConverter::NONE, cmOutputConverter::SHELL);
+  cmd += this->ConvertToOutputFormat(makefile, cmOutputConverter::SHELL);
   cmd += " ";
 
   cmGlobalUnixMakefileGenerator3* gg =
@@ -1911,7 +1894,8 @@ std::string cmLocalUnixMakefileGenerator3::GetRecursiveMakeCall(
   // Add the target.
   if (!tgt.empty()) {
     // The make target is always relative to the top of the build tree.
-    std::string tgt2 = this->Convert(tgt, cmOutputConverter::HOME_OUTPUT);
+    std::string tgt2 =
+      this->MaybeConvertToRelativePath(this->GetBinaryDirectory(), tgt);
 
     // The target may have been written with windows paths.
     cmSystemTools::ConvertToOutputSlashes(tgt2);
@@ -1978,10 +1962,9 @@ std::string cmLocalUnixMakefileGenerator3::ConvertToQuotedOutputPath(
 #if defined(_WIN32) && !defined(__CYGWIN__)
     if (!cmSystemTools::GetForceUnixPaths()) {
       slash = "\\";
-      for (std::string::iterator i = components[0].begin();
-           i != components[0].end(); ++i) {
-        if (*i == '/') {
-          *i = '\\';
+      for (char& i : components[0]) {
+        if (i == '/') {
+          i = '\\';
         }
       }
     }
@@ -2045,13 +2028,11 @@ void cmLocalUnixMakefileGenerator3::AddImplicitDepends(
 }
 
 void cmLocalUnixMakefileGenerator3::CreateCDCommand(
-  std::vector<std::string>& commands, const char* tgtDir,
-  cmOutputConverter::RelativeRoot relRetDir)
+  std::vector<std::string>& commands, std::string const& tgtDir,
+  std::string const& relDir)
 {
-  const char* retDir = this->GetRelativeRootPath(relRetDir);
-
   // do we need to cd?
-  if (!strcmp(tgtDir, retDir)) {
+  if (tgtDir == relDir) {
     return;
   }
 
@@ -2068,21 +2049,30 @@ void cmLocalUnixMakefileGenerator3::CreateCDCommand(
     // back because the shell keeps the working directory between
     // commands.
     std::string cmd = cd_cmd;
-    cmd += this->ConvertToOutputForExisting(tgtDir, relRetDir);
+    cmd += this->ConvertToOutputForExisting(tgtDir);
     commands.insert(commands.begin(), cmd);
 
     // Change back to the starting directory.
     cmd = cd_cmd;
-    cmd += this->ConvertToOutputForExisting(relRetDir, tgtDir);
-    commands.push_back(cmd);
+    cmd += this->ConvertToOutputForExisting(relDir);
+    commands.push_back(std::move(cmd));
   } else {
     // On UNIX we must construct a single shell command to change
     // directory and build because make resets the directory between
     // each command.
-    std::string outputForExisting =
-      this->ConvertToOutputForExisting(tgtDir, relRetDir);
+    std::string outputForExisting = this->ConvertToOutputForExisting(tgtDir);
     std::string prefix = cd_cmd + outputForExisting + " && ";
     std::transform(commands.begin(), commands.end(), commands.begin(),
-                   std::bind1st(std::plus<std::string>(), prefix));
+                   [&prefix](std::string const& s) { return prefix + s; });
   }
+}
+
+std::string cmLocalUnixMakefileGenerator3::MaybeConvertToRelativePath(
+  std::string const& base, std::string const& path)
+{
+  if (!cmOutputConverter::ContainedInDirectory(
+        base, path, this->GetStateSnapshot().GetDirectory())) {
+    return path;
+  }
+  return cmOutputConverter::ForceToRelativePath(base, path);
 }

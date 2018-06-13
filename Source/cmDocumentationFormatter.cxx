@@ -1,17 +1,14 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmDocumentationFormatter.h"
 
+#include "cmDocumentationEntry.h"
 #include "cmDocumentationSection.h"
+
+#include <ostream>
+#include <string.h>
+#include <string>
+#include <vector>
 
 cmDocumentationFormatter::cmDocumentationFormatter()
   : TextWidth(77)
@@ -159,7 +156,7 @@ void cmDocumentationFormatter::PrintColumn(std::ostream& os, const char* text)
 
     // Move to beginning of next word.  Skip over whitespace.
     l = r;
-    while (*l && (*l == ' ')) {
+    while (*l == ' ') {
       ++l;
     }
   }
@@ -171,26 +168,25 @@ void cmDocumentationFormatter::PrintSection(
   os << section.GetName() << "\n";
 
   const std::vector<cmDocumentationEntry>& entries = section.GetEntries();
-  for (std::vector<cmDocumentationEntry>::const_iterator op = entries.begin();
-       op != entries.end(); ++op) {
-    if (!op->Name.empty()) {
-      os << "  " << op->Name;
+  for (cmDocumentationEntry const& entry : entries) {
+    if (!entry.Name.empty()) {
+      os << "  " << entry.Name;
       this->TextIndent = "                                 ";
       int align = static_cast<int>(strlen(this->TextIndent)) - 4;
-      for (int i = static_cast<int>(op->Name.size()); i < align; ++i) {
+      for (int i = static_cast<int>(entry.Name.size()); i < align; ++i) {
         os << " ";
       }
-      if (op->Name.size() > strlen(this->TextIndent) - 4) {
+      if (entry.Name.size() > strlen(this->TextIndent) - 4) {
         os << "\n";
         os.write(this->TextIndent, strlen(this->TextIndent) - 2);
       }
       os << "= ";
-      this->PrintColumn(os, op->Brief.c_str());
+      this->PrintColumn(os, entry.Brief.c_str());
       os << "\n";
     } else {
       os << "\n";
       this->TextIndent = "";
-      this->PrintFormatted(os, op->Brief.c_str());
+      this->PrintFormatted(os, entry.Brief.c_str());
     }
   }
   os << "\n";

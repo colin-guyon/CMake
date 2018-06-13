@@ -1,19 +1,17 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCTestSubmitCommand.h"
 
 #include "cmCTest.h"
 #include "cmCTestGenericHandler.h"
 #include "cmCTestSubmitHandler.h"
+#include "cmMakefile.h"
+#include "cmSystemTools.h"
+#include "cmake.h"
+
+#include <sstream>
+
+class cmExecutionStatus;
 
 cmCTestGenericHandler* cmCTestSubmitCommand::InitializeHandler()
 {
@@ -88,7 +86,7 @@ cmCTestGenericHandler* cmCTestSubmitCommand::InitializeHandler()
                          extraFiles.end());
     if (!this->CTest->SubmitExtraFiles(newExtraFiles)) {
       this->SetError("problem submitting extra files.");
-      return 0;
+      return nullptr;
     }
   }
 
@@ -96,7 +94,7 @@ cmCTestGenericHandler* cmCTestSubmitCommand::InitializeHandler()
     this->CTest->GetInitializedHandler("submit");
   if (!handler) {
     this->SetError("internal CTest error. Cannot instantiate submit handler");
-    return 0;
+    return nullptr;
   }
 
   // If no FILES or PARTS given, *all* PARTS are submitted by default.
@@ -131,6 +129,12 @@ cmCTestGenericHandler* cmCTestSubmitCommand::InitializeHandler()
     static_cast<cmCTestSubmitHandler*>(handler)->SelectParts(this->Parts);
   }
 
+  // Pass along any HTTPHEADER to the handler if this option was given.
+  if (!this->HttpHeaders.empty()) {
+    static_cast<cmCTestSubmitHandler*>(handler)->SetHttpHeaders(
+      this->HttpHeaders);
+  }
+
   static_cast<cmCTestSubmitHandler*>(handler)->SetOption(
     "RetryDelay", this->RetryDelay.c_str());
   static_cast<cmCTestSubmitHandler*>(handler)->SetOption(
@@ -159,6 +163,7 @@ bool cmCTestSubmitCommand::InitialPass(std::vector<std::string> const& args,
 bool cmCTestSubmitCommand::CheckArgumentKeyword(std::string const& arg)
 {
   if (this->CDashUpload) {
+    // Arguments specific to the CDASH_UPLOAD signature.
     if (arg == "CDASH_UPLOAD") {
       this->ArgumentDoing = ArgumentDoingCDashUpload;
       return true;
@@ -169,7 +174,7 @@ bool cmCTestSubmitCommand::CheckArgumentKeyword(std::string const& arg)
       return true;
     }
   } else {
-    // Look for arguments specific to this command.
+    // Arguments that cannot be used with CDASH_UPLOAD.
     if (arg == "PARTS") {
       this->ArgumentDoing = ArgumentDoingParts;
       this->PartsMentioned = true;
@@ -181,21 +186,26 @@ bool cmCTestSubmitCommand::CheckArgumentKeyword(std::string const& arg)
       this->FilesMentioned = true;
       return true;
     }
+  }
+  // Arguments used by both modes.
+  if (arg == "HTTPHEADER") {
+    this->ArgumentDoing = ArgumentDoingHttpHeader;
+    return true;
+  }
 
-    if (arg == "RETRY_COUNT") {
-      this->ArgumentDoing = ArgumentDoingRetryCount;
-      return true;
-    }
+  if (arg == "RETRY_COUNT") {
+    this->ArgumentDoing = ArgumentDoingRetryCount;
+    return true;
+  }
 
-    if (arg == "RETRY_DELAY") {
-      this->ArgumentDoing = ArgumentDoingRetryDelay;
-      return true;
-    }
+  if (arg == "RETRY_DELAY") {
+    this->ArgumentDoing = ArgumentDoingRetryDelay;
+    return true;
+  }
 
-    if (arg == "INTERNAL_TEST_CHECKSUM") {
-      this->InternalTest = true;
-      return true;
-    }
+  if (arg == "INTERNAL_TEST_CHECKSUM") {
+    this->InternalTest = true;
+    return true;
   }
 
   // Look for other arguments.
@@ -219,7 +229,7 @@ bool cmCTestSubmitCommand::CheckArgumentValue(std::string const& arg)
   }
 
   if (this->ArgumentDoing == ArgumentDoingFiles) {
-    if (cmSystemTools::FileExists(arg.c_str())) {
+    if (cmSystemTools::FileExists(arg)) {
       this->Files.insert(arg);
     } else {
       std::ostringstream e;
@@ -228,6 +238,11 @@ bool cmCTestSubmitCommand::CheckArgumentValue(std::string const& arg)
       this->Makefile->IssueMessage(cmake::FATAL_ERROR, e.str());
       this->ArgumentDoing = ArgumentDoingError;
     }
+    return true;
+  }
+
+  if (this->ArgumentDoing == ArgumentDoingHttpHeader) {
+    this->HttpHeaders.push_back(arg);
     return true;
   }
 

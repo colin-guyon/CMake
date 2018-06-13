@@ -1,27 +1,26 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmLinkDirectoriesCommand.h"
+
+#include <sstream>
+
+#include "cmMakefile.h"
+#include "cmPolicies.h"
+#include "cmSystemTools.h"
+#include "cmake.h"
+
+class cmExecutionStatus;
 
 // cmLinkDirectoriesCommand
 bool cmLinkDirectoriesCommand::InitialPass(
   std::vector<std::string> const& args, cmExecutionStatus&)
 {
-  if (args.size() < 1) {
+  if (args.empty()) {
     return true;
   }
 
-  for (std::vector<std::string>::const_iterator i = args.begin();
-       i != args.end(); ++i) {
-    this->AddLinkDir(*i);
+  for (std::string const& i : args) {
+    this->AddLinkDir(i);
   }
   return true;
 }
@@ -30,7 +29,7 @@ void cmLinkDirectoriesCommand::AddLinkDir(std::string const& dir)
 {
   std::string unixPath = dir;
   cmSystemTools::ConvertToUnixSlashes(unixPath);
-  if (!cmSystemTools::FileIsFullPath(unixPath.c_str())) {
+  if (!cmSystemTools::FileIsFullPath(unixPath)) {
     bool convertToAbsolute = false;
     std::ostringstream e;
     /* clang-format off */
@@ -49,6 +48,7 @@ void cmLinkDirectoriesCommand::AddLinkDir(std::string const& dir)
       case cmPolicies::REQUIRED_ALWAYS:
         e << cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0015);
         this->Makefile->IssueMessage(cmake::FATAL_ERROR, e.str());
+        CM_FALLTHROUGH;
       case cmPolicies::NEW:
         // NEW behavior converts
         convertToAbsolute = true;

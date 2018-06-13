@@ -1,12 +1,15 @@
 #include "cmParseJacocoCoverage.h"
 
+#include "cmCTest.h"
+#include "cmCTestCoverageHandler.h"
 #include "cmSystemTools.h"
 #include "cmXMLParser.h"
-#include <cmsys/Directory.hxx>
-#include <cmsys/FStream.hxx>
-#include <cmsys/Glob.hxx>
-#include <stdio.h>
+
+#include "cmsys/Directory.hxx"
+#include "cmsys/FStream.hxx"
+#include "cmsys/Glob.hxx"
 #include <stdlib.h>
+#include <string.h>
 
 class cmParseJacocoCoverage::XMLParser : public cmXMLParser
 {
@@ -15,25 +18,25 @@ public:
     : CTest(ctest)
     , Coverage(cont)
   {
-    this->FilePath = "";
-    this->PackagePath = "";
-    this->PackageName = "";
+    this->FilePath.clear();
+    this->PackagePath.clear();
+    this->PackageName.clear();
   }
 
-  virtual ~XMLParser() {}
+  ~XMLParser() override {}
 
 protected:
-  virtual void EndElement(const std::string&) {}
+  void EndElement(const std::string& /*name*/) override {}
 
-  virtual void StartElement(const std::string& name, const char** atts)
+  void StartElement(const std::string& name, const char** atts) override
   {
     if (name == "package") {
       this->PackageName = atts[1];
-      this->PackagePath = "";
+      this->PackagePath.clear();
     } else if (name == "sourcefile") {
       std::string fileName = atts[1];
 
-      if (this->PackagePath == "") {
+      if (this->PackagePath.empty()) {
         if (!this->FindPackagePath(fileName)) {
           cmCTestLog(this->CTest, ERROR_MESSAGE, "Cannot find file: "
                        << this->PackageName << "/" << fileName << std::endl);
@@ -111,14 +114,13 @@ protected:
     gl.RecurseThroughSymlinksOn();
     gl.FindFiles(packageGlob);
     std::vector<std::string> const& files = gl.GetFiles();
-    if (files.size() == 0) {
+    if (files.empty()) {
       return false;
     }
 
     // Check if any of the locations found match our package.
-    for (std::vector<std::string>::const_iterator fi = files.begin();
-         fi != files.end(); ++fi) {
-      std::string dir = cmsys::SystemTools::GetParentDirectory(*fi);
+    for (std::string const& f : files) {
+      std::string dir = cmsys::SystemTools::GetParentDirectory(f);
       if (cmsys::SystemTools::StringEndsWith(dir, this->PackageName.c_str())) {
         cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
                            "Found package directory for " << fileName << ": "

@@ -1,18 +1,8 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
 
-#=============================================================================
-# Copyright 2002-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
-# This module is used by the Makefile generator to determin the following variables:
+# This module is used by the Makefile generator to determine the following variables:
 # CMAKE_SYSTEM_NAME - on unix this is uname -s, for windows it is Windows
 # CMAKE_SYSTEM_VERSION - on unix this is uname -r, for windows it is empty
 # CMAKE_SYSTEM - ${CMAKE_SYSTEM}-${CMAKE_SYSTEM_VERSION}, for windows: ${CMAKE_SYSTEM}
@@ -45,10 +35,17 @@
 if(CMAKE_HOST_UNIX)
   find_program(CMAKE_UNAME uname /bin /usr/bin /usr/local/bin )
   if(CMAKE_UNAME)
-    exec_program(uname ARGS -s OUTPUT_VARIABLE CMAKE_HOST_SYSTEM_NAME)
-    exec_program(uname ARGS -r OUTPUT_VARIABLE CMAKE_HOST_SYSTEM_VERSION)
+    if(CMAKE_HOST_SYSTEM_NAME STREQUAL "AIX")
+      exec_program(${CMAKE_UNAME} ARGS -v OUTPUT_VARIABLE _CMAKE_HOST_SYSTEM_MAJOR_VERSION)
+      exec_program(${CMAKE_UNAME} ARGS -r OUTPUT_VARIABLE _CMAKE_HOST_SYSTEM_MINOR_VERSION)
+      set(CMAKE_HOST_SYSTEM_VERSION "${_CMAKE_HOST_SYSTEM_MAJOR_VERSION}.${_CMAKE_HOST_SYSTEM_MINOR_VERSION}")
+      unset(_CMAKE_HOST_SYSTEM_MAJOR_VERSION)
+      unset(_CMAKE_HOST_SYSTEM_MINOR_VERSION)
+    else()
+      exec_program(${CMAKE_UNAME} ARGS -r OUTPUT_VARIABLE CMAKE_HOST_SYSTEM_VERSION)
+    endif()
     if(CMAKE_HOST_SYSTEM_NAME MATCHES "Linux|CYGWIN.*|Darwin|^GNU$")
-      exec_program(uname ARGS -m OUTPUT_VARIABLE CMAKE_HOST_SYSTEM_PROCESSOR
+      exec_program(${CMAKE_UNAME} ARGS -m OUTPUT_VARIABLE CMAKE_HOST_SYSTEM_PROCESSOR
         RETURN_VALUE val)
       if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin" AND
          CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "Power Macintosh")
@@ -59,10 +56,10 @@ if(CMAKE_HOST_UNIX)
       exec_program(arch ARGS -s OUTPUT_VARIABLE CMAKE_HOST_SYSTEM_PROCESSOR
         RETURN_VALUE val)
     else()
-      exec_program(uname ARGS -p OUTPUT_VARIABLE CMAKE_HOST_SYSTEM_PROCESSOR
+      exec_program(${CMAKE_UNAME} ARGS -p OUTPUT_VARIABLE CMAKE_HOST_SYSTEM_PROCESSOR
         RETURN_VALUE val)
       if("${val}" GREATER 0)
-        exec_program(uname ARGS -m OUTPUT_VARIABLE CMAKE_HOST_SYSTEM_PROCESSOR
+        exec_program(${CMAKE_UNAME} ARGS -m OUTPUT_VARIABLE CMAKE_HOST_SYSTEM_PROCESSOR
           RETURN_VALUE val)
       endif()
     endif()
@@ -77,7 +74,6 @@ if(CMAKE_HOST_UNIX)
   endif()
 else()
   if(CMAKE_HOST_WIN32)
-    set (CMAKE_HOST_SYSTEM_NAME "Windows")
     if (DEFINED ENV{PROCESSOR_ARCHITEW6432})
       set (CMAKE_HOST_SYSTEM_PROCESSOR "$ENV{PROCESSOR_ARCHITEW6432}")
     else()
@@ -131,6 +127,7 @@ else()
   set(PRESET_CMAKE_SYSTEM_NAME FALSE)
 endif()
 
+include(Platform/${CMAKE_SYSTEM_NAME}-Determine OPTIONAL)
 
 macro(ADJUST_CMAKE_SYSTEM_VARIABLES _PREFIX)
   if(NOT ${_PREFIX}_NAME)

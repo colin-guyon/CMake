@@ -1,18 +1,12 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2013 Stephen Kelly <steveire@gmail.com>
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmTargetPropCommandBase.h"
 
 #include "cmGlobalGenerator.h"
+#include "cmMakefile.h"
+#include "cmStateTypes.h"
+#include "cmTarget.h"
+#include "cmake.h"
 
 bool cmTargetPropCommandBase::HandleArguments(
   std::vector<std::string> const& args, const std::string& prop,
@@ -23,11 +17,11 @@ bool cmTargetPropCommandBase::HandleArguments(
     return false;
   }
 
-  // Lookup the target for which libraries are specified.
   if (this->Makefile->IsAlias(args[0])) {
     this->SetError("can not be used on an ALIAS target.");
     return false;
   }
+  // Lookup the target for which property-values are specified.
   this->Target =
     this->Makefile->GetCMakeInstance()->GetGlobalGenerator()->FindTarget(
       args[0]);
@@ -38,12 +32,12 @@ bool cmTargetPropCommandBase::HandleArguments(
     this->HandleMissingTarget(args[0]);
     return false;
   }
-  if ((this->Target->GetType() != cmState::SHARED_LIBRARY) &&
-      (this->Target->GetType() != cmState::STATIC_LIBRARY) &&
-      (this->Target->GetType() != cmState::OBJECT_LIBRARY) &&
-      (this->Target->GetType() != cmState::MODULE_LIBRARY) &&
-      (this->Target->GetType() != cmState::INTERFACE_LIBRARY) &&
-      (this->Target->GetType() != cmState::EXECUTABLE)) {
+  if ((this->Target->GetType() != cmStateEnums::SHARED_LIBRARY) &&
+      (this->Target->GetType() != cmStateEnums::STATIC_LIBRARY) &&
+      (this->Target->GetType() != cmStateEnums::OBJECT_LIBRARY) &&
+      (this->Target->GetType() != cmStateEnums::MODULE_LIBRARY) &&
+      (this->Target->GetType() != cmStateEnums::INTERFACE_LIBRARY) &&
+      (this->Target->GetType() != cmStateEnums::EXECUTABLE)) {
     this->SetError("called with non-compilable target type");
     return false;
   }
@@ -84,22 +78,19 @@ bool cmTargetPropCommandBase::ProcessContentArgs(
   std::vector<std::string> const& args, unsigned int& argIndex, bool prepend,
   bool system)
 {
-  const std::string scope = args[argIndex];
+  std::string const& scope = args[argIndex];
 
   if (scope != "PUBLIC" && scope != "PRIVATE" && scope != "INTERFACE") {
     this->SetError("called with invalid arguments");
     return false;
   }
-
-  if (this->Target->IsImported()) {
-    this->HandleImportedTarget(args[0]);
+  if (this->Target->GetType() == cmStateEnums::INTERFACE_LIBRARY &&
+      scope != "INTERFACE") {
+    this->SetError("may only set INTERFACE properties on INTERFACE targets");
     return false;
   }
-
-  if (this->Target->GetType() == cmState::INTERFACE_LIBRARY &&
-      scope != "INTERFACE") {
-    this->SetError("may only be set INTERFACE properties on INTERFACE "
-                   "targets");
+  if (this->Target->IsImported() && scope != "INTERFACE") {
+    this->SetError("may only set INTERFACE properties on IMPORTED targets");
     return false;
   }
 

@@ -1,20 +1,18 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2004-2015 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmLinkItem_h
 #define cmLinkItem_h
 
+#include "cmConfigure.h" // IWYU pragma: keep
+
+#include <algorithm>
+#include <map>
+#include <string>
+#include <vector>
+
 #include "cmListFileCache.h"
 #include "cmSystemTools.h"
+#include "cmTargetLinkLibraryType.h"
 
 class cmGeneratorTarget;
 
@@ -26,17 +24,12 @@ class cmLinkItem : public std::string
 public:
   cmLinkItem()
     : std_string()
-    , Target(0)
+    , Target(nullptr)
   {
   }
   cmLinkItem(const std_string& n, cmGeneratorTarget const* t)
     : std_string(n)
     , Target(t)
-  {
-  }
-  cmLinkItem(cmLinkItem const& r)
-    : std_string(r)
-    , Target(r.Target)
   {
   }
   cmGeneratorTarget const* Target;
@@ -56,12 +49,6 @@ public:
     : cmLinkItem(n, t)
     , Backtrace(bt)
     , FromGenex(fromGenex)
-  {
-  }
-  cmLinkImplItem(cmLinkImplItem const& r)
-    : cmLinkItem(r)
-    , Backtrace(r.Backtrace)
-    , FromGenex(r.FromGenex)
   {
   }
   cmListFileBacktrace Backtrace;
@@ -118,7 +105,7 @@ struct cmOptionalLinkInterface : public cmLinkInterface
     , AllDone(false)
     , Exists(false)
     , HadHeadSensitiveCondition(false)
-    , ExplicitLibraries(0)
+    , ExplicitLibraries(nullptr)
   {
   }
   bool LibrariesDone;

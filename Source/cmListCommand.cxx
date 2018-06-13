@@ -1,24 +1,23 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmListCommand.h"
 
-#include "cmAlgorithms.h"
-#include <cmsys/RegularExpression.hxx>
-#include <cmsys/SystemTools.hxx>
-
+#include "cmsys/RegularExpression.hxx"
 #include <algorithm>
 #include <assert.h>
-#include <ctype.h>
+#include <iterator>
+#include <sstream>
+#include <stdio.h>
 #include <stdlib.h> // required for atoi
+
+#include "cmAlgorithms.h"
+#include "cmMakefile.h"
+#include "cmPolicies.h"
+#include "cmSystemTools.h"
+#include "cmake.h"
+
+class cmExecutionStatus;
+
 bool cmListCommand::InitialPass(std::vector<std::string> const& args,
                                 cmExecutionStatus&)
 {
@@ -183,9 +182,9 @@ bool cmListCommand::HandleGetCommand(std::vector<std::string> const& args)
     value += sep;
     sep = ";";
     if (item < 0) {
-      item = (int)nitem + item;
+      item = static_cast<int>(nitem) + item;
     }
-    if (item < 0 || nitem <= (size_t)item) {
+    if (item < 0 || nitem <= static_cast<size_t>(item)) {
       std::ostringstream str;
       str << "index: " << item << " out of range (-" << nitem << ", "
           << nitem - 1 << ")";
@@ -274,9 +273,9 @@ bool cmListCommand::HandleInsertCommand(std::vector<std::string> const& args)
   if (!varArgsExpanded.empty()) {
     size_t nitem = varArgsExpanded.size();
     if (item < 0) {
-      item = (int)nitem + item;
+      item = static_cast<int>(nitem) + item;
     }
-    if (item < 0 || nitem <= (size_t)item) {
+    if (item < 0 || nitem <= static_cast<size_t>(item)) {
       std::ostringstream str;
       str << "index: " << item << " out of range (-" << varArgsExpanded.size()
           << ", "
@@ -424,9 +423,9 @@ bool cmListCommand::HandleRemoveAtCommand(std::vector<std::string> const& args)
   for (cc = 2; cc < args.size(); ++cc) {
     int item = atoi(args[cc].c_str());
     if (item < 0) {
-      item = (int)nitem + item;
+      item = static_cast<int>(nitem) + item;
     }
-    if (item < 0 || nitem <= (size_t)item) {
+    if (item < 0 || nitem <= static_cast<size_t>(item)) {
       std::ostringstream str;
       str << "index: " << item << " out of range (-" << nitem << ", "
           << nitem - 1 << ")";

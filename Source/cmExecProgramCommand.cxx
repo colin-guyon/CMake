@@ -1,25 +1,21 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmExecProgramCommand.h"
 
+#include "cmsys/Process.h"
+#include <stdio.h>
+
+#include "cmMakefile.h"
+#include "cmProcessOutput.h"
 #include "cmSystemTools.h"
 
-#include <cmsys/Process.h>
+class cmExecutionStatus;
 
 // cmExecProgramCommand
 bool cmExecProgramCommand::InitialPass(std::vector<std::string> const& args,
                                        cmExecutionStatus&)
 {
-  if (args.size() < 1) {
+  if (args.empty()) {
     this->SetError("called with incorrect number of arguments");
     return false;
   }
@@ -30,8 +26,8 @@ bool cmExecProgramCommand::InitialPass(std::vector<std::string> const& args,
   bool haveoutput_variable = false;
   std::string return_variable;
   bool havereturn_variable = false;
-  for (size_t i = 0; i < args.size(); ++i) {
-    if (args[i] == "OUTPUT_VARIABLE") {
+  for (std::string const& arg : args) {
+    if (arg == "OUTPUT_VARIABLE") {
       count++;
       doingargs = false;
       havereturn_variable = false;
@@ -41,10 +37,10 @@ bool cmExecProgramCommand::InitialPass(std::vector<std::string> const& args,
         this->SetError("called with incorrect number of arguments");
         return false;
       }
-      output_variable = args[i];
+      output_variable = arg;
       haveoutput_variable = false;
       count++;
-    } else if (args[i] == "RETURN_VALUE") {
+    } else if (arg == "RETURN_VALUE") {
       count++;
       doingargs = false;
       haveoutput_variable = false;
@@ -54,16 +50,16 @@ bool cmExecProgramCommand::InitialPass(std::vector<std::string> const& args,
         this->SetError("called with incorrect number of arguments");
         return false;
       }
-      return_variable = args[i];
+      return_variable = arg;
       havereturn_variable = false;
       count++;
-    } else if (args[i] == "ARGS") {
+    } else if (arg == "ARGS") {
       count++;
       havereturn_variable = false;
       haveoutput_variable = false;
       doingargs = true;
     } else if (doingargs) {
-      arguments += args[i];
+      arguments += arg;
       arguments += " ";
       count++;
     }
@@ -85,12 +81,12 @@ bool cmExecProgramCommand::InitialPass(std::vector<std::string> const& args,
   std::string output;
   bool result = true;
   if (args.size() - count == 2) {
-    cmSystemTools::MakeDirectory(args[1].c_str());
+    cmSystemTools::MakeDirectory(args[1]);
     result = cmExecProgramCommand::RunCommand(command.c_str(), output, retVal,
                                               args[1].c_str(), verbose);
   } else {
     result = cmExecProgramCommand::RunCommand(command.c_str(), output, retVal,
-                                              0, verbose);
+                                              nullptr, verbose);
   }
   if (!result) {
     retVal = -1;
@@ -121,7 +117,7 @@ bool cmExecProgramCommand::InitialPass(std::vector<std::string> const& args,
 
 bool cmExecProgramCommand::RunCommand(const char* command, std::string& output,
                                       int& retVal, const char* dir,
-                                      bool verbose)
+                                      bool verbose, Encoding encoding)
 {
   if (cmSystemTools::GetRunCommandOutput()) {
     verbose = false;
@@ -153,7 +149,7 @@ bool cmExecProgramCommand::RunCommand(const char* command, std::string& output,
       if (quoted.find(command)) {
         std::string cmd = quoted.match(1);
         std::string args = quoted.match(2);
-        if (!cmSystemTools::FileExists(cmd.c_str())) {
+        if (!cmSystemTools::FileExists(cmd)) {
           shortCmd = cmd;
         } else if (!cmSystemTools::GetShortPath(cmd.c_str(), shortCmd)) {
           cmSystemTools::Error("GetShortPath failed for ", cmd.c_str());
@@ -209,7 +205,7 @@ bool cmExecProgramCommand::RunCommand(const char* command, std::string& output,
   }
   fflush(stdout);
   fflush(stderr);
-  const char* cmd[] = { "/bin/sh", "-c", command, 0 };
+  const char* cmd[] = { "/bin/sh", "-c", command, nullptr };
   cmsysProcess_SetCommand(cp, cmd);
 #endif
 
@@ -219,17 +215,28 @@ bool cmExecProgramCommand::RunCommand(const char* command, std::string& output,
   int length;
   char* data;
   int p;
-  while ((p = cmsysProcess_WaitForData(cp, &data, &length, 0), p)) {
+  cmProcessOutput processOutput(encoding);
+  std::string strdata;
+  while ((p = cmsysProcess_WaitForData(cp, &data, &length, nullptr), p)) {
     if (p == cmsysProcess_Pipe_STDOUT || p == cmsysProcess_Pipe_STDERR) {
       if (verbose) {
-        cmSystemTools::Stdout(data, length);
+        processOutput.DecodeText(data, length, strdata);
+        cmSystemTools::Stdout(strdata.c_str(), strdata.size());
       }
       output.append(data, length);
     }
   }
 
+  if (verbose) {
+    processOutput.DecodeText(std::string(), strdata);
+    if (!strdata.empty()) {
+      cmSystemTools::Stdout(strdata.c_str(), strdata.size());
+    }
+  }
+
   // All output has been read.  Wait for the process to exit.
-  cmsysProcess_WaitForExit(cp, 0);
+  cmsysProcess_WaitForExit(cp, nullptr);
+  processOutput.DecodeText(output, output);
 
   // Check the result of running the process.
   std::string msg;

@@ -1,23 +1,13 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2015 Daniel Pfeifer <daniel@pfeifer-mail.de>
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmXMLWriter.h"
 
-#include "cmXMLSafe.h"
-
+#include "cmsys/FStream.hxx"
 #include <cassert>
-#include <fstream>
 
 cmXMLWriter::cmXMLWriter(std::ostream& output, std::size_t level)
   : Output(output)
+  , IndentationElement(1, '\t')
   , Level(level)
   , ElementOpen(false)
   , BreakAttrib(false)
@@ -107,14 +97,22 @@ void cmXMLWriter::ProcessingInstruction(const char* target, const char* data)
 void cmXMLWriter::FragmentFile(const char* fname)
 {
   this->CloseStartElement();
-  std::ifstream fin(fname, std::ios::in | std::ios::binary);
+  cmsys::ifstream fin(fname, std::ios::in | std::ios::binary);
   this->Output << fin.rdbuf();
+}
+
+void cmXMLWriter::SetIndentationElement(std::string const& element)
+{
+  this->IndentationElement = element;
 }
 
 void cmXMLWriter::ConditionalLineBreak(bool condition, std::size_t indent)
 {
   if (condition) {
-    this->Output << '\n' << std::string(indent + this->Level, '\t');
+    this->Output << '\n';
+    for (std::size_t i = 0; i < indent + this->Level; ++i) {
+      this->Output << this->IndentationElement;
+    }
   }
 }
 

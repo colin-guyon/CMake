@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindQt4
 # -------
@@ -297,19 +300,6 @@
 # ``QT_VERSION_PATCH``
 #  The patch version of Qt found.
 
-#=============================================================================
-# Copyright 2005-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
-
 # Use find_package( Qt4 COMPONENTS ... ) to enable modules
 if( Qt4_FIND_COMPONENTS )
   foreach( component ${Qt4_FIND_COMPONENTS} )
@@ -365,19 +355,21 @@ macro (_QT4_ADJUST_LIB_VARS _camelCaseBasename)
 
       if (QT_${basename}_LIBRARY_RELEASE)
         set_property(TARGET Qt4::${_camelCaseBasename} APPEND PROPERTY IMPORTED_CONFIGURATIONS RELEASE)
-        if(QT_USE_FRAMEWORKS)
-          set_property(TARGET Qt4::${_camelCaseBasename}        PROPERTY IMPORTED_LOCATION_RELEASE "${QT_${basename}_LIBRARY_RELEASE}/${_camelCaseBasename}" )
+        set(_location "${QT_${basename}_LIBRARY_RELEASE}")
+        if(QT_USE_FRAMEWORKS AND EXISTS ${_location}/${_camelCaseBasename})
+          set_property(TARGET Qt4::${_camelCaseBasename}        PROPERTY IMPORTED_LOCATION_RELEASE "${_location}/${_camelCaseBasename}" )
         else()
-          set_property(TARGET Qt4::${_camelCaseBasename}        PROPERTY IMPORTED_LOCATION_RELEASE "${QT_${basename}_LIBRARY_RELEASE}" )
+          set_property(TARGET Qt4::${_camelCaseBasename}        PROPERTY IMPORTED_LOCATION_RELEASE "${_location}" )
         endif()
       endif ()
 
       if (QT_${basename}_LIBRARY_DEBUG)
         set_property(TARGET Qt4::${_camelCaseBasename} APPEND PROPERTY IMPORTED_CONFIGURATIONS DEBUG)
-        if(QT_USE_FRAMEWORKS)
-          set_property(TARGET Qt4::${_camelCaseBasename}        PROPERTY IMPORTED_LOCATION_DEBUG "${QT_${basename}_LIBRARY_DEBUG}/${_camelCaseBasename}" )
+        set(_location "${QT_${basename}_LIBRARY_DEBUG}")
+        if(QT_USE_FRAMEWORKS AND EXISTS ${_location}/${_camelCaseBasename})
+          set_property(TARGET Qt4::${_camelCaseBasename}        PROPERTY IMPORTED_LOCATION_DEBUG "${_location}/${_camelCaseBasename}" )
         else()
-          set_property(TARGET Qt4::${_camelCaseBasename}        PROPERTY IMPORTED_LOCATION_DEBUG "${QT_${basename}_LIBRARY_DEBUG}" )
+          set_property(TARGET Qt4::${_camelCaseBasename}        PROPERTY IMPORTED_LOCATION_DEBUG "${_location}" )
         endif()
       endif ()
       set_property(TARGET Qt4::${_camelCaseBasename} PROPERTY
@@ -406,13 +398,14 @@ macro (_QT4_ADJUST_LIB_VARS _camelCaseBasename)
 
       # if the release- as well as the debug-version of the library have been found:
       if (QT_${basename}_LIBRARY_DEBUG AND QT_${basename}_LIBRARY_RELEASE)
-        # if the generator supports configuration types then set
-        # optimized and debug libraries, or if the CMAKE_BUILD_TYPE has a value
-        if (CMAKE_CONFIGURATION_TYPES OR CMAKE_BUILD_TYPE)
+        # if the generator is multi-config or if CMAKE_BUILD_TYPE is set for
+        # single-config generators, set optimized and debug libraries
+        get_property(_isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+        if(_isMultiConfig OR CMAKE_BUILD_TYPE)
           set(QT_${basename}_LIBRARY       optimized ${QT_${basename}_LIBRARY_RELEASE} debug ${QT_${basename}_LIBRARY_DEBUG})
         else()
-          # if there are no configuration types and CMAKE_BUILD_TYPE has no value
-          # then just use the release libraries
+          # For single-config generators where CMAKE_BUILD_TYPE has no value,
+          # just use the release libraries
           set(QT_${basename}_LIBRARY       ${QT_${basename}_LIBRARY_RELEASE} )
         endif()
         set(QT_${basename}_LIBRARIES       optimized ${QT_${basename}_LIBRARY_RELEASE} debug ${QT_${basename}_LIBRARY_DEBUG})
@@ -764,7 +757,7 @@ if (QT_QMAKE_EXECUTABLE AND
   #############################################
   cmake_push_check_state()
   # Add QT_INCLUDE_DIR to CMAKE_REQUIRED_INCLUDES
-  set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};${QT_INCLUDE_DIR}")
+  list(APPEND CMAKE_REQUIRED_INCLUDES "${QT_INCLUDE_DIR}")
   set(CMAKE_REQUIRED_QUIET ${Qt4_FIND_QUIETLY})
   # Check for Window system symbols (note: only one should end up being set)
   CHECK_CXX_SYMBOL_EXISTS(Q_WS_X11 "QtCore/qglobal.h" Q_WS_X11)

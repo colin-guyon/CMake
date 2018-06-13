@@ -1,18 +1,20 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2015 Stephen Kelly <steveire@gmail.com>
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmAlgorithms_h
 #define cmAlgorithms_h
 
-#include "cmStandardIncludes.h"
+#include "cmConfigure.h" // IWYU pragma: keep
+
+#include "cm_kwiml.h"
+#include <algorithm>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <sstream>
+#include <string.h>
+#include <string>
+#include <utility>
+#include <vector>
 
 inline bool cmHasLiteralPrefixImpl(const std::string& str1, const char* str2,
                                    size_t N)
@@ -38,22 +40,6 @@ inline bool cmHasLiteralSuffixImpl(const char* str1, const char* str2,
 {
   size_t len = strlen(str1);
   return len >= N && strcmp(str1 + len - N, str2) == 0;
-}
-
-template <typename T, size_t N>
-const T* cmArrayBegin(const T (&a)[N])
-{
-  return a;
-}
-template <typename T, size_t N>
-const T* cmArrayEnd(const T (&a)[N])
-{
-  return a + N;
-}
-template <typename T, size_t N>
-size_t cmArraySize(const T (&)[N])
-{
-  return N;
 }
 
 template <typename T, size_t N>
@@ -100,6 +86,12 @@ FwdIt cmRotate(FwdIt first, FwdIt middle, FwdIt last)
   return first;
 }
 
+template <typename Container, typename Predicate>
+void cmEraseIf(Container& cont, Predicate pred)
+{
+  cont.erase(std::remove_if(cont.begin(), cont.end(), pred), cont.end());
+}
+
 namespace ContainerAlgorithms {
 
 template <typename T>
@@ -112,7 +104,7 @@ struct cmIsPair
 };
 
 template <typename K, typename V>
-struct cmIsPair<std::pair<K, V> >
+struct cmIsPair<std::pair<K, V>>
 {
   enum
   {
@@ -241,7 +233,7 @@ std::string cmJoin(Range const& r, const char* delimiter)
 }
 
 template <typename Range>
-std::string cmJoin(Range const& r, std::string delimiter)
+std::string cmJoin(Range const& r, std::string const& delimiter)
 {
   return cmJoin(r, delimiter.c_str());
 }
@@ -343,17 +335,18 @@ typename Range::const_iterator cmRemoveDuplicates(Range& r)
 }
 
 template <typename Range>
-std::string cmWrap(std::string prefix, Range const& r, std::string suffix,
-                   std::string sep)
+std::string cmWrap(std::string const& prefix, Range const& r,
+                   std::string const& suffix, std::string const& sep)
 {
   if (r.empty()) {
     return std::string();
   }
-  return prefix + cmJoin(r, (suffix + sep + prefix).c_str()) + suffix;
+  return prefix + cmJoin(r, suffix + sep + prefix) + suffix;
 }
 
 template <typename Range>
-std::string cmWrap(char prefix, Range const& r, char suffix, std::string sep)
+std::string cmWrap(char prefix, Range const& r, char suffix,
+                   std::string const& sep)
 {
   return cmWrap(std::string(1, prefix), r, std::string(1, suffix), sep);
 }
@@ -361,8 +354,7 @@ std::string cmWrap(char prefix, Range const& r, char suffix, std::string sep)
 template <typename Range, typename T>
 typename Range::const_iterator cmFindNot(Range const& r, T const& t)
 {
-  return std::find_if(r.begin(), r.end(),
-                      std::bind1st(std::not_equal_to<T>(), t));
+  return std::find_if(r.begin(), r.end(), [&t](T const& i) { return i != t; });
 }
 
 template <typename Range>
@@ -393,5 +385,84 @@ inline void cmStripSuffixIfExists(std::string& str, const std::string& suffix)
     str.resize(str.size() - suffix.size());
   }
 }
+
+namespace cm {
+
+#if defined(CMake_HAVE_CXX_MAKE_UNIQUE)
+
+using std::make_unique;
+
+#else
+
+template <typename T, typename... Args>
+std::unique_ptr<T> make_unique(Args&&... args)
+{
+  return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+}
+
+#endif
+
+#if __cplusplus >= 201703L || defined(_MSVC_LANG) && _MSVC_LANG >= 201703L
+
+using std::size;
+
+#else
+
+// std::size backport from C++17.
+template <class C>
+#if !defined(_MSC_VER) || _MSC_VER >= 1900
+constexpr
+#endif
+  auto
+  size(C const& c) -> decltype(c.size())
+{
+  return c.size();
+}
+
+template <typename T, size_t N>
+#if !defined(_MSC_VER) || _MSC_VER >= 1900
+constexpr
+#endif
+  std::size_t
+  size(const T (&)[N]) throw()
+{
+  return N;
+}
+
+#endif
+
+#if __cplusplus >= 201402L || defined(_MSVC_LANG) && _MSVC_LANG >= 201402L
+
+using std::cbegin;
+using std::cend;
+
+#else
+
+// std::c{begin,end} backport from C++14
+template <class C>
+#if defined(_MSC_VER) && _MSC_VER < 1900
+auto cbegin(C const& c)
+#else
+constexpr auto cbegin(C const& c) noexcept(noexcept(std::begin(c)))
+#endif
+  -> decltype(std::begin(c))
+{
+  return std::begin(c);
+}
+
+template <class C>
+#if defined(_MSC_VER) && _MSC_VER < 1900
+auto cend(C const& c)
+#else
+constexpr auto cend(C const& c) noexcept(noexcept(std::end(c)))
+#endif
+  -> decltype(std::end(c))
+{
+  return std::end(c);
+}
+
+#endif
+
+} // namespace cm
 
 #endif

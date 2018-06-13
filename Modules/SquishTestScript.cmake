@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # SquishTestScript
 # ----------------
@@ -13,19 +16,6 @@
 # This script starts the Squish server, launches the test on the client,
 # and finally stops the squish server.  If any of these steps fail
 # (including if the tests do not pass) then a fatal error is raised.
-
-#=============================================================================
-# Copyright 2008-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 # print out the variable that we are using
 message(STATUS "squish_aut='${squish_aut}'")
@@ -44,7 +34,7 @@ message(STATUS "squish_settingsgroup='${squish_settingsgroup}'")
 message(STATUS "squish_pre_command='${squish_pre_command}'")
 message(STATUS "squish_post_command='${squish_post_command}'")
 
-# parse enviornment variables
+# parse environment variables
 foreach(i ${squish_env_vars})
   message(STATUS "parsing env var key/value pair ${i}")
   string(REGEX MATCH "([^=]*)=(.*)" squish_env_name ${i})

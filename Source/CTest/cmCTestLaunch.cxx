@@ -1,25 +1,24 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCTestLaunch.h"
 
+#include "cmsys/FStream.hxx"
+#include "cmsys/Process.h"
+#include "cmsys/RegularExpression.hxx"
+#include <iostream>
+#include <memory> // IWYU pragma: keep
+#include <stdlib.h>
+#include <string.h>
+
+#include "cmCryptoHash.h"
 #include "cmGeneratedFileStream.h"
+#include "cmGlobalGenerator.h"
+#include "cmMakefile.h"
+#include "cmProcessOutput.h"
+#include "cmStateSnapshot.h"
 #include "cmSystemTools.h"
 #include "cmXMLWriter.h"
 #include "cmake.h"
-
-#include <cmsys/FStream.hxx>
-#include <cmsys/MD5.h>
-#include <cmsys/Process.h>
-#include <cmsys/RegularExpression.hxx>
 
 #ifdef _WIN32
 #include <fcntl.h> // for _O_BINARY
@@ -30,7 +29,7 @@
 cmCTestLaunch::cmCTestLaunch(int argc, const char* const* argv)
 {
   this->Passthru = true;
-  this->Process = 0;
+  this->Process = nullptr;
   this->ExitCode = 1;
   this->CWD = cmSystemTools::GetCurrentWorkingDirectory();
 
@@ -126,12 +125,11 @@ bool cmCTestLaunch::ParseArguments(int argc, const char* const* argv)
       this->HandleRealArg(this->RealArgV[i]);
     }
     return true;
-  } else {
-    this->RealArgC = 0;
-    this->RealArgV = 0;
-    std::cerr << "No launch/command separator ('--') found!\n";
-    return false;
   }
+  this->RealArgC = 0;
+  this->RealArgV = nullptr;
+  std::cerr << "No launch/command separator ('--') found!\n";
+  return false;
 }
 
 void cmCTestLaunch::HandleRealArg(const char* arg)
@@ -168,17 +166,13 @@ void cmCTestLaunch::ComputeFileNames()
 
   // We hash the input command working dir and command line to obtain
   // a repeatable and (probably) unique name for log files.
-  char hash[32];
-  cmsysMD5* md5 = cmsysMD5_New();
-  cmsysMD5_Initialize(md5);
-  cmsysMD5_Append(md5, (unsigned char const*)(this->CWD.c_str()), -1);
-  for (std::vector<std::string>::const_iterator ai = this->RealArgs.begin();
-       ai != this->RealArgs.end(); ++ai) {
-    cmsysMD5_Append(md5, (unsigned char const*)ai->c_str(), -1);
+  cmCryptoHash md5(cmCryptoHash::AlgoMD5);
+  md5.Initialize();
+  md5.Append(this->CWD);
+  for (std::string const& realArg : this->RealArgs) {
+    md5.Append(realArg);
   }
-  cmsysMD5_FinalizeHex(md5, hash);
-  cmsysMD5_Delete(md5);
-  this->LogHash.assign(hash, 32);
+  this->LogHash = md5.FinalizeHex();
 
   // We store stdout and stderr in temporary log files.
   this->LogOut = this->LogDir;
@@ -227,23 +221,37 @@ void cmCTestLaunch::RunChild()
 
   // Record child stdout and stderr if necessary.
   if (!this->Passthru) {
-    char* data = 0;
+    char* data = nullptr;
     int length = 0;
-    while (int p = cmsysProcess_WaitForData(cp, &data, &length, 0)) {
+    cmProcessOutput processOutput;
+    std::string strdata;
+    while (int p = cmsysProcess_WaitForData(cp, &data, &length, nullptr)) {
       if (p == cmsysProcess_Pipe_STDOUT) {
-        fout.write(data, length);
-        std::cout.write(data, length);
+        processOutput.DecodeText(data, length, strdata, 1);
+        fout.write(strdata.c_str(), strdata.size());
+        std::cout.write(strdata.c_str(), strdata.size());
         this->HaveOut = true;
       } else if (p == cmsysProcess_Pipe_STDERR) {
-        ferr.write(data, length);
-        std::cerr.write(data, length);
+        processOutput.DecodeText(data, length, strdata, 2);
+        ferr.write(strdata.c_str(), strdata.size());
+        std::cerr.write(strdata.c_str(), strdata.size());
         this->HaveErr = true;
       }
+    }
+    processOutput.DecodeText(std::string(), strdata, 1);
+    if (!strdata.empty()) {
+      fout.write(strdata.c_str(), strdata.size());
+      std::cout.write(strdata.c_str(), strdata.size());
+    }
+    processOutput.DecodeText(std::string(), strdata, 2);
+    if (!strdata.empty()) {
+      ferr.write(strdata.c_str(), strdata.size());
+      std::cerr.write(strdata.c_str(), strdata.size());
     }
   }
 
   // Wait for the real command to finish.
-  cmsysProcess_WaitForExit(cp, 0);
+  cmsysProcess_WaitForExit(cp, nullptr);
   this->ExitCode = cmsysProcess_GetExitValue(cp);
 }
 
@@ -295,7 +303,8 @@ void cmCTestLaunch::LoadLabels()
     if (line.empty() || line[0] == '#') {
       // Ignore blank and comment lines.
       continue;
-    } else if (line[0] == ' ') {
+    }
+    if (line[0] == ' ') {
       // Label lines appear indented by one space.
       if (inTarget || inSource) {
         this->Labels.insert(line.c_str() + 1);
@@ -368,11 +377,10 @@ void cmCTestLaunch::WriteXMLAction(cmXMLWriter& xml)
     cmSystemTools::ConvertToUnixSlashes(source);
 
     // If file is in source tree use its relative location.
-    if (cmSystemTools::FileIsFullPath(this->SourceDir.c_str()) &&
-        cmSystemTools::FileIsFullPath(source.c_str()) &&
+    if (cmSystemTools::FileIsFullPath(this->SourceDir) &&
+        cmSystemTools::FileIsFullPath(source) &&
         cmSystemTools::IsSubDirectory(source, this->SourceDir)) {
-      source =
-        cmSystemTools::RelativePath(this->SourceDir.c_str(), source.c_str());
+      source = cmSystemTools::RelativePath(this->SourceDir, source);
     }
 
     xml.Element("SourceFile", source);
@@ -384,7 +392,7 @@ void cmCTestLaunch::WriteXMLAction(cmXMLWriter& xml)
   }
 
   // OutputType
-  const char* outputType = 0;
+  const char* outputType = nullptr;
   if (!this->OptionTargetType.empty()) {
     if (this->OptionTargetType == "EXECUTABLE") {
       outputType = "executable";
@@ -412,9 +420,8 @@ void cmCTestLaunch::WriteXMLCommand(cmXMLWriter& xml)
   if (!this->CWD.empty()) {
     xml.Element("WorkingDirectory", this->CWD);
   }
-  for (std::vector<std::string>::const_iterator ai = this->RealArgs.begin();
-       ai != this->RealArgs.end(); ++ai) {
-    xml.Element("Argument", *ai);
+  for (std::string const& realArg : this->RealArgs) {
+    xml.Element("Argument", realArg);
   }
   xml.EndElement(); // Command
 }
@@ -477,9 +484,8 @@ void cmCTestLaunch::WriteXMLLabels(cmXMLWriter& xml)
   if (!this->Labels.empty()) {
     xml.Comment("Interested parties");
     xml.StartElement("Labels");
-    for (std::set<std::string>::const_iterator li = this->Labels.begin();
-         li != this->Labels.end(); ++li) {
-      xml.Element("Label", *li);
+    for (std::string const& label : this->Labels) {
+      xml.Element("Label", label);
     }
     xml.EndElement(); // Labels
   }
@@ -496,7 +502,11 @@ void cmCTestLaunch::DumpFileToXML(cmXMLWriter& xml, std::string const& fname)
     if (MatchesFilterPrefix(line)) {
       continue;
     }
-
+    if (this->Match(line, this->RegexWarningSuppress)) {
+      line = "[CTest: warning suppressed] " + line;
+    } else if (this->Match(line, this->RegexWarning)) {
+      line = "[CTest: warning matched] " + line;
+    }
     xml.Content(sep);
     xml.Content(line);
     sep = "\n";
@@ -553,7 +563,7 @@ void cmCTestLaunch::LoadScrapeRules(
   std::string line;
   cmsys::RegularExpression rex;
   while (cmSystemTools::GetLineFromStream(fin, line)) {
-    if (rex.compile(line.c_str())) {
+    if (rex.compile(line)) {
       regexps.push_back(rex);
     }
   }
@@ -583,9 +593,8 @@ bool cmCTestLaunch::ScrapeLog(std::string const& fname)
 bool cmCTestLaunch::Match(std::string const& line,
                           std::vector<cmsys::RegularExpression>& regexps)
 {
-  for (std::vector<cmsys::RegularExpression>::iterator ri = regexps.begin();
-       ri != regexps.end(); ++ri) {
-    if (ri->find(line.c_str())) {
+  for (cmsys::RegularExpression& r : regexps) {
+    if (r.find(line.c_str())) {
       return true;
     }
   }
@@ -594,12 +603,8 @@ bool cmCTestLaunch::Match(std::string const& line,
 
 bool cmCTestLaunch::MatchesFilterPrefix(std::string const& line) const
 {
-  if (!this->OptionFilterPrefix.empty() &&
-      cmSystemTools::StringStartsWith(line.c_str(),
-                                      this->OptionFilterPrefix.c_str())) {
-    return true;
-  }
-  return false;
+  return !this->OptionFilterPrefix.empty() &&
+    cmSystemTools::StringStartsWith(line, this->OptionFilterPrefix.c_str());
 }
 
 int cmCTestLaunch::Main(int argc, const char* const argv[])
@@ -613,23 +618,18 @@ int cmCTestLaunch::Main(int argc, const char* const argv[])
   return self.Run();
 }
 
-#include "cmGlobalGenerator.h"
-#include "cmMakefile.h"
-#include "cmake.h"
-#include <cmsys/auto_ptr.hxx>
 void cmCTestLaunch::LoadConfig()
 {
-  cmake cm;
+  cmake cm(cmake::RoleScript);
   cm.SetHomeDirectory("");
   cm.SetHomeOutputDirectory("");
   cm.GetCurrentSnapshot().SetDefaultDefinitions();
   cmGlobalGenerator gg(&cm);
-  cmsys::auto_ptr<cmMakefile> mf(new cmMakefile(&gg, cm.GetCurrentSnapshot()));
+  cmMakefile mf(&gg, cm.GetCurrentSnapshot());
   std::string fname = this->LogDir;
   fname += "CTestLaunchConfig.cmake";
-  if (cmSystemTools::FileExists(fname.c_str()) &&
-      mf->ReadListFile(fname.c_str())) {
-    this->SourceDir = mf->GetSafeDefinition("CTEST_SOURCE_DIRECTORY");
+  if (cmSystemTools::FileExists(fname) && mf.ReadListFile(fname.c_str())) {
+    this->SourceDir = mf.GetSafeDefinition("CTEST_SOURCE_DIRECTORY");
     cmSystemTools::ConvertToUnixSlashes(this->SourceDir);
   }
 }

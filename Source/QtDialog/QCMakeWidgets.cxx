@@ -1,15 +1,5 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "QCMakeWidgets.h"
 
 #include <QDirModel>
@@ -64,11 +54,11 @@ void QCMakeFilePathEditor::chooseFile()
     title = tr("Select File for %1");
     title = title.arg(this->Variable);
   }
-  this->fileDialogExists(true);
+  emit this->fileDialogExists(true);
   path =
     QFileDialog::getOpenFileName(this, title, info.absolutePath(), QString(),
-                                 NULL, QFileDialog::DontResolveSymlinks);
-  this->fileDialogExists(false);
+                                 nullptr, QFileDialog::DontResolveSymlinks);
+  emit this->fileDialogExists(false);
 
   if (!path.isEmpty()) {
     this->setText(QDir::fromNativeSeparators(path));
@@ -86,11 +76,11 @@ void QCMakePathEditor::chooseFile()
     title = tr("Select Path for %1");
     title = title.arg(this->Variable);
   }
-  this->fileDialogExists(true);
+  emit this->fileDialogExists(true);
   path = QFileDialog::getExistingDirectory(this, title, this->text(),
                                            QFileDialog::ShowDirsOnly |
                                              QFileDialog::DontResolveSymlinks);
-  this->fileDialogExists(false);
+  emit this->fileDialogExists(false);
   if (!path.isEmpty()) {
     this->setText(QDir::fromNativeSeparators(path));
   }
@@ -99,7 +89,7 @@ void QCMakePathEditor::chooseFile()
 // use same QDirModel for all completers
 static QDirModel* fileDirModel()
 {
-  static QDirModel* m = NULL;
+  static QDirModel* m = nullptr;
   if (!m) {
     m = new QDirModel();
   }
@@ -107,7 +97,7 @@ static QDirModel* fileDirModel()
 }
 static QDirModel* pathDirModel()
 {
-  static QDirModel* m = NULL;
+  static QDirModel* m = nullptr;
   if (!m) {
     m = new QDirModel();
     m->setFilter(QDir::AllDirs | QDir::Drives | QDir::NoDotAndDotDot);

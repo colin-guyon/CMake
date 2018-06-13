@@ -1,17 +1,9 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef QCMake_h
 #define QCMake_h
+
+#include "cmConfigure.h" // IWYU pragma: keep
 
 #include "cmake.h"
 
@@ -71,7 +63,7 @@ class QCMake : public QObject
 {
   Q_OBJECT
 public:
-  QCMake(QObject* p = 0);
+  QCMake(QObject* p = nullptr);
   ~QCMake();
 public slots:
   /// load the cache file in a directory
@@ -88,6 +80,8 @@ public slots:
   void configure();
   /// generate the files
   void generate();
+  /// open the project
+  void open();
   /// set the property values
   void setProperties(const QCMakePropertyList&);
   /// interrupt the configure or generate process (if connecting, make a direct
@@ -119,6 +113,8 @@ public slots:
   void setWarnUninitializedMode(bool value);
   /// set whether to run cmake with warnings about unused variables
   void setWarnUnusedMode(bool value);
+  /// check if project IDE open is possible and emit openPossible signal
+  void checkOpenPossible();
 
 public:
   /// get the list of cache properties
@@ -159,6 +155,10 @@ signals:
   void debugOutputChanged(bool);
   /// signal when the toolset changes
   void toolsetChanged(const QString& toolset);
+  /// signal when open is done
+  void openDone(bool successful);
+  /// signal when open is done
+  void openPossible(bool possible);
 
 protected:
   cmake* CMakeInstance;

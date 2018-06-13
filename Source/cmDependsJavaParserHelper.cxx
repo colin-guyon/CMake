@@ -1,19 +1,16 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmDependsJavaParserHelper.h"
 
 #include "cmDependsJavaLexer.h"
 #include "cmSystemTools.h"
-#include <cmsys/FStream.hxx>
+
+#include "cmsys/FStream.hxx"
+#include <iostream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <utility>
 
 int cmDependsJava_yyparse(yyscan_t yyscanner);
 
@@ -26,7 +23,7 @@ cmDependsJavaParserHelper::cmDependsJavaParserHelper()
 
   CurrentClass tl;
   tl.Name = "*";
-  this->ClassStack.push_back(tl);
+  this->ClassStack.push_back(std::move(tl));
 }
 
 cmDependsJavaParserHelper::~cmDependsJavaParserHelper()
@@ -35,19 +32,17 @@ cmDependsJavaParserHelper::~cmDependsJavaParserHelper()
 }
 
 void cmDependsJavaParserHelper::CurrentClass::AddFileNamesForPrinting(
-  std::vector<std::string>* files, const char* prefix, const char* sep)
+  std::vector<std::string>* files, const char* prefix, const char* sep) const
 {
-  std::string rname = "";
+  std::string rname;
   if (prefix) {
     rname += prefix;
     rname += sep;
   }
   rname += this->Name;
   files->push_back(rname);
-  std::vector<CurrentClass>::iterator it;
-  for (it = this->NestedClasses->begin(); it != this->NestedClasses->end();
-       ++it) {
-    it->AddFileNamesForPrinting(files, rname.c_str(), sep);
+  for (CurrentClass const& nc : this->NestedClasses) {
+    nc.AddFileNamesForPrinting(files, rname.c_str(), sep);
   }
 }
 
@@ -59,7 +54,7 @@ void cmDependsJavaParserHelper::DeallocateParserType(char** pt)
   if (!*pt) {
     return;
   }
-  *pt = 0;
+  *pt = nullptr;
   this->UnionsAvailable--;
 }
 
@@ -68,9 +63,8 @@ void cmDependsJavaParserHelper::AddClassFound(const char* sclass)
   if (!sclass) {
     return;
   }
-  std::vector<std::string>::iterator it;
-  for (it = this->ClassesFound.begin(); it != this->ClassesFound.end(); it++) {
-    if (*it == sclass) {
+  for (std::string const& cf : this->ClassesFound) {
+    if (cf == sclass) {
       return;
     }
   }
@@ -79,10 +73,8 @@ void cmDependsJavaParserHelper::AddClassFound(const char* sclass)
 
 void cmDependsJavaParserHelper::AddPackagesImport(const char* sclass)
 {
-  std::vector<std::string>::iterator it;
-  for (it = this->PackagesImport.begin(); it != this->PackagesImport.end();
-       it++) {
-    if (*it == sclass) {
+  for (std::string const& pi : this->PackagesImport) {
+    if (pi == sclass) {
       return;
     }
   }
@@ -98,9 +90,9 @@ void cmDependsJavaParserHelper::SafePrintMissing(const char* str, int line,
     for (cc = 0; cc < strlen(str); cc++) {
       unsigned char ch = str[cc];
       if (ch >= 32 && ch <= 126) {
-        std::cout << (char)ch;
+        std::cout << static_cast<char>(ch);
       } else {
-        std::cout << "<" << (int)ch << ">";
+        std::cout << "<" << static_cast<int>(ch) << ">";
         break;
       }
     }
@@ -160,15 +152,15 @@ void cmDependsJavaParserHelper::PrepareElement(
   cmDependsJavaParserHelper::ParserType* me)
 {
   // Inititalize self
-  me->str = 0;
+  me->str = nullptr;
 }
 
 void cmDependsJavaParserHelper::AllocateParserType(
   cmDependsJavaParserHelper::ParserType* pt, const char* str, int len)
 {
-  pt->str = 0;
+  pt->str = nullptr;
   if (len == 0) {
-    len = (int)strlen(str);
+    len = static_cast<int>(strlen(str));
   }
   if (len == 0) {
     return;
@@ -184,32 +176,26 @@ void cmDependsJavaParserHelper::StartClass(const char* cls)
 {
   CurrentClass cl;
   cl.Name = cls;
-  this->ClassStack.push_back(cl);
+  this->ClassStack.push_back(std::move(cl));
 
   this->CurrentDepth++;
 }
 
 void cmDependsJavaParserHelper::EndClass()
 {
-  CurrentClass* parent = 0;
-  CurrentClass* current = 0;
-  if (!this->ClassStack.empty()) {
-    current = &(*(this->ClassStack.end() - 1));
-    if (this->ClassStack.size() > 1) {
-      parent = &(*(this->ClassStack.end() - 2));
-    }
-  }
-  if (current == 0) {
+  if (this->ClassStack.empty()) {
     std::cerr << "Error when parsing. Current class is null" << std::endl;
     abort();
   }
-  if (parent == 0) {
+  if (this->ClassStack.size() <= 1) {
     std::cerr << "Error when parsing. Parent class is null" << std::endl;
     abort();
   }
+  CurrentClass& current = this->ClassStack.back();
+  CurrentClass& parent = this->ClassStack[this->ClassStack.size() - 2];
   this->CurrentDepth--;
-  parent->NestedClasses->push_back(*current);
-  this->ClassStack.erase(this->ClassStack.end() - 1, this->ClassStack.end());
+  parent.NestedClasses.push_back(current);
+  this->ClassStack.pop_back();
 }
 
 void cmDependsJavaParserHelper::PrintClasses()
@@ -218,21 +204,17 @@ void cmDependsJavaParserHelper::PrintClasses()
     std::cerr << "Error when parsing. No classes on class stack" << std::endl;
     abort();
   }
-  std::vector<std::string> files = this->GetFilesProduced();
-  std::vector<std::string>::iterator sit;
-  for (sit = files.begin(); sit != files.end(); ++sit) {
-    std::cout << "  " << *sit << ".class" << std::endl;
+  for (std::string const& f : this->GetFilesProduced()) {
+    std::cout << "  " << f << ".class" << std::endl;
   }
 }
 
 std::vector<std::string> cmDependsJavaParserHelper::GetFilesProduced()
 {
   std::vector<std::string> files;
-  CurrentClass* toplevel = &(*(this->ClassStack.begin()));
-  std::vector<CurrentClass>::iterator it;
-  for (it = toplevel->NestedClasses->begin();
-       it != toplevel->NestedClasses->end(); ++it) {
-    it->AddFileNamesForPrinting(&files, 0, "$");
+  CurrentClass const& toplevel = this->ClassStack.front();
+  for (CurrentClass const& nc : toplevel.NestedClasses) {
+    nc.AddFileNamesForPrinting(&files, nullptr, "$");
   }
   return files;
 }
@@ -272,10 +254,8 @@ int cmDependsJavaParserHelper::ParseString(const char* str, int verb)
     std::cout << std::endl;
     std::cout << "Depends on:";
     if (!this->ClassesFound.empty()) {
-      std::vector<std::string>::iterator it;
-      for (it = this->ClassesFound.begin(); it != this->ClassesFound.end();
-           ++it) {
-        std::cout << " " << *it;
+      for (std::string const& cf : this->ClassesFound) {
+        std::cout << " " << cf;
       }
     }
     std::cout << std::endl;
@@ -292,9 +272,8 @@ int cmDependsJavaParserHelper::ParseString(const char* str, int verb)
 
 void cmDependsJavaParserHelper::CleanupParser()
 {
-  std::vector<char*>::iterator it;
-  for (it = this->Allocates.begin(); it != this->Allocates.end(); ++it) {
-    delete[] * it;
+  for (char* allocate : this->Allocates) {
+    delete[] allocate;
   }
   this->Allocates.erase(this->Allocates.begin(), this->Allocates.end());
 }
@@ -309,11 +288,10 @@ int cmDependsJavaParserHelper::LexInput(char* buf, int maxlen)
     if (buf[0] == '\n') {
       this->CurrentLine++;
     }
-    return (1);
-  } else {
-    buf[0] = '\n';
-    return (0);
+    return 1;
   }
+  buf[0] = '\n';
+  return 0;
 }
 void cmDependsJavaParserHelper::Error(const char* str)
 {
@@ -333,7 +311,7 @@ void cmDependsJavaParserHelper::Error(const char* str)
 void cmDependsJavaParserHelper::UpdateCombine(const char* str1,
                                               const char* str2)
 {
-  if (this->CurrentCombine == "" && str1 != 0) {
+  if (this->CurrentCombine.empty() && str1 != nullptr) {
     this->CurrentCombine = str1;
   }
   this->CurrentCombine += ".";
@@ -350,7 +328,7 @@ int cmDependsJavaParserHelper::ParseFile(const char* file)
     return 0;
   }
 
-  std::string fullfile = "";
+  std::string fullfile;
   std::string line;
   while (cmSystemTools::GetLineFromStream(ifs, line)) {
     fullfile += line + "\n";

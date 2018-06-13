@@ -1,19 +1,11 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmXCodeObject.h"
 
-#include "cmSystemTools.h"
+#include <CoreFoundation/CoreFoundation.h>
+#include <ostream>
 
-#include <CoreFoundation/CoreFoundation.h> // CFUUIDCreate
+#include "cmSystemTools.h"
 
 const char* cmXCodeObject::PBXTypeNames[] = {
   /* clang-format needs this comment to break after the opening brace */
@@ -50,8 +42,8 @@ cmXCodeObject::~cmXCodeObject()
 cmXCodeObject::cmXCodeObject(PBXType ptype, Type type)
 {
   this->Version = 15;
-  this->Target = 0;
-  this->Object = 0;
+  this->Target = nullptr;
+  this->Object = nullptr;
 
   this->IsA = ptype;
 
@@ -79,8 +71,24 @@ cmXCodeObject::cmXCodeObject(PBXType ptype, Type type)
 
   this->TypeValue = type;
   if (this->TypeValue == OBJECT) {
-    this->AddAttribute("isa", 0);
+    this->AddAttribute("isa", nullptr);
   }
+}
+
+bool cmXCodeObject::IsEmpty() const
+{
+  switch (this->TypeValue) {
+    case OBJECT_LIST:
+      return this->List.empty();
+    case STRING:
+      return this->String.empty();
+    case ATTRIBUTE_GROUP:
+      return this->ObjectAttributes.empty();
+    case OBJECT_REF:
+    case OBJECT:
+      return this->Object == nullptr;
+  }
+  return true; // unreachable, but quiets warnings
 }
 
 void cmXCodeObject::Indent(int level, std::ostream& out)
@@ -107,23 +115,23 @@ void cmXCodeObject::Print(std::ostream& out)
   if (separator == "\n") {
     out << separator;
   }
-  std::map<std::string, cmXCodeObject*>::iterator i;
   cmXCodeObject::Indent(3 * indentFactor, out);
   out << "isa = " << PBXTypeNames[this->IsA] << ";" << separator;
-  for (i = this->ObjectAttributes.begin(); i != this->ObjectAttributes.end();
-       ++i) {
-    if (i->first == "isa")
+  for (const auto& keyVal : this->ObjectAttributes) {
+    if (keyVal.first == "isa") {
       continue;
+    }
 
-    PrintAttribute(out, 3, separator, indentFactor, i->first, i->second, this);
+    PrintAttribute(out, 3, separator, indentFactor, keyVal.first,
+                   keyVal.second, this);
   }
   cmXCodeObject::Indent(2 * indentFactor, out);
   out << "};\n";
 }
 
-void cmXCodeObject::PrintAttribute(std::ostream& out, const int level,
-                                   const std::string separator,
-                                   const int factor, const std::string& name,
+void cmXCodeObject::PrintAttribute(std::ostream& out, int level,
+                                   const std::string& separator, int factor,
+                                   const std::string& name,
                                    const cmXCodeObject* object,
                                    const cmXCodeObject* parent)
 {
@@ -158,11 +166,9 @@ void cmXCodeObject::PrintAttribute(std::ostream& out, const int level,
       if (separator == "\n") {
         out << separator;
       }
-      std::map<std::string, cmXCodeObject*>::const_iterator i;
-      for (i = object->ObjectAttributes.begin();
-           i != object->ObjectAttributes.end(); ++i) {
-        PrintAttribute(out, (level + 1) * factor, separator, factor, i->first,
-                       i->second, object);
+      for (const auto& keyVal : object->ObjectAttributes) {
+        PrintAttribute(out, (level + 1) * factor, separator, factor,
+                       keyVal.first, keyVal.second, object);
       }
       cmXCodeObject::Indent(level * factor, out);
       out << "};" << separator;
@@ -195,9 +201,9 @@ void cmXCodeObject::PrintList(std::vector<cmXCodeObject*> const& objs,
 {
   cmXCodeObject::Indent(1, out);
   out << "objects = {\n";
-  for (unsigned int i = 0; i < objs.size(); ++i) {
-    if (objs[i]->TypeValue == OBJECT) {
-      objs[i]->Print(out);
+  for (auto obj : objs) {
+    if (obj->TypeValue == OBJECT) {
+      obj->Print(out);
     }
   }
   cmXCodeObject::Indent(1, out);
@@ -212,26 +218,25 @@ void cmXCodeObject::CopyAttributes(cmXCodeObject* copy)
   this->Object = copy->Object;
 }
 
-void cmXCodeObject::PrintString(std::ostream& os, std::string String)
+void cmXCodeObject::PrintString(std::ostream& os, const std::string& String)
 {
   // The string needs to be quoted if it contains any characters
   // considered special by the Xcode project file parser.
-  bool needQuote = (String.empty() || String.find("//") != String.npos ||
+  bool needQuote = (String.empty() || String.find("//") != std::string::npos ||
                     String.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                                              "abcdefghijklmnopqrstuvwxyz"
                                              "0123456789"
-                                             "$_./") != String.npos);
+                                             "$_./") != std::string::npos);
   const char* quote = needQuote ? "\"" : "";
 
   // Print the string, quoted and escaped as necessary.
   os << quote;
-  for (std::string::const_iterator i = String.begin(); i != String.end();
-       ++i) {
-    if (*i == '"' || *i == '\\') {
+  for (auto c : String) {
+    if (c == '"' || c == '\\') {
       // Escape double-quotes and backslashes.
       os << '\\';
     }
-    os << *i;
+    os << c;
   }
   os << quote;
 }

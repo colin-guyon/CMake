@@ -1,17 +1,15 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmVariableWatchCommand.h"
 
+#include <sstream>
+
+#include "cmExecutionStatus.h"
+#include "cmListFileCache.h"
+#include "cmMakefile.h"
+#include "cmSystemTools.h"
 #include "cmVariableWatch.h"
+#include "cmake.h"
 
 struct cmVariableWatchCallbackData
 {
@@ -45,16 +43,14 @@ static void cmVariableWatchCommandVariableAccessed(const std::string& variable,
   std::string stack = makefile->GetProperty("LISTFILE_STACK");
   if (!data->Command.empty()) {
     newLFF.Arguments.clear();
-    newLFF.Arguments.push_back(
-      cmListFileArgument(variable, cmListFileArgument::Quoted, 9999));
-    newLFF.Arguments.push_back(
-      cmListFileArgument(accessString, cmListFileArgument::Quoted, 9999));
-    newLFF.Arguments.push_back(cmListFileArgument(
-      newValue ? newValue : "", cmListFileArgument::Quoted, 9999));
-    newLFF.Arguments.push_back(
-      cmListFileArgument(currentListFile, cmListFileArgument::Quoted, 9999));
-    newLFF.Arguments.push_back(
-      cmListFileArgument(stack, cmListFileArgument::Quoted, 9999));
+    newLFF.Arguments.emplace_back(variable, cmListFileArgument::Quoted, 9999);
+    newLFF.Arguments.emplace_back(accessString, cmListFileArgument::Quoted,
+                                  9999);
+    newLFF.Arguments.emplace_back(newValue ? newValue : "",
+                                  cmListFileArgument::Quoted, 9999);
+    newLFF.Arguments.emplace_back(currentListFile, cmListFileArgument::Quoted,
+                                  9999);
+    newLFF.Arguments.emplace_back(stack, cmListFileArgument::Quoted, 9999);
     newLFF.Name = data->Command;
     newLFF.Line = 9999;
     cmExecutionStatus status;
@@ -93,22 +89,20 @@ cmVariableWatchCommand::cmVariableWatchCommand()
 
 cmVariableWatchCommand::~cmVariableWatchCommand()
 {
-  std::set<std::string>::const_iterator it;
-  for (it = this->WatchedVariables.begin(); it != this->WatchedVariables.end();
-       ++it) {
+  for (std::string const& wv : this->WatchedVariables) {
     this->Makefile->GetCMakeInstance()->GetVariableWatch()->RemoveWatch(
-      *it, cmVariableWatchCommandVariableAccessed);
+      wv, cmVariableWatchCommandVariableAccessed);
   }
 }
 
 bool cmVariableWatchCommand::InitialPass(std::vector<std::string> const& args,
                                          cmExecutionStatus&)
 {
-  if (args.size() < 1) {
+  if (args.empty()) {
     this->SetError("must be called with at least one argument.");
     return false;
   }
-  std::string variable = args[0];
+  std::string const& variable = args[0];
   std::string command;
   if (args.size() > 1) {
     command = args[1];

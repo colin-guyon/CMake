@@ -1,27 +1,10 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCTestUpdateHandler.h"
 
+#include "cmAlgorithms.h"
 #include "cmCLocaleEnvironmentScope.h"
 #include "cmCTest.h"
-#include "cmGeneratedFileStream.h"
-#include "cmGlobalGenerator.h"
-#include "cmMakefile.h"
-#include "cmVersion.h"
-#include "cmXMLParser.h"
-#include "cmXMLWriter.h"
-#include "cmake.h"
-
 #include "cmCTestBZR.h"
 #include "cmCTestCVS.h"
 #include "cmCTestGIT.h"
@@ -29,20 +12,14 @@
 #include "cmCTestP4.h"
 #include "cmCTestSVN.h"
 #include "cmCTestVC.h"
+#include "cmGeneratedFileStream.h"
+#include "cmSystemTools.h"
+#include "cmVersion.h"
+#include "cmXMLWriter.h"
 
-#include <cmsys/auto_ptr.hxx>
-
-//#include <cmsys/RegularExpression.hxx>
-#include <cmsys/Process.h>
-
-// used for sleep
-#ifdef _WIN32
-#include "windows.h"
-#endif
-
-#include <float.h>
-#include <math.h>
-#include <stdlib.h>
+#include <chrono>
+#include <memory> // IWYU pragma: keep
+#include <sstream>
 
 static const char* cmCTestUpdateHandlerUpdateStrings[] = {
   "Unknown", "CVS", "SVN", "BZR", "GIT", "HG", "P4"
@@ -64,7 +41,7 @@ cmCTestUpdateHandler::cmCTestUpdateHandler()
 void cmCTestUpdateHandler::Initialize()
 {
   this->Superclass::Initialize();
-  this->UpdateCommand = "";
+  this->UpdateCommand.clear();
   this->UpdateType = e_CVS;
 }
 
@@ -159,28 +136,28 @@ int cmCTestUpdateHandler::ProcessHandler()
                      , this->Quiet);
 
   // Create an object to interact with the VCS tool.
-  cmsys::auto_ptr<cmCTestVC> vc;
+  std::unique_ptr<cmCTestVC> vc;
   switch (this->UpdateType) {
     case e_CVS:
-      vc.reset(new cmCTestCVS(this->CTest, ofs));
+      vc = cm::make_unique<cmCTestCVS>(this->CTest, ofs);
       break;
     case e_SVN:
-      vc.reset(new cmCTestSVN(this->CTest, ofs));
+      vc = cm::make_unique<cmCTestSVN>(this->CTest, ofs);
       break;
     case e_BZR:
-      vc.reset(new cmCTestBZR(this->CTest, ofs));
+      vc = cm::make_unique<cmCTestBZR>(this->CTest, ofs);
       break;
     case e_GIT:
-      vc.reset(new cmCTestGIT(this->CTest, ofs));
+      vc = cm::make_unique<cmCTestGIT>(this->CTest, ofs);
       break;
     case e_HG:
-      vc.reset(new cmCTestHG(this->CTest, ofs));
+      vc = cm::make_unique<cmCTestHG>(this->CTest, ofs);
       break;
     case e_P4:
-      vc.reset(new cmCTestP4(this->CTest, ofs));
+      vc = cm::make_unique<cmCTestP4>(this->CTest, ofs);
       break;
     default:
-      vc.reset(new cmCTestVC(this->CTest, ofs));
+      vc = cm::make_unique<cmCTestVC>(this->CTest, ofs);
       break;
   }
   vc->SetCommandLineTool(this->UpdateCommand);
@@ -199,9 +176,8 @@ int cmCTestUpdateHandler::ProcessHandler()
     return -1;
   }
   std::string start_time = this->CTest->CurrentTime();
-  unsigned int start_time_time =
-    static_cast<unsigned int>(cmSystemTools::GetTime());
-  double elapsed_time_start = cmSystemTools::GetTime();
+  auto start_time_time = std::chrono::system_clock::now();
+  auto elapsed_time_start = std::chrono::steady_clock::now();
 
   bool updated = vc->Update();
   std::string buildname =
@@ -223,7 +199,7 @@ int cmCTestUpdateHandler::ProcessHandler()
   xml.Element("UpdateType",
               cmCTestUpdateHandlerUpdateToString(this->UpdateType));
 
-  vc->WriteXML(xml);
+  bool loadedMods = vc->WriteXML(xml);
 
   int localModifications = 0;
   int numUpdated = vc->GetPathCount(cmCTestVC::PathUpdated);
@@ -248,11 +224,11 @@ int cmCTestUpdateHandler::ProcessHandler()
   cmCTestOptionalLog(this->CTest, DEBUG, "End" << std::endl, this->Quiet);
   std::string end_time = this->CTest->CurrentTime();
   xml.Element("EndDateTime", end_time);
-  xml.Element("EndTime", static_cast<unsigned int>(cmSystemTools::GetTime()));
-  xml.Element(
-    "ElapsedMinutes",
-    static_cast<int>((cmSystemTools::GetTime() - elapsed_time_start) / 6) /
-      10.0);
+  xml.Element("EndTime", std::chrono::system_clock::now());
+  xml.Element("ElapsedMinutes",
+              std::chrono::duration_cast<std::chrono::minutes>(
+                std::chrono::steady_clock::now() - elapsed_time_start)
+                .count());
 
   xml.StartElement("UpdateReturnStatus");
   if (localModifications) {
@@ -271,7 +247,7 @@ int cmCTestUpdateHandler::ProcessHandler()
   xml.EndElement(); // UpdateReturnStatus
   xml.EndElement(); // Update
   xml.EndDocument();
-  return updated ? numUpdated : -1;
+  return updated && loadedMods ? numUpdated : -1;
 }
 
 int cmCTestUpdateHandler::DetectVCS(const char* dir)
@@ -281,37 +257,37 @@ int cmCTestUpdateHandler::DetectVCS(const char* dir)
                      "Check directory: " << sourceDirectory << std::endl,
                      this->Quiet);
   sourceDirectory += "/.svn";
-  if (cmSystemTools::FileExists(sourceDirectory.c_str())) {
+  if (cmSystemTools::FileExists(sourceDirectory)) {
     return cmCTestUpdateHandler::e_SVN;
   }
   sourceDirectory = dir;
   sourceDirectory += "/CVS";
-  if (cmSystemTools::FileExists(sourceDirectory.c_str())) {
+  if (cmSystemTools::FileExists(sourceDirectory)) {
     return cmCTestUpdateHandler::e_CVS;
   }
   sourceDirectory = dir;
   sourceDirectory += "/.bzr";
-  if (cmSystemTools::FileExists(sourceDirectory.c_str())) {
+  if (cmSystemTools::FileExists(sourceDirectory)) {
     return cmCTestUpdateHandler::e_BZR;
   }
   sourceDirectory = dir;
   sourceDirectory += "/.git";
-  if (cmSystemTools::FileExists(sourceDirectory.c_str())) {
+  if (cmSystemTools::FileExists(sourceDirectory)) {
     return cmCTestUpdateHandler::e_GIT;
   }
   sourceDirectory = dir;
   sourceDirectory += "/.hg";
-  if (cmSystemTools::FileExists(sourceDirectory.c_str())) {
+  if (cmSystemTools::FileExists(sourceDirectory)) {
     return cmCTestUpdateHandler::e_HG;
   }
   sourceDirectory = dir;
   sourceDirectory += "/.p4";
-  if (cmSystemTools::FileExists(sourceDirectory.c_str())) {
+  if (cmSystemTools::FileExists(sourceDirectory)) {
     return cmCTestUpdateHandler::e_P4;
   }
   sourceDirectory = dir;
   sourceDirectory += "/.p4config";
-  if (cmSystemTools::FileExists(sourceDirectory.c_str())) {
+  if (cmSystemTools::FileExists(sourceDirectory)) {
     return cmCTestUpdateHandler::e_P4;
   }
   return cmCTestUpdateHandler::e_UNKNOWN;
@@ -334,7 +310,7 @@ bool cmCTestUpdateHandler::SelectVCS()
 
   // If no update command was specified, lookup one for this VCS tool.
   if (this->UpdateCommand.empty()) {
-    const char* key = 0;
+    const char* key = nullptr;
     switch (this->UpdateType) {
       case e_CVS:
         key = "CVSCommand";

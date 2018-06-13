@@ -1,18 +1,17 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCTestSubmitHandler_h
 #define cmCTestSubmitHandler_h
 
+#include "cmConfigure.h" // IWYU pragma: keep
+
+#include "cmCTest.h"
 #include "cmCTestGenericHandler.h"
+
+#include <iosfwd>
+#include <set>
+#include <string>
+#include <vector>
 
 /** \class cmCTestSubmitHandler
  * \brief Helper class for CTest
@@ -23,17 +22,17 @@
 class cmCTestSubmitHandler : public cmCTestGenericHandler
 {
 public:
-  cmTypeMacro(cmCTestSubmitHandler, cmCTestGenericHandler);
+  typedef cmCTestGenericHandler Superclass;
 
   cmCTestSubmitHandler();
-  ~cmCTestSubmitHandler() { this->LogFile = 0; }
+  ~cmCTestSubmitHandler() override { this->LogFile = nullptr; }
 
   /*
    * The main entry point for this class
    */
-  int ProcessHandler();
+  int ProcessHandler() override;
 
-  void Initialize();
+  void Initialize() override;
 
   /** Specify a set of parts (by name) to submit.  */
   void SelectParts(std::set<cmCTest::Part> const& parts);
@@ -43,6 +42,11 @@ public:
 
   // handle the cdash file upload protocol
   int HandleCDashUploadFile(std::string const& file, std::string const& type);
+
+  void SetHttpHeaders(std::vector<std::string> const& v)
+  {
+    this->HttpHeaders = v;
+  }
 
   void ConstructCDashURL(std::string& dropMethod, std::string& url);
 
@@ -84,6 +88,7 @@ private:
   std::string GetSubmitResultsPrefix();
 
   class ResponseParser;
+
   std::string HTTPProxy;
   int HTTPProxyType;
   std::string HTTPProxyAuth;
@@ -95,6 +100,7 @@ private:
   bool HasWarnings;
   bool HasErrors;
   cmCTest::SetOfStrings Files;
+  std::vector<std::string> HttpHeaders;
 };
 
 #endif

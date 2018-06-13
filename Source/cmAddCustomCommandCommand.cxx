@@ -1,19 +1,22 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmAddCustomCommandCommand.h"
 
-#include "cmTarget.h"
+#include <sstream>
+#include <unordered_set>
+#include <utility>
 
+#include "cmCustomCommand.h"
+#include "cmCustomCommandLines.h"
+#include "cmGlobalGenerator.h"
+#include "cmMakefile.h"
+#include "cmPolicies.h"
 #include "cmSourceFile.h"
+#include "cmSystemTools.h"
+#include "cmTarget.h"
+#include "cmake.h"
+
+class cmExecutionStatus;
 
 // cmAddCustomCommandCommand
 bool cmAddCustomCommandCommand::InitialPass(
@@ -28,13 +31,14 @@ bool cmAddCustomCommandCommand::InitialPass(
     return false;
   }
 
-  std::string source, target, main_dependency, working;
+  std::string source, target, main_dependency, working, depfile;
   std::string comment_buffer;
-  const char* comment = 0;
+  const char* comment = nullptr;
   std::vector<std::string> depends, outputs, output, byproducts;
   bool verbatim = false;
   bool append = false;
   bool uses_terminal = false;
+  bool command_expand_lists = false;
   std::string implicit_depends_lang;
   cmCustomCommand::ImplicitDependsList implicit_depends;
 
@@ -60,63 +64,120 @@ bool cmAddCustomCommandCommand::InitialPass(
     doing_byproducts,
     doing_comment,
     doing_working_directory,
+    doing_depfile,
     doing_nothing
   };
 
   tdoing doing = doing_nothing;
 
-  for (unsigned int j = 0; j < args.size(); ++j) {
-    std::string const& copy = args[j];
+#define MAKE_STATIC_KEYWORD(KEYWORD)                                          \
+  static const std::string key##KEYWORD = #KEYWORD
+  MAKE_STATIC_KEYWORD(APPEND);
+  MAKE_STATIC_KEYWORD(ARGS);
+  MAKE_STATIC_KEYWORD(BYPRODUCTS);
+  MAKE_STATIC_KEYWORD(COMMAND);
+  MAKE_STATIC_KEYWORD(COMMAND_EXPAND_LISTS);
+  MAKE_STATIC_KEYWORD(COMMENT);
+  MAKE_STATIC_KEYWORD(DEPENDS);
+  MAKE_STATIC_KEYWORD(DEPFILE);
+  MAKE_STATIC_KEYWORD(IMPLICIT_DEPENDS);
+  MAKE_STATIC_KEYWORD(MAIN_DEPENDENCY);
+  MAKE_STATIC_KEYWORD(OUTPUT);
+  MAKE_STATIC_KEYWORD(OUTPUTS);
+  MAKE_STATIC_KEYWORD(POST_BUILD);
+  MAKE_STATIC_KEYWORD(PRE_BUILD);
+  MAKE_STATIC_KEYWORD(PRE_LINK);
+  MAKE_STATIC_KEYWORD(SOURCE);
+  MAKE_STATIC_KEYWORD(TARGET);
+  MAKE_STATIC_KEYWORD(USES_TERMINAL);
+  MAKE_STATIC_KEYWORD(VERBATIM);
+  MAKE_STATIC_KEYWORD(WORKING_DIRECTORY);
+#undef MAKE_STATIC_KEYWORD
+  static std::unordered_set<std::string> keywords;
+  if (keywords.empty()) {
+    keywords.insert(keyAPPEND);
+    keywords.insert(keyARGS);
+    keywords.insert(keyBYPRODUCTS);
+    keywords.insert(keyCOMMAND);
+    keywords.insert(keyCOMMAND_EXPAND_LISTS);
+    keywords.insert(keyCOMMENT);
+    keywords.insert(keyDEPENDS);
+    keywords.insert(keyDEPFILE);
+    keywords.insert(keyIMPLICIT_DEPENDS);
+    keywords.insert(keyMAIN_DEPENDENCY);
+    keywords.insert(keyOUTPUT);
+    keywords.insert(keyOUTPUTS);
+    keywords.insert(keyPOST_BUILD);
+    keywords.insert(keyPRE_BUILD);
+    keywords.insert(keyPRE_LINK);
+    keywords.insert(keySOURCE);
+    keywords.insert(keyTARGET);
+    keywords.insert(keyUSES_TERMINAL);
+    keywords.insert(keyVERBATIM);
+    keywords.insert(keyWORKING_DIRECTORY);
+  }
 
-    if (copy == "SOURCE") {
-      doing = doing_source;
-    } else if (copy == "COMMAND") {
-      doing = doing_command;
+  for (std::string const& copy : args) {
+    if (keywords.count(copy)) {
+      if (copy == keySOURCE) {
+        doing = doing_source;
+      } else if (copy == keyCOMMAND) {
+        doing = doing_command;
 
-      // Save the current command before starting the next command.
-      if (!currentLine.empty()) {
-        commandLines.push_back(currentLine);
-        currentLine.clear();
+        // Save the current command before starting the next command.
+        if (!currentLine.empty()) {
+          commandLines.push_back(currentLine);
+          currentLine.clear();
+        }
+      } else if (copy == keyPRE_BUILD) {
+        cctype = cmTarget::PRE_BUILD;
+      } else if (copy == keyPRE_LINK) {
+        cctype = cmTarget::PRE_LINK;
+      } else if (copy == keyPOST_BUILD) {
+        cctype = cmTarget::POST_BUILD;
+      } else if (copy == keyVERBATIM) {
+        verbatim = true;
+      } else if (copy == keyAPPEND) {
+        append = true;
+      } else if (copy == keyUSES_TERMINAL) {
+        uses_terminal = true;
+      } else if (copy == keyCOMMAND_EXPAND_LISTS) {
+        command_expand_lists = true;
+      } else if (copy == keyTARGET) {
+        doing = doing_target;
+      } else if (copy == keyARGS) {
+        // Ignore this old keyword.
+      } else if (copy == keyDEPENDS) {
+        doing = doing_depends;
+      } else if (copy == keyOUTPUTS) {
+        doing = doing_outputs;
+      } else if (copy == keyOUTPUT) {
+        doing = doing_output;
+      } else if (copy == keyBYPRODUCTS) {
+        doing = doing_byproducts;
+      } else if (copy == keyWORKING_DIRECTORY) {
+        doing = doing_working_directory;
+      } else if (copy == keyMAIN_DEPENDENCY) {
+        doing = doing_main_dependency;
+      } else if (copy == keyIMPLICIT_DEPENDS) {
+        doing = doing_implicit_depends_lang;
+      } else if (copy == keyCOMMENT) {
+        doing = doing_comment;
+      } else if (copy == keyDEPFILE) {
+        doing = doing_depfile;
+        if (this->Makefile->GetGlobalGenerator()->GetName() != "Ninja") {
+          this->SetError("Option DEPFILE not supported by " +
+                         this->Makefile->GetGlobalGenerator()->GetName());
+          return false;
+        }
       }
-    } else if (copy == "PRE_BUILD") {
-      cctype = cmTarget::PRE_BUILD;
-    } else if (copy == "PRE_LINK") {
-      cctype = cmTarget::PRE_LINK;
-    } else if (copy == "POST_BUILD") {
-      cctype = cmTarget::POST_BUILD;
-    } else if (copy == "VERBATIM") {
-      verbatim = true;
-    } else if (copy == "APPEND") {
-      append = true;
-    } else if (copy == "USES_TERMINAL") {
-      uses_terminal = true;
-    } else if (copy == "TARGET") {
-      doing = doing_target;
-    } else if (copy == "ARGS") {
-      // Ignore this old keyword.
-    } else if (copy == "DEPENDS") {
-      doing = doing_depends;
-    } else if (copy == "OUTPUTS") {
-      doing = doing_outputs;
-    } else if (copy == "OUTPUT") {
-      doing = doing_output;
-    } else if (copy == "BYPRODUCTS") {
-      doing = doing_byproducts;
-    } else if (copy == "WORKING_DIRECTORY") {
-      doing = doing_working_directory;
-    } else if (copy == "MAIN_DEPENDENCY") {
-      doing = doing_main_dependency;
-    } else if (copy == "IMPLICIT_DEPENDS") {
-      doing = doing_implicit_depends_lang;
-    } else if (copy == "COMMENT") {
-      doing = doing_comment;
     } else {
       std::string filename;
       switch (doing) {
         case doing_output:
         case doing_outputs:
         case doing_byproducts:
-          if (!cmSystemTools::FileIsFullPath(copy.c_str())) {
+          if (!cmSystemTools::FileIsFullPath(copy)) {
             // This is an output to be generated, so it should be
             // under the build tree.  CMake 2.4 placed this under the
             // source tree.  However the only case that this change
@@ -143,10 +204,13 @@ bool cmAddCustomCommandCommand::InitialPass(
           break;
       }
 
-      if (cmSystemTools::FileIsFullPath(filename.c_str())) {
+      if (cmSystemTools::FileIsFullPath(filename)) {
         filename = cmSystemTools::CollapseFullPath(filename);
       }
       switch (doing) {
+        case doing_depfile:
+          depfile = copy;
+          break;
         case doing_working_directory:
           working = copy;
           break;
@@ -171,9 +235,7 @@ bool cmAddCustomCommandCommand::InitialPass(
           depends.push_back(dep);
 
           // Add the implicit dependency language and file.
-          cmCustomCommand::ImplicitDependsPair entry(implicit_depends_lang,
-                                                     dep);
-          implicit_depends.push_back(entry);
+          implicit_depends.emplace_back(implicit_depends_lang, dep);
 
           // Switch back to looking for a language.
           doing = doing_implicit_depends_lang;
@@ -187,7 +249,7 @@ bool cmAddCustomCommandCommand::InitialPass(
         case doing_depends: {
           std::string dep = copy;
           cmSystemTools::ConvertToUnixSlashes(dep);
-          depends.push_back(dep);
+          depends.push_back(std::move(dep));
         } break;
         case doing_outputs:
           outputs.push_back(filename);
@@ -250,8 +312,8 @@ bool cmAddCustomCommandCommand::InitialPass(
 
     // No command for this output exists.
     std::ostringstream e;
-    e << "given APPEND option with output \"" << output[0]
-      << "\" which is not already a custom command output.";
+    e << "given APPEND option with output\n\"" << output[0]
+      << "\"\nwhich is not already a custom command output.";
     this->SetError(e.str());
     return false;
   }
@@ -269,12 +331,14 @@ bool cmAddCustomCommandCommand::InitialPass(
     std::vector<std::string> no_depends;
     this->Makefile->AddCustomCommandToTarget(
       target, byproducts, no_depends, commandLines, cctype, comment,
-      working.c_str(), escapeOldStyle, uses_terminal);
+      working.c_str(), escapeOldStyle, uses_terminal, depfile,
+      command_expand_lists);
   } else if (target.empty()) {
     // Target is empty, use the output.
     this->Makefile->AddCustomCommandToOutput(
       output, byproducts, depends, main_dependency, commandLines, comment,
-      working.c_str(), false, escapeOldStyle, uses_terminal);
+      working.c_str(), false, escapeOldStyle, uses_terminal,
+      command_expand_lists, depfile);
 
     // Add implicit dependency scanning requests if any were given.
     if (!implicit_depends.empty()) {
@@ -338,12 +402,11 @@ bool cmAddCustomCommandCommand::InitialPass(
 bool cmAddCustomCommandCommand::CheckOutputs(
   const std::vector<std::string>& outputs)
 {
-  for (std::vector<std::string>::const_iterator o = outputs.begin();
-       o != outputs.end(); ++o) {
+  for (std::string const& o : outputs) {
     // Make sure the file will not be generated into the source
     // directory during an out of source build.
-    if (!this->Makefile->CanIWriteThisFile(o->c_str())) {
-      std::string e = "attempted to have a file \"" + *o +
+    if (!this->Makefile->CanIWriteThisFile(o)) {
+      std::string e = "attempted to have a file \"" + o +
         "\" in a source directory as an output of custom command.";
       this->SetError(e);
       cmSystemTools::SetFatalErrorOccured();
@@ -351,10 +414,10 @@ bool cmAddCustomCommandCommand::CheckOutputs(
     }
 
     // Make sure the output file name has no invalid characters.
-    std::string::size_type pos = o->find_first_of("#<>");
-    if (pos != o->npos) {
+    std::string::size_type pos = o.find_first_of("#<>");
+    if (pos != std::string::npos) {
       std::ostringstream msg;
-      msg << "called with OUTPUT containing a \"" << (*o)[pos]
+      msg << "called with OUTPUT containing a \"" << o[pos]
           << "\".  This character is not allowed.";
       this->SetError(msg.str());
       return false;

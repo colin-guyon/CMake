@@ -1,19 +1,17 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2011 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmGlobalVisualStudio11Generator.h"
 
 #include "cmAlgorithms.h"
+#include "cmDocumentationEntry.h"
 #include "cmLocalVisualStudio10Generator.h"
 #include "cmMakefile.h"
+#include "cmVS11CLFlagTable.h"
+#include "cmVS11CSharpFlagTable.h"
+#include "cmVS11LibFlagTable.h"
+#include "cmVS11LinkFlagTable.h"
+#include "cmVS11MASMFlagTable.h"
+#include "cmVS11RCFlagTable.h"
 
 static const char vs11generatorName[] = "Visual Studio 11 2012";
 
@@ -36,8 +34,8 @@ class cmGlobalVisualStudio11Generator::Factory
   : public cmGlobalGeneratorFactory
 {
 public:
-  virtual cmGlobalGenerator* CreateGlobalGenerator(const std::string& name,
-                                                   cmake* cm) const
+  cmGlobalGenerator* CreateGlobalGenerator(const std::string& name,
+                                           cmake* cm) const override
   {
     std::string genName;
     const char* p = cmVS11GenName(name, genName);
@@ -70,14 +68,14 @@ public:
     return ret;
   }
 
-  virtual void GetDocumentation(cmDocumentationEntry& entry) const
+  void GetDocumentation(cmDocumentationEntry& entry) const override
   {
     entry.Name = std::string(vs11generatorName) + " [arch]";
     entry.Brief = "Generates Visual Studio 2012 project files.  "
                   "Optional [arch] can be \"Win64\" or \"ARM\".";
   }
 
-  virtual void GetGenerators(std::vector<std::string>& names) const
+  void GetGenerators(std::vector<std::string>& names) const override
   {
     names.push_back(vs11generatorName);
     names.push_back(vs11generatorName + std::string(" ARM"));
@@ -85,13 +83,13 @@ public:
 
     std::set<std::string> installedSDKs =
       cmGlobalVisualStudio11Generator::GetInstalledWindowsCESDKs();
-    for (std::set<std::string>::const_iterator i = installedSDKs.begin();
-         i != installedSDKs.end(); ++i) {
-      names.push_back(std::string(vs11generatorName) + " " + *i);
+    for (std::string const& i : installedSDKs) {
+      names.push_back(std::string(vs11generatorName) + " " + i);
     }
   }
 
-  virtual bool SupportsToolset() const { return true; }
+  bool SupportsToolset() const override { return true; }
+  bool SupportsPlatform() const override { return true; }
 };
 
 cmGlobalGeneratorFactory* cmGlobalVisualStudio11Generator::NewFactory()
@@ -109,6 +107,12 @@ cmGlobalVisualStudio11Generator::cmGlobalVisualStudio11Generator(
     "ProductDir",
     vc11Express, cmSystemTools::KeyWOW64_32);
   this->DefaultPlatformToolset = "v110";
+  this->DefaultClFlagTable = cmVS11CLFlagTable;
+  this->DefaultCSharpFlagTable = cmVS11CSharpFlagTable;
+  this->DefaultLibFlagTable = cmVS11LibFlagTable;
+  this->DefaultLinkFlagTable = cmVS11LinkFlagTable;
+  this->DefaultMasmFlagTable = cmVS11MASMFlagTable;
+  this->DefaultRcFlagTable = cmVS11RCFlagTable;
   this->Version = VS11;
 }
 
@@ -219,18 +223,17 @@ cmGlobalVisualStudio11Generator::GetInstalledWindowsCESDKs()
                                     cmSystemTools::KeyWOW64_32);
 
   std::set<std::string> ret;
-  for (std::vector<std::string>::const_iterator i = subkeys.begin();
-       i != subkeys.end(); ++i) {
+  for (std::string const& i : subkeys) {
     std::string key = sdksKey;
     key += '\\';
-    key += *i;
+    key += i;
     key += ';';
 
     std::string path;
-    if (cmSystemTools::ReadRegistryValue(key.c_str(), path,
+    if (cmSystemTools::ReadRegistryValue(key, path,
                                          cmSystemTools::KeyWOW64_32) &&
         !path.empty()) {
-      ret.insert(*i);
+      ret.insert(i);
     }
   }
 
@@ -238,9 +241,10 @@ cmGlobalVisualStudio11Generator::GetInstalledWindowsCESDKs()
 }
 
 bool cmGlobalVisualStudio11Generator::NeedsDeploy(
-  cmState::TargetType type) const
+  cmStateEnums::TargetType type) const
 {
-  if ((type == cmState::EXECUTABLE || type == cmState::SHARED_LIBRARY) &&
+  if ((type == cmStateEnums::EXECUTABLE ||
+       type == cmStateEnums::SHARED_LIBRARY) &&
       (this->SystemIsWindowsPhone || this->SystemIsWindowsStore)) {
     return true;
   }

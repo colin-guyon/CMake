@@ -1,19 +1,12 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCPackComponentGroup_h
 #define cmCPackComponentGroup_h
 
-#include "cmStandardIncludes.h"
+#include "cmConfigure.h" // IWYU pragma: keep
+
+#include <string>
+#include <vector>
 
 class cmCPackComponentGroup;
 
@@ -43,7 +36,7 @@ class cmCPackComponent
 {
 public:
   cmCPackComponent()
-    : Group(0)
+    : Group(nullptr)
     , IsRequired(true)
     , IsHidden(false)
     , IsDisabledByDefault(false)
@@ -85,6 +78,10 @@ public:
   /// contains the files that are part of this component.
   std::string ArchiveFile;
 
+  /// The file to pass to --component-plist when using the
+  /// productbuild generator.
+  std::string Plist;
+
   /// The components that this component depends on.
   std::vector<cmCPackComponent*> Dependencies;
 
@@ -117,7 +114,7 @@ class cmCPackComponentGroup
 {
 public:
   cmCPackComponentGroup()
-    : ParentGroup(0)
+    : ParentGroup(nullptr)
   {
   }
 

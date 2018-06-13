@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # GetPrerequisites
 # ----------------
@@ -161,19 +164,6 @@
 #    local
 #    embedded
 #    other
-
-#=============================================================================
-# Copyright 2008-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 function(gp_append_unique list_var value)
   set(contains 0)
@@ -409,6 +399,11 @@ function(gp_resolve_item context item exepath dirs resolved_item_var)
     set(ri "ri-NOTFOUND")
     find_file(ri "${item}" ${exepath} ${dirs} NO_DEFAULT_PATH)
     find_file(ri "${item}" ${exepath} ${dirs} /usr/lib)
+
+    get_filename_component(basename_item "${item}" NAME)
+    find_file(ri "${basename_item}" PATHS ${exepath} ${dirs} NO_DEFAULT_PATH)
+    find_file(ri "${basename_item}" PATHS /usr/lib)
+
     if(ri)
       #message(STATUS "info: 'find_file' in exepath/dirs (${ri})")
       set(resolved 1)
@@ -440,8 +435,8 @@ function(gp_resolve_item context item exepath dirs resolved_item_var)
   if(WIN32 AND NOT UNIX)
   if(NOT resolved)
     set(ri "ri-NOTFOUND")
-    find_program(ri "${item}" PATHS "${exepath};${dirs}" NO_DEFAULT_PATH)
-    find_program(ri "${item}" PATHS "${exepath};${dirs}")
+    find_program(ri "${item}" PATHS ${exepath} ${dirs} NO_DEFAULT_PATH)
+    find_program(ri "${item}" PATHS ${exepath} ${dirs})
     if(ri)
       #message(STATUS "info: 'find_program' in exepath/dirs (${ri})")
       set(resolved 1)
@@ -500,7 +495,9 @@ function(gp_resolved_file_type original_file file exepath dirs type_var)
   if(NOT IS_ABSOLUTE "${original_file}")
     message(STATUS "warning: gp_resolved_file_type expects absolute full path for first arg original_file")
   endif()
-  get_filename_component(original_file "${original_file}" ABSOLUTE) # canonicalize path
+  if(IS_ABSOLUTE "${original_file}")
+    get_filename_component(original_file "${original_file}" ABSOLUTE) # canonicalize path
+  endif()
 
   set(is_embedded 0)
   set(is_local 0)
@@ -516,13 +513,15 @@ function(gp_resolved_file_type original_file file exepath dirs type_var)
     if(NOT IS_ABSOLUTE "${file}")
       gp_resolve_item("${original_file}" "${file}" "${exepath}" "${dirs}" resolved_file "${rpaths}")
     endif()
-    get_filename_component(resolved_file "${resolved_file}" ABSOLUTE) # canonicalize path
+    if(IS_ABSOLUTE "${resolved_file}")
+      get_filename_component(resolved_file "${resolved_file}" ABSOLUTE) # canonicalize path
+    endif()
 
     string(TOLOWER "${original_file}" original_lower)
     string(TOLOWER "${resolved_file}" lower)
 
     if(UNIX)
-      if(resolved_file MATCHES "^(/lib/|/lib32/|/lib64/|/usr/lib/|/usr/lib32/|/usr/lib64/|/usr/X11R6/|/usr/bin/)")
+      if(resolved_file MATCHES "^(/lib/|/lib32/|/libx32/|/lib64/|/usr/lib/|/usr/lib32/|/usr/libx32/|/usr/lib64/|/usr/X11R6/|/usr/bin/)")
         set(is_system 1)
       endif()
     endif()
@@ -540,7 +539,7 @@ function(gp_resolved_file_type original_file file exepath dirs type_var)
       string(TOLOWER "$ENV{windir}" windir)
       file(TO_CMAKE_PATH "${windir}" windir)
 
-      if(lower MATCHES "^(api-ms-win-|${sysroot}/sys(tem|wow)|${windir}/sys(tem|wow)|(.*/)*msvc[^/]+dll)")
+      if(lower MATCHES "^(${sysroot}/sys(tem|wow)|${windir}/sys(tem|wow)|(.*/)*(msvc|api-ms-win-)[^/]+dll)")
         set(is_system 1)
       endif()
 
@@ -568,7 +567,7 @@ function(gp_resolved_file_type original_file file exepath dirs type_var)
           string(TOLOWER "${env_windir}" windir)
           string(TOLOWER "${env_sysdir}" sysroot)
 
-          if(lower MATCHES "^(api-ms-win-|${sysroot}/sys(tem|wow)|${windir}/sys(tem|wow)|(.*/)*msvc[^/]+dll)")
+          if(lower MATCHES "^(${sysroot}/sys(tem|wow)|${windir}/sys(tem|wow)|(.*/)*(msvc|api-ms-win-)[^/]+dll)")
             set(is_system 1)
           endif()
         endif()
@@ -610,7 +609,7 @@ function(gp_resolved_file_type original_file file exepath dirs type_var)
 
   if(NOT is_embedded)
     if(NOT IS_ABSOLUTE "${resolved_file}")
-      if(lower MATCHES "^msvc[^/]+dll" AND is_system)
+      if(lower MATCHES "^(msvc|api-ms-win-)[^/]+dll" AND is_system)
         message(STATUS "info: non-absolute msvc file '${file}' returning type '${type}'")
       else()
         message(STATUS "warning: gp_resolved_file_type non-absolute file '${file}' returning type '${type}' -- possibly incorrect")
@@ -660,6 +659,7 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
 
   if(NOT EXISTS "${target}")
     message("warning: target '${target}' does not exist...")
+    return()
   endif()
 
   set(gp_cmd_paths ${gp_cmd_paths}
@@ -687,8 +687,6 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
     "$ENV{VS71COMNTOOLS}/../../VC7/bin"
     "C:/Program Files/Microsoft Visual Studio .NET 2003/VC7/BIN"
     "C:/Program Files (x86)/Microsoft Visual Studio .NET 2003/VC7/BIN"
-    "/usr/local/bin"
-    "/usr/bin"
     )
 
   # <setup-gp_tool-vars>
@@ -747,9 +745,13 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
     set(gp_regex_fallback "")
     set(gp_regex_cmp_count 1)
     # objdump generates copious output so we create a grep filter to pre-filter results
-    find_program(gp_grep_cmd grep)
+    if(WIN32)
+      find_program(gp_grep_cmd findstr)
+    else()
+      find_program(gp_grep_cmd grep)
+    endif()
     if(gp_grep_cmd)
-      set(gp_cmd_maybe_filter COMMAND ${gp_grep_cmd} "^[[:blank:]]*DLL Name: ")
+      set(gp_cmd_maybe_filter COMMAND ${gp_grep_cmd} "-a" "^[[:blank:]]*DLL Name: ")
     endif()
   else()
     message(STATUS "warning: gp_tool='${gp_tool}' is an unknown tool...")
@@ -792,7 +794,7 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
     set(old_ld_env "$ENV{LD_LIBRARY_PATH}")
     set(new_ld_env "${exepath}")
     foreach(dir ${dirs})
-      set(new_ld_env "${new_ld_env}:${dir}")
+      string(APPEND new_ld_env ":${dir}")
     endforeach()
     set(ENV{LD_LIBRARY_PATH} "${new_ld_env}:$ENV{LD_LIBRARY_PATH}")
   endif()
@@ -812,6 +814,20 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
     OUTPUT_VARIABLE gp_cmd_ov
     ERROR_VARIABLE gp_ev
     )
+
+  if(gp_tool STREQUAL "dumpbin")
+    # Exclude delay load dependencies under windows (they are listed in dumpbin output after the message below)
+    string(FIND "${gp_cmd_ov}" "Image has the following delay load dependencies" gp_delayload_pos)
+    if (${gp_delayload_pos} GREATER -1)
+      string(SUBSTRING "${gp_cmd_ov}" 0 ${gp_delayload_pos} gp_cmd_ov_no_delayload_deps)
+      string(SUBSTRING "${gp_cmd_ov}" ${gp_delayload_pos} -1 gp_cmd_ov_delayload_deps)
+      if (verbose)
+        message(STATUS "GetPrequisites(${target}) : ignoring the following delay load dependencies :\n ${gp_cmd_ov_delayload_deps}")
+      endif()
+      set(gp_cmd_ov ${gp_cmd_ov_no_delayload_deps})
+    endif()
+  endif()
+
   if(NOT gp_rv STREQUAL "0")
     if(gp_tool STREQUAL "dumpbin")
       # dumpbin error messages seem to go to stdout
@@ -924,7 +940,11 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
         #
         if(NOT list_length_before_append EQUAL list_length_after_append)
           gp_resolve_item("${target}" "${item}" "${exepath}" "${dirs}" resolved_item "${rpaths}")
-          set(unseen_prereqs ${unseen_prereqs} "${resolved_item}")
+          if(EXISTS "${resolved_item}")
+            # Recurse only if we could resolve the item.
+            # Otherwise the prerequisites_var list will be cleared
+            set(unseen_prereqs ${unseen_prereqs} "${resolved_item}")
+          endif()
         endif()
       endif()
     endif()

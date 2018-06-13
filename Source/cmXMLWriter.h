@@ -1,21 +1,14 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2015 Daniel Pfeifer <daniel@pfeifer-mail.de>
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmXMLWiter_h
 #define cmXMLWiter_h
 
-#include "cmStandardIncludes.h"
+#include "cmConfigure.h" // IWYU pragma: keep
 
 #include "cmXMLSafe.h"
 
+#include <chrono>
+#include <ctime>
 #include <ostream>
 #include <stack>
 #include <string>
@@ -23,6 +16,8 @@
 
 class cmXMLWriter
 {
+  CM_DISABLE_COPY(cmXMLWriter)
+
 public:
   cmXMLWriter(std::ostream& output, std::size_t level = 0);
   ~cmXMLWriter();
@@ -69,10 +64,9 @@ public:
 
   void FragmentFile(const char* fname);
 
-private:
-  cmXMLWriter(const cmXMLWriter&);
-  cmXMLWriter& operator=(const cmXMLWriter&);
+  void SetIndentationElement(std::string const& element);
 
+private:
   void ConditionalLineBreak(bool condition, std::size_t indent);
 
   void PreAttribute();
@@ -107,6 +101,22 @@ private:
     return cmXMLSafe(value).Quotes(false);
   }
 
+  /*
+   * Convert a std::chrono::system::time_point to the number of seconds since
+   * the UN*X epoch.
+   *
+   * It would be tempting to convert a time_point to number of seconds by
+   * using time_since_epoch(). Unfortunately the C++11 standard does not
+   * specify what the epoch of the system_clock must be.
+   * Therefore we must assume it is an arbitrary point in time. Instead of this
+   * method, it is recommended to convert it by means of the to_time_t method.
+   */
+  static std::time_t SafeContent(
+    std::chrono::system_clock::time_point const& value)
+  {
+    return std::chrono::system_clock::to_time_t(value);
+  }
+
   template <typename T>
   static T SafeContent(T value)
   {
@@ -115,7 +125,8 @@ private:
 
 private:
   std::ostream& Output;
-  std::stack<std::string, std::vector<std::string> > Elements;
+  std::stack<std::string, std::vector<std::string>> Elements;
+  std::string IndentationElement;
   std::size_t Level;
   bool ElementOpen;
   bool BreakAttrib;

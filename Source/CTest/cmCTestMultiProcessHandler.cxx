@@ -1,28 +1,31 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCTestMultiProcessHandler.h"
 
 #include "cmCTest.h"
+#include "cmCTestRunTest.h"
 #include "cmCTestScriptHandler.h"
-#include "cmProcess.h"
-#include "cmStandardIncludes.h"
+#include "cmCTestTestHandler.h"
 #include "cmSystemTools.h"
-#include <cmsys/FStream.hxx>
-#include <cmsys/SystemInformation.hxx>
-#include <float.h>
+#include "cmWorkingDirectory.h"
+
+#include "cm_uv.h"
+
+#include "cmUVSignalHackRAII.h" // IWYU pragma: keep
+
+#include "cmsys/FStream.hxx"
+#include "cmsys/String.hxx"
+#include "cmsys/SystemInformation.hxx"
+
+#include <algorithm>
+#include <chrono>
+#include <iomanip>
 #include <list>
 #include <math.h>
+#include <sstream>
 #include <stack>
 #include <stdlib.h>
+#include <utility>
 
 class TestComparator
 {
@@ -67,10 +70,9 @@ void cmCTestMultiProcessHandler::SetTests(TestMap& tests,
   this->Properties = properties;
   this->Total = this->Tests.size();
   // set test run map to false for all
-  for (TestMap::iterator i = this->Tests.begin(); i != this->Tests.end();
-       ++i) {
-    this->TestRunningMap[i->first] = false;
-    this->TestFinishMap[i->first] = false;
+  for (auto const& t : this->Tests) {
+    this->TestRunningMap[t.first] = false;
+    this->TestFinishMap[t.first] = false;
   }
   if (!this->CTest->GetShowOnly()) {
     this->ReadCostData();
@@ -99,24 +101,32 @@ void cmCTestMultiProcessHandler::RunTests()
   if (this->HasCycles) {
     return;
   }
+#ifdef CMAKE_UV_SIGNAL_HACK
+  cmUVSignalHackRAII hackRAII;
+#endif
   this->TestHandler->SetMaxIndex(this->FindMaxIndex());
+
+  uv_loop_init(&this->Loop);
   this->StartNextTests();
-  while (!this->Tests.empty()) {
-    if (this->StopTimePassed) {
-      return;
-    }
-    this->CheckOutput();
-    this->StartNextTests();
-  }
-  // let all running tests finish
-  while (this->CheckOutput()) {
-  }
+  uv_run(&this->Loop, UV_RUN_DEFAULT);
+  uv_loop_close(&this->Loop);
+
   this->MarkFinished();
   this->UpdateCostData();
 }
 
-void cmCTestMultiProcessHandler::StartTestProcess(int test)
+bool cmCTestMultiProcessHandler::StartTestProcess(int test)
 {
+  std::chrono::system_clock::time_point stop_time = this->CTest->GetStopTime();
+  if (stop_time != std::chrono::system_clock::time_point() &&
+      stop_time <= std::chrono::system_clock::now()) {
+    cmCTestLog(this->CTest, ERROR_MESSAGE, "The stop time has been passed. "
+                                           "Stopping all tests."
+                 << std::endl);
+    this->StopTimePassed = true;
+    return false;
+  }
+
   cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
                      "test " << test << "\n", this->Quiet);
   this->TestRunningMap[test] = true; // mark the test as running
@@ -124,7 +134,7 @@ void cmCTestMultiProcessHandler::StartTestProcess(int test)
   this->EraseTest(test);
   this->RunningCount += GetProcessorsUsed(test);
 
-  cmCTestRunTest* testRun = new cmCTestRunTest(this->TestHandler);
+  cmCTestRunTest* testRun = new cmCTestRunTest(*this);
   if (this->CTest->GetRepeatUntilFail()) {
     testRun->SetRunUntilFailOn();
     testRun->SetNumberOfRuns(this->CTest->GetTestRepeat());
@@ -132,35 +142,26 @@ void cmCTestMultiProcessHandler::StartTestProcess(int test)
   testRun->SetIndex(test);
   testRun->SetTestProperties(this->Properties[test]);
 
-  std::string current_dir = cmSystemTools::GetCurrentWorkingDirectory();
-  cmSystemTools::ChangeDirectory(this->Properties[test]->Directory);
+  // Find any failed dependencies for this test. We assume the more common
+  // scenario has no failed tests, so make it the outer loop.
+  for (std::string const& f : *this->Failed) {
+    if (this->Properties[test]->RequireSuccessDepends.find(f) !=
+        this->Properties[test]->RequireSuccessDepends.end()) {
+      testRun->AddFailedDependency(f);
+    }
+  }
+
+  cmWorkingDirectory workdir(this->Properties[test]->Directory);
 
   // Lock the resources we'll be using
   this->LockResources(test);
 
   if (testRun->StartTest(this->Total)) {
-    this->RunningTests.insert(testRun);
-  } else if (testRun->IsStopTimePassed()) {
-    this->StopTimePassed = true;
-    delete testRun;
-    return;
-  } else {
-
-    for (TestMap::iterator j = this->Tests.begin(); j != this->Tests.end();
-         ++j) {
-      j->second.erase(test);
-    }
-
-    this->UnlockResources(test);
-    this->Completed++;
-    this->TestFinishMap[test] = true;
-    this->TestRunningMap[test] = false;
-    this->RunningCount -= GetProcessorsUsed(test);
-    testRun->EndTest(this->Completed, this->Total, false);
-    this->Failed->push_back(this->Properties[test]->Name);
-    delete testRun;
+    return true;
   }
-  cmSystemTools::ChangeDirectory(current_dir);
+
+  this->FinishTestProcess(testRun, false);
+  return false;
 }
 
 void cmCTestMultiProcessHandler::LockResources(int index)
@@ -176,10 +177,8 @@ void cmCTestMultiProcessHandler::LockResources(int index)
 
 void cmCTestMultiProcessHandler::UnlockResources(int index)
 {
-  for (std::set<std::string>::iterator i =
-         this->Properties[index]->LockedResources.begin();
-       i != this->Properties[index]->LockedResources.end(); ++i) {
-    this->LockedResources.erase(*i);
+  for (std::string const& i : this->Properties[index]->LockedResources) {
+    this->LockedResources.erase(i);
   }
   if (this->Properties[index]->RunSerial) {
     this->SerialTestRunning = false;
@@ -212,18 +211,15 @@ std::string cmCTestMultiProcessHandler::GetName(int test)
 bool cmCTestMultiProcessHandler::StartTest(int test)
 {
   // Check for locked resources
-  for (std::set<std::string>::iterator i =
-         this->Properties[test]->LockedResources.begin();
-       i != this->Properties[test]->LockedResources.end(); ++i) {
-    if (this->LockedResources.find(*i) != this->LockedResources.end()) {
+  for (std::string const& i : this->Properties[test]->LockedResources) {
+    if (this->LockedResources.find(i) != this->LockedResources.end()) {
       return false;
     }
   }
 
   // if there are no depends left then run this test
   if (this->Tests[test].empty()) {
-    this->StartTestProcess(test);
-    return true;
+    return this->StartTestProcess(test);
   }
   // This test was not able to start because it is waiting
   // on depends to run
@@ -233,6 +229,11 @@ bool cmCTestMultiProcessHandler::StartTest(int test)
 void cmCTestMultiProcessHandler::StartNextTests()
 {
   size_t numToStart = 0;
+
+  if (this->Tests.empty()) {
+    return;
+  }
+
   if (this->RunningCount < this->ParallelLevel) {
     numToStart = this->ParallelLevel - this->RunningCount;
   }
@@ -250,7 +251,7 @@ void cmCTestMultiProcessHandler::StartNextTests()
   bool allTestsFailedTestLoadCheck = false;
   bool usedFakeLoadForTesting = false;
   size_t minProcessorsRequired = this->ParallelLevel;
-  std::string testWithMinProcessors = "";
+  std::string testWithMinProcessors;
 
   cmsys::SystemInformation info;
 
@@ -261,12 +262,14 @@ void cmCTestMultiProcessHandler::StartNextTests()
     allTestsFailedTestLoadCheck = true;
 
     // Check for a fake load average value used in testing.
-    if (const char* fake_load_value =
-          cmSystemTools::GetEnv("__CTEST_FAKE_LOAD_AVERAGE_FOR_TESTING")) {
+    std::string fake_load_value;
+    if (cmSystemTools::GetEnv("__CTEST_FAKE_LOAD_AVERAGE_FOR_TESTING",
+                              fake_load_value)) {
       usedFakeLoadForTesting = true;
-      if (!cmSystemTools::StringToULong(fake_load_value, &systemLoad)) {
+      if (!cmSystemTools::StringToULong(fake_load_value.c_str(),
+                                        &systemLoad)) {
         cmSystemTools::Error("Failed to parse fake load value: ",
-                             fake_load_value);
+                             fake_load_value.c_str());
       }
     }
     // If it's not set, look up the true load average.
@@ -283,22 +286,22 @@ void cmCTestMultiProcessHandler::StartNextTests()
   }
 
   TestList copy = this->SortedTests;
-  for (TestList::iterator test = copy.begin(); test != copy.end(); ++test) {
+  for (auto const& test : copy) {
     // Take a nap if we're currently performing a RUN_SERIAL test.
     if (this->SerialTestRunning) {
       break;
     }
     // We can only start a RUN_SERIAL test if no other tests are also running.
-    if (this->Properties[*test]->RunSerial && this->RunningCount > 0) {
+    if (this->Properties[test]->RunSerial && this->RunningCount > 0) {
       continue;
     }
 
-    size_t processors = GetProcessorsUsed(*test);
+    size_t processors = GetProcessorsUsed(test);
     bool testLoadOk = true;
     if (this->TestLoad > 0) {
       if (processors <= spareLoad) {
         cmCTestLog(this->CTest, DEBUG, "OK to run "
-                     << GetName(*test) << ", it requires " << processors
+                     << GetName(test) << ", it requires " << processors
                      << " procs & system load is: " << systemLoad
                      << std::endl);
         allTestsFailedTestLoadCheck = false;
@@ -309,10 +312,10 @@ void cmCTestMultiProcessHandler::StartNextTests()
 
     if (processors <= minProcessorsRequired) {
       minProcessorsRequired = processors;
-      testWithMinProcessors = GetName(*test);
+      testWithMinProcessors = GetName(test);
     }
 
-    if (testLoadOk && processors <= numToStart && this->StartTest(*test)) {
+    if (testLoadOk && processors <= numToStart && this->StartTest(test)) {
       if (this->StopTimePassed) {
         return;
       }
@@ -324,10 +327,22 @@ void cmCTestMultiProcessHandler::StartNextTests()
   }
 
   if (allTestsFailedTestLoadCheck) {
+    // Find out whether there are any non RUN_SERIAL tests left, so that the
+    // correct warning may be displayed.
+    bool onlyRunSerialTestsLeft = true;
+    for (auto const& test : copy) {
+      if (!this->Properties[test]->RunSerial) {
+        onlyRunSerialTestsLeft = false;
+      }
+    }
     cmCTestLog(this->CTest, HANDLER_OUTPUT, "***** WAITING, ");
+
     if (this->SerialTestRunning) {
       cmCTestLog(this->CTest, HANDLER_OUTPUT,
                  "Waiting for RUN_SERIAL test to finish.");
+    } else if (onlyRunSerialTestsLeft) {
+      cmCTestLog(this->CTest, HANDLER_OUTPUT,
+                 "Only RUN_SERIAL tests remain, awaiting available slot.");
     } else {
       /* clang-format off */
       cmCTestLog(this->CTest, HANDLER_OUTPUT,
@@ -351,51 +366,42 @@ void cmCTestMultiProcessHandler::StartNextTests()
   }
 }
 
-bool cmCTestMultiProcessHandler::CheckOutput()
+void cmCTestMultiProcessHandler::FinishTestProcess(cmCTestRunTest* runner,
+                                                   bool started)
 {
-  // no more output we are done
-  if (this->RunningTests.empty()) {
-    return false;
-  }
-  std::vector<cmCTestRunTest*> finished;
-  std::string out, err;
-  for (std::set<cmCTestRunTest*>::const_iterator i =
-         this->RunningTests.begin();
-       i != this->RunningTests.end(); ++i) {
-    cmCTestRunTest* p = *i;
-    if (!p->CheckOutput()) {
-      finished.push_back(p);
-    }
-  }
-  for (std::vector<cmCTestRunTest*>::iterator i = finished.begin();
-       i != finished.end(); ++i) {
-    this->Completed++;
-    cmCTestRunTest* p = *i;
-    int test = p->GetIndex();
+  this->Completed++;
 
-    bool testResult = p->EndTest(this->Completed, this->Total, true);
-    if (p->StartAgain()) {
+  int test = runner->GetIndex();
+  auto properties = runner->GetTestProperties();
+
+  bool testResult = runner->EndTest(this->Completed, this->Total, started);
+  if (started) {
+    if (runner->StartAgain()) {
       this->Completed--; // remove the completed test because run again
-      continue;
+      return;
     }
-    if (testResult) {
-      this->Passed->push_back(p->GetTestProperties()->Name);
-    } else {
-      this->Failed->push_back(p->GetTestProperties()->Name);
-    }
-    for (TestMap::iterator j = this->Tests.begin(); j != this->Tests.end();
-         ++j) {
-      j->second.erase(test);
-    }
-    this->TestFinishMap[test] = true;
-    this->TestRunningMap[test] = false;
-    this->RunningTests.erase(p);
-    this->WriteCheckpoint(test);
-    this->UnlockResources(test);
-    this->RunningCount -= GetProcessorsUsed(test);
-    delete p;
   }
-  return true;
+
+  if (testResult) {
+    this->Passed->push_back(properties->Name);
+  } else if (!properties->Disabled) {
+    this->Failed->push_back(properties->Name);
+  }
+
+  for (auto& t : this->Tests) {
+    t.second.erase(test);
+  }
+
+  this->TestFinishMap[test] = true;
+  this->TestRunningMap[test] = false;
+  this->WriteCheckpoint(test);
+  this->UnlockResources(test);
+  this->RunningCount -= GetProcessorsUsed(test);
+
+  delete runner;
+  if (started) {
+    this->StartNextTests();
+  }
 }
 
 void cmCTestMultiProcessHandler::UpdateCostData()
@@ -407,18 +413,20 @@ void cmCTestMultiProcessHandler::UpdateCostData()
 
   PropertiesMap temp = this->Properties;
 
-  if (cmSystemTools::FileExists(fname.c_str())) {
+  if (cmSystemTools::FileExists(fname)) {
     cmsys::ifstream fin;
     fin.open(fname.c_str());
 
     std::string line;
     while (std::getline(fin, line)) {
-      if (line == "---")
+      if (line == "---") {
         break;
+      }
       std::vector<cmsys::String> parts = cmSystemTools::SplitString(line, ' ');
       // Format: <name> <previous_runs> <avg_cost>
-      if (parts.size() < 3)
+      if (parts.size() < 3) {
         break;
+      }
 
       std::string name = parts[0];
       int prev = atoi(parts[1].c_str());
@@ -440,16 +448,15 @@ void cmCTestMultiProcessHandler::UpdateCostData()
   }
 
   // Add all tests not previously listed in the file
-  for (PropertiesMap::iterator i = temp.begin(); i != temp.end(); ++i) {
-    fout << i->second->Name << " " << i->second->PreviousRuns << " "
-         << i->second->Cost << "\n";
+  for (auto const& i : temp) {
+    fout << i.second->Name << " " << i.second->PreviousRuns << " "
+         << i.second->Cost << "\n";
   }
 
   // Write list of failed tests
   fout << "---\n";
-  for (std::vector<std::string>::iterator i = this->Failed->begin();
-       i != this->Failed->end(); ++i) {
-    fout << i->c_str() << "\n";
+  for (std::string const& f : *this->Failed) {
+    fout << f << "\n";
   }
   fout.close();
   cmSystemTools::RenameFile(tmpout.c_str(), fname.c_str());
@@ -459,13 +466,14 @@ void cmCTestMultiProcessHandler::ReadCostData()
 {
   std::string fname = this->CTest->GetCostDataFile();
 
-  if (cmSystemTools::FileExists(fname.c_str(), true)) {
+  if (cmSystemTools::FileExists(fname, true)) {
     cmsys::ifstream fin;
     fin.open(fname.c_str());
     std::string line;
     while (std::getline(fin, line)) {
-      if (line == "---")
+      if (line == "---") {
         break;
+      }
 
       std::vector<cmsys::String> parts = cmSystemTools::SplitString(line, ' ');
 
@@ -480,8 +488,9 @@ void cmCTestMultiProcessHandler::ReadCostData()
       float cost = static_cast<float>(atof(parts[2].c_str()));
 
       int index = this->SearchByName(name);
-      if (index == -1)
+      if (index == -1) {
         continue;
+      }
 
       this->Properties[index]->PreviousRuns = prev;
       // When not running in parallel mode, don't use cost data
@@ -492,7 +501,7 @@ void cmCTestMultiProcessHandler::ReadCostData()
     }
     // Next part of the file is the failed tests
     while (std::getline(fin, line)) {
-      if (line != "") {
+      if (!line.empty()) {
         this->LastTestsFailed.push_back(line);
       }
     }
@@ -504,10 +513,9 @@ int cmCTestMultiProcessHandler::SearchByName(std::string const& name)
 {
   int index = -1;
 
-  for (PropertiesMap::iterator i = this->Properties.begin();
-       i != this->Properties.end(); ++i) {
-    if (i->second->Name == name) {
-      index = i->first;
+  for (auto const& p : this->Properties) {
+    if (p.second->Name == name) {
+      index = p.first;
     }
   }
   return index;
@@ -527,41 +535,38 @@ void cmCTestMultiProcessHandler::CreateParallelTestCostList()
   TestSet alreadySortedTests;
 
   std::list<TestSet> priorityStack;
-  priorityStack.push_back(TestSet());
+  priorityStack.emplace_back();
   TestSet& topLevel = priorityStack.back();
 
   // In parallel test runs add previously failed tests to the front
   // of the cost list and queue other tests for further sorting
-  for (TestMap::const_iterator i = this->Tests.begin(); i != this->Tests.end();
-       ++i) {
+  for (auto const& t : this->Tests) {
     if (std::find(this->LastTestsFailed.begin(), this->LastTestsFailed.end(),
-                  this->Properties[i->first]->Name) !=
+                  this->Properties[t.first]->Name) !=
         this->LastTestsFailed.end()) {
       // If the test failed last time, it should be run first.
-      this->SortedTests.push_back(i->first);
-      alreadySortedTests.insert(i->first);
+      this->SortedTests.push_back(t.first);
+      alreadySortedTests.insert(t.first);
     } else {
-      topLevel.insert(i->first);
+      topLevel.insert(t.first);
     }
   }
 
   // In parallel test runs repeatedly move dependencies of the tests on
   // the current dependency level to the next level until no
   // further dependencies exist.
-  while (priorityStack.back().size()) {
+  while (!priorityStack.back().empty()) {
     TestSet& previousSet = priorityStack.back();
-    priorityStack.push_back(TestSet());
+    priorityStack.emplace_back();
     TestSet& currentSet = priorityStack.back();
 
-    for (TestSet::const_iterator i = previousSet.begin();
-         i != previousSet.end(); ++i) {
-      TestSet const& dependencies = this->Tests[*i];
+    for (auto const& i : previousSet) {
+      TestSet const& dependencies = this->Tests[i];
       currentSet.insert(dependencies.begin(), dependencies.end());
     }
 
-    for (TestSet::const_iterator i = currentSet.begin(); i != currentSet.end();
-         ++i) {
-      previousSet.erase(*i);
+    for (auto const& i : currentSet) {
+      previousSet.erase(i);
     }
   }
 
@@ -581,11 +586,10 @@ void cmCTestMultiProcessHandler::CreateParallelTestCostList()
 
     std::stable_sort(sortedCopy.begin(), sortedCopy.end(), comp);
 
-    for (TestList::const_iterator j = sortedCopy.begin();
-         j != sortedCopy.end(); ++j) {
-      if (alreadySortedTests.find(*j) == alreadySortedTests.end()) {
-        this->SortedTests.push_back(*j);
-        alreadySortedTests.insert(*j);
+    for (auto const& j : sortedCopy) {
+      if (alreadySortedTests.find(j) == alreadySortedTests.end()) {
+        this->SortedTests.push_back(j);
+        alreadySortedTests.insert(j);
       }
     }
   }
@@ -595,10 +599,9 @@ void cmCTestMultiProcessHandler::GetAllTestDependencies(int test,
                                                         TestList& dependencies)
 {
   TestSet const& dependencySet = this->Tests[test];
-  for (TestSet::const_iterator i = dependencySet.begin();
-       i != dependencySet.end(); ++i) {
-    GetAllTestDependencies(*i, dependencies);
-    dependencies.push_back(*i);
+  for (int i : dependencySet) {
+    GetAllTestDependencies(i, dependencies);
+    dependencies.push_back(i);
   }
 }
 
@@ -606,9 +609,8 @@ void cmCTestMultiProcessHandler::CreateSerialTestCostList()
 {
   TestList presortedList;
 
-  for (TestMap::iterator i = this->Tests.begin(); i != this->Tests.end();
-       ++i) {
-    presortedList.push_back(i->first);
+  for (auto const& i : this->Tests) {
+    presortedList.push_back(i.first);
   }
 
   TestComparator comp(this);
@@ -616,10 +618,7 @@ void cmCTestMultiProcessHandler::CreateSerialTestCostList()
 
   TestSet alreadySortedTests;
 
-  for (TestList::const_iterator i = presortedList.begin();
-       i != presortedList.end(); ++i) {
-    int test = *i;
-
+  for (int test : presortedList) {
     if (alreadySortedTests.find(test) != alreadySortedTests.end()) {
       continue;
     }
@@ -627,10 +626,7 @@ void cmCTestMultiProcessHandler::CreateSerialTestCostList()
     TestList dependencies;
     GetAllTestDependencies(test, dependencies);
 
-    for (TestList::const_iterator j = dependencies.begin();
-         j != dependencies.end(); ++j) {
-      int testDependency = *j;
-
+    for (int testDependency : dependencies) {
       if (alreadySortedTests.find(testDependency) ==
           alreadySortedTests.end()) {
         alreadySortedTests.insert(testDependency);
@@ -666,16 +662,13 @@ void cmCTestMultiProcessHandler::PrintTestList()
   this->TestHandler->SetMaxIndex(this->FindMaxIndex());
   int count = 0;
 
-  for (PropertiesMap::iterator it = this->Properties.begin();
-       it != this->Properties.end(); ++it) {
+  for (auto& it : this->Properties) {
     count++;
-    cmCTestTestHandler::cmCTestTestProperties& p = *it->second;
+    cmCTestTestHandler::cmCTestTestProperties& p = *it.second;
 
-    // push working dir
-    std::string current_dir = cmSystemTools::GetCurrentWorkingDirectory();
-    cmSystemTools::ChangeDirectory(p.Directory);
+    cmWorkingDirectory workdir(p.Directory);
 
-    cmCTestRunTest testRun(this->TestHandler);
+    cmCTestRunTest testRun(*this);
     testRun.SetIndex(p.Index);
     testRun.SetTestProperties(&p);
     testRun.ComputeArguments(); // logs the command in verbose mode
@@ -685,9 +678,8 @@ void cmCTestMultiProcessHandler::PrintTestList()
       cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT, "Labels:",
                          this->Quiet);
     }
-    for (std::vector<std::string>::iterator label = p.Labels.begin();
-         label != p.Labels.end(); ++label) {
-      cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT, " " << *label,
+    for (std::string const& label : p.Labels) {
+      cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT, " " << label,
                          this->Quiet);
     }
     if (!p.Labels.empty()) // print the labels
@@ -709,11 +701,13 @@ void cmCTestMultiProcessHandler::PrintTestList()
       std::setw(3 + getNumWidth(this->TestHandler->GetMaxIndex()))
         << indexStr.str(),
       this->Quiet);
-    cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT, " ", this->Quiet);
-    cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT,
-                       p.Name.c_str() << std::endl, this->Quiet);
-    // pop working dir
-    cmSystemTools::ChangeDirectory(current_dir);
+    cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT, " " << p.Name,
+                       this->Quiet);
+    if (p.Disabled) {
+      cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT, " (Disabled)",
+                         this->Quiet);
+    }
+    cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT, std::endl, this->Quiet);
   }
 
   cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT, std::endl
@@ -724,9 +718,8 @@ void cmCTestMultiProcessHandler::PrintTestList()
 void cmCTestMultiProcessHandler::PrintLabels()
 {
   std::set<std::string> allLabels;
-  for (PropertiesMap::iterator it = this->Properties.begin();
-       it != this->Properties.end(); ++it) {
-    cmCTestTestHandler::cmCTestTestProperties& p = *it->second;
+  for (auto& it : this->Properties) {
+    cmCTestTestHandler::cmCTestTestProperties& p = *it.second;
     allLabels.insert(p.Labels.begin(), p.Labels.end());
   }
 
@@ -737,10 +730,9 @@ void cmCTestMultiProcessHandler::PrintLabels()
     cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT,
                        "No Labels Exist" << std::endl, this->Quiet);
   }
-  for (std::set<std::string>::iterator label = allLabels.begin();
-       label != allLabels.end(); ++label) {
-    cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT,
-                       "  " << *label << std::endl, this->Quiet);
+  for (std::string const& label : allLabels) {
+    cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT, "  " << label << std::endl,
+                       this->Quiet);
   }
 }
 
@@ -749,7 +741,7 @@ void cmCTestMultiProcessHandler::CheckResume()
   std::string fname =
     this->CTest->GetBinaryDir() + "/Testing/Temporary/CTestCheckpoint.txt";
   if (this->CTest->GetFailover()) {
-    if (cmSystemTools::FileExists(fname.c_str(), true)) {
+    if (cmSystemTools::FileExists(fname, true)) {
       *this->TestHandler->LogFile
         << "Resuming previously interrupted test set" << std::endl
         << "----------------------------------------------------------"
@@ -764,7 +756,7 @@ void cmCTestMultiProcessHandler::CheckResume()
       }
       fin.close();
     }
-  } else if (cmSystemTools::FileExists(fname.c_str(), true)) {
+  } else if (cmSystemTools::FileExists(fname, true)) {
     cmSystemTools::RemoveFile(fname);
   }
 }
@@ -781,10 +773,9 @@ void cmCTestMultiProcessHandler::RemoveTest(int index)
 int cmCTestMultiProcessHandler::FindMaxIndex()
 {
   int max = 0;
-  cmCTestMultiProcessHandler::TestMap::iterator i = this->Tests.begin();
-  for (; i != this->Tests.end(); ++i) {
-    if (i->first > max) {
-      max = i->first;
+  for (auto const& i : this->Tests) {
+    if (i.first > max) {
+      max = i.first;
     }
   }
   return max;
@@ -796,10 +787,9 @@ bool cmCTestMultiProcessHandler::CheckCycles()
   cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
                      "Checking test dependency graph..." << std::endl,
                      this->Quiet);
-  for (TestMap::iterator it = this->Tests.begin(); it != this->Tests.end();
-       ++it) {
+  for (auto const& it : this->Tests) {
     // DFS from each element to itself
-    int root = it->first;
+    int root = it.first;
     std::set<int> visited;
     std::stack<int> s;
     s.push(root);
@@ -807,9 +797,8 @@ bool cmCTestMultiProcessHandler::CheckCycles()
       int test = s.top();
       s.pop();
       if (visited.insert(test).second) {
-        for (TestSet::iterator d = this->Tests[test].begin();
-             d != this->Tests[test].end(); ++d) {
-          if (*d == root) {
+        for (auto const& d : this->Tests[test]) {
+          if (d == root) {
             // cycle exists
             cmCTestLog(
               this->CTest, ERROR_MESSAGE,
@@ -818,9 +807,8 @@ bool cmCTestMultiProcessHandler::CheckCycles()
                 << this->Properties[root]->Name
                 << "\".\nPlease fix the cycle and run ctest again.\n");
             return false;
-          } else {
-            s.push(*d);
           }
+          s.push(d);
         }
       }
     }

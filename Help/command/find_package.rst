@@ -64,8 +64,8 @@ The complete Config mode command signature is::
                [PATHS path1 [path2 ... ]]
                [PATH_SUFFIXES suffix1 [suffix2 ...]]
                [NO_DEFAULT_PATH]
-               [NO_CMAKE_ENVIRONMENT_PATH]
                [NO_CMAKE_PATH]
+               [NO_CMAKE_ENVIRONMENT_PATH]
                [NO_SYSTEM_ENVIRONMENT_PATH]
                [NO_CMAKE_PACKAGE_REGISTRY]
                [NO_CMAKE_BUILDS_PATH] # Deprecated; does nothing.
@@ -170,11 +170,21 @@ is acceptable the following variables are set:
 ``<package>_VERSION_COUNT``
   number of version components, 0 to 4
 
-and the corresponding package configuration file is loaded.  When
-multiple package configuration files are available whose version files
+and the corresponding package configuration file is loaded.
+When multiple package configuration files are available whose version files
 claim compatibility with the version requested it is unspecified which
-one is chosen.  No attempt is made to choose a highest or closest
-version number.
+one is chosen: unless the variable :variable:`CMAKE_FIND_PACKAGE_SORT_ORDER`
+is set no attempt is made to choose a highest or closest version number.
+
+To control the order in which ``find_package`` checks for compatibility use
+the two variables :variable:`CMAKE_FIND_PACKAGE_SORT_ORDER` and
+:variable:`CMAKE_FIND_PACKAGE_SORT_DIRECTION`.
+For instance in order to select the highest version one can set::
+
+  SET(CMAKE_FIND_PACKAGE_SORT_ORDER NATURAL)
+  SET(CMAKE_FIND_PACKAGE_SORT_DIRECTION DEC)
+
+before calling ``find_package``.
 
 Config mode provides an elaborate interface and search procedure.
 Much of the interface is provided for completeness and for use
@@ -194,13 +204,16 @@ configuration file.  The tables below show the directories searched.
 Each entry is meant for installation trees following Windows (W), UNIX
 (U), or Apple (A) conventions::
 
-  <prefix>/                                               (W)
-  <prefix>/(cmake|CMake)/                                 (W)
-  <prefix>/<name>*/                                       (W)
-  <prefix>/<name>*/(cmake|CMake)/                         (W)
-  <prefix>/(lib/<arch>|lib|share)/cmake/<name>*/          (U)
-  <prefix>/(lib/<arch>|lib|share)/<name>*/                (U)
-  <prefix>/(lib/<arch>|lib|share)/<name>*/(cmake|CMake)/  (U)
+  <prefix>/                                                       (W)
+  <prefix>/(cmake|CMake)/                                         (W)
+  <prefix>/<name>*/                                               (W)
+  <prefix>/<name>*/(cmake|CMake)/                                 (W)
+  <prefix>/(lib/<arch>|lib|share)/cmake/<name>*/                  (U)
+  <prefix>/(lib/<arch>|lib|share)/<name>*/                        (U)
+  <prefix>/(lib/<arch>|lib|share)/<name>*/(cmake|CMake)/          (U)
+  <prefix>/<name>*/(lib/<arch>|lib|share)/cmake/<name>*/          (W/U)
+  <prefix>/<name>*/(lib/<arch>|lib|share)/<name>*/                (W/U)
+  <prefix>/<name>*/(lib/<arch>|lib|share)/<name>*/(cmake|CMake)/  (W/U)
 
 On systems supporting OS X Frameworks and Application Bundles the
 following directories are searched for frameworks or bundles
@@ -238,6 +251,7 @@ enabled.
 
 1. Search paths specified in cmake-specific cache variables.  These
    are intended to be used on the command line with a ``-DVAR=value``.
+   The values are interpreted as :ref:`;-lists <CMake Language Lists>`.
    This can be skipped if ``NO_CMAKE_PATH`` is passed::
 
      CMAKE_PREFIX_PATH
@@ -245,7 +259,9 @@ enabled.
      CMAKE_APPBUNDLE_PATH
 
 2. Search paths specified in cmake-specific environment variables.
-   These are intended to be set in the user's shell configuration.
+   These are intended to be set in the user's shell configuration,
+   and therefore use the host's native path separator
+   (``;`` on Windows and ``:`` on UNIX).
    This can be skipped if ``NO_CMAKE_ENVIRONMENT_PATH`` is passed::
 
      <package>_DIR

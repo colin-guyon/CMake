@@ -1,27 +1,26 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmAddSubDirectoryCommand.h"
+
+#include <sstream>
+#include <string.h>
+
+#include "cmMakefile.h"
+#include "cmSystemTools.h"
+
+class cmExecutionStatus;
 
 // cmAddSubDirectoryCommand
 bool cmAddSubDirectoryCommand::InitialPass(
   std::vector<std::string> const& args, cmExecutionStatus&)
 {
-  if (args.size() < 1) {
+  if (args.empty()) {
     this->SetError("called with incorrect number of arguments");
     return false;
   }
 
   // store the binpath
-  std::string srcArg = args[0];
+  std::string const& srcArg = args[0];
   std::string binArg;
 
   bool excludeFromAll = false;
@@ -33,7 +32,8 @@ bool cmAddSubDirectoryCommand::InitialPass(
     if (*i == "EXCLUDE_FROM_ALL") {
       excludeFromAll = true;
       continue;
-    } else if (binArg.empty()) {
+    }
+    if (binArg.empty()) {
       binArg = *i;
     } else {
       this->SetError("called with incorrect number of arguments");
@@ -44,7 +44,7 @@ bool cmAddSubDirectoryCommand::InitialPass(
   // Compute the full path to the specified source directory.
   // Interpret a relative path with respect to the current source directory.
   std::string srcPath;
-  if (cmSystemTools::FileIsFullPath(srcArg.c_str())) {
+  if (cmSystemTools::FileIsFullPath(srcArg)) {
     srcPath = srcArg;
   } else {
     srcPath = this->Makefile->GetCurrentSourceDirectory();
@@ -94,7 +94,7 @@ bool cmAddSubDirectoryCommand::InitialPass(
   } else {
     // Use the binary directory specified.
     // Interpret a relative path with respect to the current binary directory.
-    if (cmSystemTools::FileIsFullPath(binArg.c_str())) {
+    if (cmSystemTools::FileIsFullPath(binArg)) {
       binPath = binArg;
     } else {
       binPath = this->Makefile->GetCurrentBinaryDirectory();

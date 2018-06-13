@@ -1,20 +1,16 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmListFileCache_h
 #define cmListFileCache_h
 
-#include "cmStandardIncludes.h"
+#include "cmConfigure.h" // IWYU pragma: keep
 
-#include "cmState.h"
+#include <iosfwd>
+#include <stddef.h>
+#include <string>
+#include <vector>
+
+#include "cmStateSnapshot.h"
 
 /** \class cmListFileCache
  * \brief A class to cache list file contents.
@@ -23,7 +19,7 @@
  * cmake list files.
  */
 
-class cmMakefile;
+class cmMessenger;
 
 struct cmCommandContext
 {
@@ -48,12 +44,6 @@ struct cmListFileArgument
     : Value()
     , Delim(Unquoted)
     , Line(0)
-  {
-  }
-  cmListFileArgument(const cmListFileArgument& r)
-    : Value(r.Value)
-    , Delim(r.Delim)
-    , Line(r.Line)
   {
   }
   cmListFileArgument(const std::string& v, Delimiter d, long line)
@@ -118,12 +108,14 @@ public:
 
   // Construct an empty backtrace whose bottom sits in the directory
   // indicated by the given valid snapshot.
-  cmListFileBacktrace(cmState::Snapshot snapshot);
+  cmListFileBacktrace(cmStateSnapshot const& snapshot);
 
   // Backtraces may be copied and assigned as values.
   cmListFileBacktrace(cmListFileBacktrace const& r);
   cmListFileBacktrace& operator=(cmListFileBacktrace const& r);
   ~cmListFileBacktrace();
+
+  cmStateSnapshot GetBottom() const { return this->Bottom; }
 
   // Get a backtrace with the given file scope added to the top.
   // May not be called until after construction with a valid snapshot.
@@ -147,18 +139,23 @@ public:
   // Print the call stack below the top of the backtrace.
   void PrintCallStack(std::ostream& out) const;
 
+  // Get the number of 'frames' in this backtrace
+  size_t Depth() const;
+
 private:
   struct Entry;
-  cmState::Snapshot Bottom;
+
+  cmStateSnapshot Bottom;
   Entry* Cur;
-  cmListFileBacktrace(cmState::Snapshot bottom, Entry* up,
+  cmListFileBacktrace(cmStateSnapshot const& bottom, Entry* up,
                       cmListFileContext const& lfc);
-  cmListFileBacktrace(cmState::Snapshot bottom, Entry* cur);
+  cmListFileBacktrace(cmStateSnapshot const& bottom, Entry* cur);
 };
 
 struct cmListFile
 {
-  bool ParseFile(const char* path, bool topLevel, cmMakefile* mf);
+  bool ParseFile(const char* path, cmMessenger* messenger,
+                 cmListFileBacktrace const& lfbt);
 
   std::vector<cmListFileFunction> Functions;
 };

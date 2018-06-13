@@ -1,21 +1,19 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCPackNSISGenerator_h
 #define cmCPackNSISGenerator_h
 
+#include "cmConfigure.h" // IWYU pragma: keep
+
 #include "cmCPackGenerator.h"
 
+#include <iosfwd>
 #include <set>
+#include <string>
+#include <vector>
+
+class cmCPackComponent;
+class cmCPackComponentGroup;
 
 /** \class cmCPackNSISGenerator
  * \brief A generator for NSIS files
@@ -36,27 +34,28 @@ public:
    * Construct generator
    */
   cmCPackNSISGenerator(bool nsis64 = false);
-  virtual ~cmCPackNSISGenerator();
+  ~cmCPackNSISGenerator() override;
 
 protected:
-  virtual int InitializeInternal();
-  void CreateMenuLinks(std::ostringstream& str, std::ostringstream& deleteStr);
-  int PackageFiles();
-  virtual const char* GetOutputExtension() { return ".exe"; }
-  virtual const char* GetOutputPostfix() { return "win32"; }
+  int InitializeInternal() override;
+  void CreateMenuLinks(std::ostream& str, std::ostream& deleteStr);
+  int PackageFiles() override;
+  const char* GetOutputExtension() override { return ".exe"; }
+  const char* GetOutputPostfix() override { return "win32"; }
 
   bool GetListOfSubdirectories(const char* dir,
                                std::vector<std::string>& dirs);
 
-  enum cmCPackGenerator::CPackSetDestdirSupport SupportsSetDestdir() const;
-  virtual bool SupportsAbsoluteDestination() const;
-  virtual bool SupportsComponentInstallation() const;
+  enum cmCPackGenerator::CPackSetDestdirSupport SupportsSetDestdir()
+    const override;
+  bool SupportsAbsoluteDestination() const override;
+  bool SupportsComponentInstallation() const override;
 
   /// Produce a string that contains the NSIS code to describe a
   /// particular component. Any added macros will be emitted via
   /// macrosOut.
   std::string CreateComponentDescription(cmCPackComponent* component,
-                                         std::ostringstream& macrosOut);
+                                         std::ostream& macrosOut);
 
   /// Produce NSIS code that selects all of the components that this component
   /// depends on, recursively.
@@ -72,7 +71,12 @@ protected:
   /// particular component group, including its components. Any
   /// added macros will be emitted via macrosOut.
   std::string CreateComponentGroupDescription(cmCPackComponentGroup* group,
-                                              std::ostringstream& macrosOut);
+                                              std::ostream& macrosOut);
+
+  /// Returns the custom install directory if available for the specified
+  /// component, otherwise $INSTDIR is returned.
+  std::string CustomComponentInstallDirectory(
+    const std::string& componentName);
 
   /// Translations any newlines found in the string into \\r\\n, so that the
   /// resulting string can be used within NSIS.

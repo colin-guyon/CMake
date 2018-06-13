@@ -82,6 +82,7 @@ Visual Studio Generators
    /generator/Visual Studio 11 2012
    /generator/Visual Studio 12 2013
    /generator/Visual Studio 14 2015
+   /generator/Visual Studio 15 2017
 
 Other Generators
 ^^^^^^^^^^^^^^^^
@@ -107,6 +108,5 @@ The following extra generators are known to CMake.
    /generator/CodeBlocks
    /generator/CodeLite
    /generator/Eclipse CDT4
-   /generator/KDevelop3
    /generator/Kate
    /generator/Sublime Text 2

@@ -2,14 +2,18 @@
 
 #include "cmAlgorithms.h"
 #include "cmMakefile.h"
+#include "cmState.h"
+#include "cmStateTypes.h"
+#include "cmSystemTools.h"
 #include "cmVersion.h"
-#include "cmVersionMacros.h"
 #include "cmake.h"
+
 #include <assert.h>
 #include <ctype.h>
-#include <map>
-#include <queue>
-#include <set>
+#include <sstream>
+#include <stdio.h>
+#include <string.h>
+#include <vector>
 
 static bool stringToId(const char* input, cmPolicies::PolicyID& pid)
 {
@@ -57,9 +61,9 @@ static const char* idToString(cmPolicies::PolicyID id)
     CM_FOR_EACH_POLICY_ID(POLICY_CASE)
 #undef POLICY_CASE
     case cmPolicies::CMPCOUNT:
-      return 0;
+      return nullptr;
   }
-  return 0;
+  return nullptr;
 }
 
 static const char* idToVersion(cmPolicies::PolicyID id)
@@ -71,9 +75,9 @@ static const char* idToVersion(cmPolicies::PolicyID id)
     CM_FOR_EACH_POLICY_ID_VERSION(POLICY_CASE)
 #undef POLICY_CASE
     case cmPolicies::CMPCOUNT:
-      return 0;
+      return nullptr;
   }
-  return 0;
+  return nullptr;
 }
 
 static bool isPolicyNewerThan(cmPolicies::PolicyID id, unsigned int majorV,
@@ -82,9 +86,10 @@ static bool isPolicyNewerThan(cmPolicies::PolicyID id, unsigned int majorV,
   switch (id) {
 #define POLICY_CASE(ID, V_MAJOR, V_MINOR, V_PATCH)                            \
   case cmPolicies::ID:                                                        \
-    return (                                                                  \
-      majorV < V_MAJOR || (majorV == V_MAJOR && minorV + 1 < V_MINOR + 1) ||  \
-      (majorV == V_MAJOR && minorV == V_MINOR && patchV + 1 < V_PATCH + 1));
+    return (majorV < (V_MAJOR) ||                                             \
+            (majorV == (V_MAJOR) && minorV + 1 < (V_MINOR) + 1) ||            \
+            (majorV == (V_MAJOR) && minorV == (V_MINOR) &&                    \
+             patchV + 1 < (V_PATCH) + 1));
     CM_FOR_EACH_POLICY_ID_VERSION(POLICY_CASE)
 #undef POLICY_CASE
     case cmPolicies::CMPCOUNT:
@@ -102,9 +107,9 @@ const char* idToShortDescription(cmPolicies::PolicyID id)
     CM_FOR_EACH_POLICY_ID_DOC(POLICY_CASE)
 #undef POLICY_CASE
     case cmPolicies::CMPCOUNT:
-      return 0;
+      return nullptr;
   }
-  return 0;
+  return nullptr;
 }
 
 static void DiagnoseAncientPolicies(
@@ -115,9 +120,8 @@ static void DiagnoseAncientPolicies(
   e << "The project requests behavior compatible with CMake version \""
     << majorVer << "." << minorVer << "." << patchVer
     << "\", which requires the OLD behavior for some policies:\n";
-  for (std::vector<cmPolicies::PolicyID>::const_iterator i = ancient.begin();
-       i != ancient.end(); ++i) {
-    e << "  " << idToString(*i) << ": " << idToShortDescription(*i) << "\n";
+  for (cmPolicies::PolicyID i : ancient) {
+    e << "  " << idToString(i) << ": " << idToShortDescription(i) << "\n";
   }
   e << "However, this version of CMake no longer supports the OLD "
     << "behavior for these policies.  "
@@ -136,7 +140,7 @@ static bool GetPolicyDefault(cmMakefile* mf, std::string const& policy,
     *defaultSetting = cmPolicies::NEW;
   } else if (defaultValue == "OLD") {
     *defaultSetting = cmPolicies::OLD;
-  } else if (defaultValue == "") {
+  } else if (defaultValue.empty()) {
     *defaultSetting = cmPolicies::WARN;
   } else {
     std::ostringstream e;
@@ -228,7 +232,7 @@ bool cmPolicies::ApplyPolicyVersion(cmMakefile* mf, const char* version)
               "For backwards compatibility, what version of CMake "
               "commands and "
               "syntax should this version of CMake try to support.",
-              cmState::STRING);
+              cmStateEnums::STRING);
           }
         }
       }
@@ -269,6 +273,22 @@ std::string cmPolicies::GetPolicyWarning(cmPolicies::PolicyID id)
   return msg.str();
 }
 
+std::string cmPolicies::GetPolicyDeprecatedWarning(cmPolicies::PolicyID id)
+{
+  std::ostringstream msg;
+  /* clang-format off */
+  msg <<
+    "The OLD behavior for policy " << idToString(id) << " "
+    "will be removed from a future version of CMake.\n"
+    "The cmake-policies(7) manual explains that the OLD behaviors of all "
+    "policies are deprecated and that a policy should be set to OLD only "
+    "under specific short-term circumstances.  Projects should be ported "
+    "to the NEW behavior and not rely on setting a policy to OLD."
+    ;
+  /* clang-format on */
+  return msg.str();
+}
+
 ///! return an error string for when a required policy is unspecified
 std::string cmPolicies::GetRequiredPolicyError(cmPolicies::PolicyID id)
 {
@@ -293,7 +313,8 @@ std::string cmPolicies::GetRequiredPolicyError(cmPolicies::PolicyID id)
 }
 
 ///! Get the default status for a policy
-cmPolicies::PolicyStatus cmPolicies::GetPolicyStatus(cmPolicies::PolicyID)
+cmPolicies::PolicyStatus cmPolicies::GetPolicyStatus(
+  cmPolicies::PolicyID /*unused*/)
 {
   return cmPolicies::WARN;
 }

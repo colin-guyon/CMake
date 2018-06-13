@@ -1,38 +1,45 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindFreetype
 # ------------
 #
-# Locate FreeType library
+# Find the FreeType font renderer includes and library.
 #
-# This module defines
+# Imported Targets
+# ^^^^^^^^^^^^^^^^
 #
-# ::
+# This module defines the following :prop_tgt:`IMPORTED` target:
 #
-#   FREETYPE_LIBRARIES, the library to link against
-#   FREETYPE_FOUND, if false, do not try to link to FREETYPE
-#   FREETYPE_INCLUDE_DIRS, where to find headers.
-#   FREETYPE_VERSION_STRING, the version of freetype found (since CMake 2.8.8)
-#   This is the concatenation of the paths:
-#   FREETYPE_INCLUDE_DIR_ft2build
-#   FREETYPE_INCLUDE_DIR_freetype2
+# ``Freetype::Freetype``
+#   The Freetype ``freetype`` library, if found
 #
+# Result Variables
+# ^^^^^^^^^^^^^^^^
 #
+# This module will set the following variables in your project:
 #
-# $FREETYPE_DIR is an environment variable that would correspond to the
-# ./configure --prefix=$FREETYPE_DIR used in building FREETYPE.
-
-#=============================================================================
-# Copyright 2007-2009 Kitware, Inc.
+# ``FREETYPE_FOUND``
+#   true if the Freetype headers and libraries were found
+# ``FREETYPE_INCLUDE_DIRS``
+#   directories containing the Freetype headers. This is the
+#   concatenation of the variables:
 #
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
+#   ``FREETYPE_INCLUDE_DIR_ft2build``
+#     directory holding the main Freetype API configuration header
+#   ``FREETYPE_INCLUDE_DIR_freetype2``
+#     directory holding Freetype public headers
+# ``FREETYPE_LIBRARIES``
+#   the library to link against
+# ``FREETYPE_VERSION_STRING``
+#   the version of freetype found (since CMake 2.8.8)
 #
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
+# Hints
+# ^^^^^
+#
+# The user may set the environment variable ``FREETYPE_DIR`` to the root
+# directory of a Freetype installation.
 
 # Created by Eric Wing.
 # Modifications by Alexander Neundorf.
@@ -51,19 +58,20 @@
 # wants explicit full paths and this trickery doesn't work too well.
 # I'm going to attempt to cut out the middleman and hope
 # everything still works.
-find_path(
-  FREETYPE_INCLUDE_DIR_ft2build
-  ft2build.h
+
+set(FREETYPE_FIND_ARGS
   HINTS
     ENV FREETYPE_DIR
   PATHS
-    /usr/X11R6
-    /usr/local/X11R6
-    /usr/local/X11
-    /usr/freeware
     ENV GTKMM_BASEPATH
     [HKEY_CURRENT_USER\\SOFTWARE\\gtkmm\\2.4;Path]
     [HKEY_LOCAL_MACHINE\\SOFTWARE\\gtkmm\\2.4;Path]
+)
+
+find_path(
+  FREETYPE_INCLUDE_DIR_ft2build
+  ft2build.h
+  ${FREETYPE_FIND_ARGS}
   PATH_SUFFIXES
     include/freetype2
     include
@@ -75,40 +83,40 @@ find_path(
   NAMES
     freetype/config/ftheader.h
     config/ftheader.h
-  HINTS
-    ENV FREETYPE_DIR
-  PATHS
-    /usr/X11R6
-    /usr/local/X11R6
-    /usr/local/X11
-    /usr/freeware
-    ENV GTKMM_BASEPATH
-    [HKEY_CURRENT_USER\\SOFTWARE\\gtkmm\\2.4;Path]
-    [HKEY_LOCAL_MACHINE\\SOFTWARE\\gtkmm\\2.4;Path]
+  ${FREETYPE_FIND_ARGS}
   PATH_SUFFIXES
     include/freetype2
     include
     freetype2
 )
 
-find_library(FREETYPE_LIBRARY
-  NAMES
-    freetype
-    libfreetype
-    freetype219
-  HINTS
-    ENV FREETYPE_DIR
-  PATHS
-    /usr/X11R6
-    /usr/local/X11R6
-    /usr/local/X11
-    /usr/freeware
-    ENV GTKMM_BASEPATH
-    [HKEY_CURRENT_USER\\SOFTWARE\\gtkmm\\2.4;Path]
-    [HKEY_LOCAL_MACHINE\\SOFTWARE\\gtkmm\\2.4;Path]
-  PATH_SUFFIXES
-    lib
-)
+if(NOT FREETYPE_LIBRARY)
+  find_library(FREETYPE_LIBRARY_RELEASE
+    NAMES
+      freetype
+      libfreetype
+      freetype219
+    ${FREETYPE_FIND_ARGS}
+    PATH_SUFFIXES
+      lib
+  )
+  find_library(FREETYPE_LIBRARY_DEBUG
+    NAMES
+      freetyped
+      libfreetyped
+      freetype219d
+    ${FREETYPE_FIND_ARGS}
+    PATH_SUFFIXES
+      lib
+  )
+  include(${CMAKE_CURRENT_LIST_DIR}/SelectLibraryConfigurations.cmake)
+  select_library_configurations(FREETYPE)
+else()
+  # on Windows, ensure paths are in canonical format (forward slahes):
+  file(TO_CMAKE_PATH "${FREETYPE_LIBRARY}" FREETYPE_LIBRARY)
+endif()
+
+unset(FREETYPE_FIND_ARGS)
 
 # set the user variables
 if(FREETYPE_INCLUDE_DIR_ft2build AND FREETYPE_INCLUDE_DIR_freetype2)
@@ -133,7 +141,7 @@ if(FREETYPE_INCLUDE_DIR_freetype2 AND FREETYPE_H)
       if(VLINE MATCHES "^#[\t ]*define[\t ]+FREETYPE_${VPART}[\t ]+([0-9]+)$")
         set(FREETYPE_VERSION_PART "${CMAKE_MATCH_1}")
         if(FREETYPE_VERSION_STRING)
-          set(FREETYPE_VERSION_STRING "${FREETYPE_VERSION_STRING}.${FREETYPE_VERSION_PART}")
+          string(APPEND FREETYPE_VERSION_STRING ".${FREETYPE_VERSION_PART}")
         else()
           set(FREETYPE_VERSION_STRING "${FREETYPE_VERSION_PART}")
         endif()
@@ -143,9 +151,6 @@ if(FREETYPE_INCLUDE_DIR_freetype2 AND FREETYPE_H)
   endforeach()
 endif()
 
-
-# handle the QUIETLY and REQUIRED arguments and set FREETYPE_FOUND to TRUE if
-# all listed variables are TRUE
 include(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
 
 find_package_handle_standard_args(
@@ -158,7 +163,36 @@ find_package_handle_standard_args(
 )
 
 mark_as_advanced(
-  FREETYPE_LIBRARY
   FREETYPE_INCLUDE_DIR_freetype2
   FREETYPE_INCLUDE_DIR_ft2build
 )
+
+if(Freetype_FOUND)
+  if(NOT TARGET Freetype::Freetype)
+    add_library(Freetype::Freetype UNKNOWN IMPORTED)
+    set_target_properties(Freetype::Freetype PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES "${FREETYPE_INCLUDE_DIRS}")
+
+    if(FREETYPE_LIBRARY_RELEASE)
+      set_property(TARGET Freetype::Freetype APPEND PROPERTY
+        IMPORTED_CONFIGURATIONS RELEASE)
+      set_target_properties(Freetype::Freetype PROPERTIES
+        IMPORTED_LINK_INTERFACE_LANGUAGES_RELEASE "C"
+        IMPORTED_LOCATION_RELEASE "${FREETYPE_LIBRARY_RELEASE}")
+    endif()
+
+    if(FREETYPE_LIBRARY_DEBUG)
+      set_property(TARGET Freetype::Freetype APPEND PROPERTY
+        IMPORTED_CONFIGURATIONS DEBUG)
+      set_target_properties(Freetype::Freetype PROPERTIES
+        IMPORTED_LINK_INTERFACE_LANGUAGES_DEBUG "C"
+        IMPORTED_LOCATION_DEBUG "${FREETYPE_LIBRARY_DEBUG}")
+    endif()
+
+    if(NOT FREETYPE_LIBRARY_RELEASE AND NOT FREETYPE_LIBRARY_DEBUG)
+      set_target_properties(Freetype::Freetype PROPERTIES
+        IMPORTED_LINK_INTERFACE_LANGUAGES "C"
+        IMPORTED_LOCATION "${FREETYPE_LIBRARY}")
+    endif()
+  endif()
+endif()

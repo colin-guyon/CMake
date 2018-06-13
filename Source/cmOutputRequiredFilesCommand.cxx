@@ -1,18 +1,20 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmOutputRequiredFilesCommand.h"
 
+#include "cmsys/FStream.hxx"
+#include "cmsys/RegularExpression.hxx"
+#include <map>
+#include <utility>
+
 #include "cmAlgorithms.h"
-#include <cmsys/FStream.hxx>
+#include "cmGeneratorExpression.h"
+#include "cmMakefile.h"
+#include "cmSourceFile.h"
+#include "cmSystemTools.h"
+#include "cmTarget.h"
+
+class cmExecutionStatus;
 
 /** \class cmDependInformation
  * \brief Store dependency information for a single source file.
@@ -28,7 +30,7 @@ public:
    */
   cmDependInformation()
     : DependDone(false)
-    , SourceFile(0)
+    , SourceFile(nullptr)
   {
   }
 
@@ -111,8 +113,9 @@ public:
     std::set<std::string> uniqueIncludes;
     std::vector<std::string> orderedAndUniqueIncludes;
     cmTargets& targets = this->Makefile->GetTargets();
-    for (cmTargets::iterator l = targets.begin(); l != targets.end(); ++l) {
-      const char* incDirProp = l->second.GetProperty("INCLUDE_DIRECTORIES");
+    for (auto const& target : targets) {
+      const char* incDirProp =
+        target.second.GetProperty("INCLUDE_DIRECTORIES");
       if (!incDirProp) {
         continue;
       }
@@ -123,9 +126,7 @@ public:
       std::vector<std::string> includes;
       cmSystemTools::ExpandListArgument(incDirs, includes);
 
-      for (std::vector<std::string>::const_iterator j = includes.begin();
-           j != includes.end(); ++j) {
-        std::string path = *j;
+      for (std::string& path : includes) {
         this->Makefile->ExpandVariablesInString(path);
         if (uniqueIncludes.insert(path).second) {
           orderedAndUniqueIncludes.push_back(path);
@@ -133,10 +134,8 @@ public:
       }
     }
 
-    for (std::vector<std::string>::const_iterator it =
-           orderedAndUniqueIncludes.begin();
-         it != orderedAndUniqueIncludes.end(); ++it) {
-      this->AddSearchPath(*it);
+    for (std::string const& inc : orderedAndUniqueIncludes) {
+      this->AddSearchPath(inc);
     }
   }
 
@@ -154,7 +153,7 @@ public:
    */
   const cmDependInformation* FindDependencies(const char* file)
   {
-    cmDependInformation* info = this->GetDependInformation(file, 0);
+    cmDependInformation* info = this->GetDependInformation(file, nullptr);
     this->GenerateDependInformation(info);
     return info;
   }
@@ -174,36 +173,32 @@ protected:
 
     std::string line;
     while (cmSystemTools::GetLineFromStream(fin, line)) {
-      if (cmHasLiteralPrefix(line.c_str(), "#include")) {
+      if (cmHasLiteralPrefix(line, "#include")) {
         // if it is an include line then create a string class
-        std::string currentline = line;
-        size_t qstart = currentline.find('\"', 8);
+        size_t qstart = line.find('\"', 8);
         size_t qend;
         // if a quote is not found look for a <
         if (qstart == std::string::npos) {
-          qstart = currentline.find('<', 8);
+          qstart = line.find('<', 8);
           // if a < is not found then move on
           if (qstart == std::string::npos) {
-            cmSystemTools::Error("unknown include directive ",
-                                 currentline.c_str());
+            cmSystemTools::Error("unknown include directive ", line.c_str());
             continue;
-          } else {
-            qend = currentline.find('>', qstart + 1);
           }
+          qend = line.find('>', qstart + 1);
         } else {
-          qend = currentline.find('\"', qstart + 1);
+          qend = line.find('\"', qstart + 1);
         }
         // extract the file being included
-        std::string includeFile =
-          currentline.substr(qstart + 1, qend - qstart - 1);
+        std::string includeFile = line.substr(qstart + 1, qend - qstart - 1);
         // see if the include matches the regular expression
         if (!this->IncludeFileRegularExpression.find(includeFile)) {
           if (this->Verbose) {
             std::string message = "Skipping ";
             message += includeFile;
             message += " for file ";
-            message += info->FullPath.c_str();
-            cmSystemTools::Error(message.c_str(), 0);
+            message += info->FullPath;
+            cmSystemTools::Error(message.c_str(), nullptr);
           }
           continue;
         }
@@ -218,63 +213,51 @@ protected:
           cxxFile = root + ".cxx";
           bool found = false;
           // try jumping to .cxx .cpp and .c in order
-          if (cmSystemTools::FileExists(cxxFile.c_str())) {
+          if (cmSystemTools::FileExists(cxxFile)) {
             found = true;
           }
-          for (std::vector<std::string>::iterator i =
-                 this->IncludeDirectories.begin();
-               i != this->IncludeDirectories.end(); ++i) {
-            std::string path = *i;
+          for (std::string path : this->IncludeDirectories) {
             path = path + "/";
             path = path + cxxFile;
-            if (cmSystemTools::FileExists(path.c_str())) {
+            if (cmSystemTools::FileExists(path)) {
               found = true;
             }
           }
           if (!found) {
             cxxFile = root + ".cpp";
-            if (cmSystemTools::FileExists(cxxFile.c_str())) {
+            if (cmSystemTools::FileExists(cxxFile)) {
               found = true;
             }
-            for (std::vector<std::string>::iterator i =
-                   this->IncludeDirectories.begin();
-                 i != this->IncludeDirectories.end(); ++i) {
-              std::string path = *i;
+            for (std::string path : this->IncludeDirectories) {
               path = path + "/";
               path = path + cxxFile;
-              if (cmSystemTools::FileExists(path.c_str())) {
+              if (cmSystemTools::FileExists(path)) {
                 found = true;
               }
             }
           }
           if (!found) {
             cxxFile = root + ".c";
-            if (cmSystemTools::FileExists(cxxFile.c_str())) {
+            if (cmSystemTools::FileExists(cxxFile)) {
               found = true;
             }
-            for (std::vector<std::string>::iterator i =
-                   this->IncludeDirectories.begin();
-                 i != this->IncludeDirectories.end(); ++i) {
-              std::string path = *i;
+            for (std::string path : this->IncludeDirectories) {
               path = path + "/";
               path = path + cxxFile;
-              if (cmSystemTools::FileExists(path.c_str())) {
+              if (cmSystemTools::FileExists(path)) {
                 found = true;
               }
             }
           }
           if (!found) {
             cxxFile = root + ".txx";
-            if (cmSystemTools::FileExists(cxxFile.c_str())) {
+            if (cmSystemTools::FileExists(cxxFile)) {
               found = true;
             }
-            for (std::vector<std::string>::iterator i =
-                   this->IncludeDirectories.begin();
-                 i != this->IncludeDirectories.end(); ++i) {
-              std::string path = *i;
+            for (std::string path : this->IncludeDirectories) {
               path = path + "/";
               path = path + cxxFile;
-              if (cmSystemTools::FileExists(path.c_str())) {
+              if (cmSystemTools::FileExists(path)) {
                 found = true;
               }
             }
@@ -307,10 +290,10 @@ protected:
     // If dependencies are already done, stop now.
     if (info->DependDone) {
       return;
-    } else {
-      // Make sure we don't visit the same file more than once.
-      info->DependDone = true;
     }
+    // Make sure we don't visit the same file more than once.
+    info->DependDone = true;
+
     const char* path = info->FullPath.c_str();
     if (!path) {
       cmSystemTools::Error(
@@ -329,7 +312,7 @@ protected:
 
     // See if the cmSourceFile for it has any files specified as
     // dependency hints.
-    if (info->SourceFile != 0) {
+    if (info->SourceFile != nullptr) {
 
       // Get the cmSourceFile corresponding to this.
       const cmSourceFile& cFile = *(info->SourceFile);
@@ -338,10 +321,8 @@ protected:
       if (!cFile.GetDepends().empty()) {
         // Dependency hints have been given.  Use them to begin the
         // recursion.
-        for (std::vector<std::string>::const_iterator file =
-               cFile.GetDepends().begin();
-             file != cFile.GetDepends().end(); ++file) {
-          this->AddDependency(info, file->c_str());
+        for (std::string const& file : cFile.GetDepends()) {
+          this->AddDependency(info, file.c_str());
         }
 
         // Found dependency information.  We are done.
@@ -358,10 +339,7 @@ protected:
           found = true;
         } else {
           // try to guess which include path to use
-          for (std::vector<std::string>::iterator t =
-                 this->IncludeDirectories.begin();
-               t != this->IncludeDirectories.end(); ++t) {
-            std::string incpath = *t;
+          for (std::string incpath : this->IncludeDirectories) {
             if (!incpath.empty() && incpath[incpath.size() - 1] != '/') {
               incpath = incpath + "/";
             }
@@ -384,7 +362,7 @@ protected:
       } else {
         // Destroy the name of the file so that it won't be output as a
         // dependency.
-        info->FullPath = "";
+        info->FullPath.clear();
       }
     }
   }
@@ -405,15 +383,14 @@ protected:
     if (result != this->DependInformationMap.end()) {
       // Found an instance, return it.
       return result->second;
-    } else {
-      // Didn't find an instance.  Create a new one and save it.
-      cmDependInformation* info = new cmDependInformation;
-      info->FullPath = fullPath;
-      info->PathOnly = cmSystemTools::GetFilenamePath(fullPath);
-      info->IncludeName = file;
-      this->DependInformationMap[fullPath] = info;
-      return info;
     }
+    // Didn't find an instance.  Create a new one and save it.
+    cmDependInformation* info = new cmDependInformation;
+    info->FullPath = fullPath;
+    info->PathOnly = cmSystemTools::GetFilenamePath(fullPath);
+    info->IncludeName = file;
+    this->DependInformationMap[fullPath] = info;
+    return info;
   }
 
   /**
@@ -444,15 +421,12 @@ protected:
       return fp;
     }
 
-    for (std::vector<std::string>::iterator i =
-           this->IncludeDirectories.begin();
-         i != this->IncludeDirectories.end(); ++i) {
-      std::string path = *i;
+    for (std::string path : this->IncludeDirectories) {
       if (!path.empty() && path[path.size() - 1] != '/') {
         path = path + "/";
       }
       path = path + fname;
-      if (cmSystemTools::FileExists(path.c_str(), true) &&
+      if (cmSystemTools::FileExists(path, true) &&
           !cmSystemTools::FileIsDirectory(path)) {
         std::string fp = cmSystemTools::CollapseFullPath(path);
         this->DirectoryToFileToPathMap[extraPath ? extraPath : ""][fname] = fp;
@@ -466,7 +440,7 @@ protected:
         path = path + "/";
       }
       path = path + fname;
-      if (cmSystemTools::FileExists(path.c_str(), true) &&
+      if (cmSystemTools::FileExists(path, true) &&
           !cmSystemTools::FileIsDirectory(path)) {
         std::string fp = cmSystemTools::CollapseFullPath(path);
         this->DirectoryToFileToPathMap[extraPath][fname] = fp;
@@ -495,11 +469,6 @@ protected:
 bool cmOutputRequiredFilesCommand::InitialPass(
   std::vector<std::string> const& args, cmExecutionStatus&)
 {
-  if (this->Disallowed(cmPolicies::CMP0032, "The output_required_files "
-                                            "command should not be called; "
-                                            "see CMP0032.")) {
-    return true;
-  }
   if (args.size() != 2) {
     this->SetError("called with incorrect number of arguments");
     return false;
@@ -517,7 +486,7 @@ bool cmOutputRequiredFilesCommand::InitialPass(
   const cmDependInformation* info = md.FindDependencies(this->File.c_str());
   if (info) {
     // write them out
-    FILE* fout = cmsys::SystemTools::Fopen(this->OutputFile.c_str(), "w");
+    FILE* fout = cmsys::SystemTools::Fopen(this->OutputFile, "w");
     if (!fout) {
       std::string err = "Can not open output file: ";
       err += this->OutputFile;
@@ -539,19 +508,17 @@ void cmOutputRequiredFilesCommand::ListDependencies(
   // add info to the visited set
   visited->insert(info);
   // now recurse with info's dependencies
-  for (cmDependInformation::DependencySetType::const_iterator d =
-         info->DependencySet.begin();
-       d != info->DependencySet.end(); ++d) {
-    if (visited->find(*d) == visited->end()) {
-      if (info->FullPath != "") {
-        std::string tmp = (*d)->FullPath;
+  for (cmDependInformation* d : info->DependencySet) {
+    if (visited->find(d) == visited->end()) {
+      if (!info->FullPath.empty()) {
+        std::string tmp = d->FullPath;
         std::string::size_type pos = tmp.rfind('.');
         if (pos != std::string::npos && (tmp.substr(pos) != ".h")) {
           tmp = tmp.substr(0, pos);
-          fprintf(fout, "%s\n", (*d)->FullPath.c_str());
+          fprintf(fout, "%s\n", d->FullPath.c_str());
         }
       }
-      this->ListDependencies(*d, fout, visited);
+      this->ListDependencies(d, fout, visited);
     }
   }
 }

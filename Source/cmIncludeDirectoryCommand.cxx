@@ -1,21 +1,20 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmIncludeDirectoryCommand.h"
+
+#include <algorithm>
+#include <set>
+
+#include "cmMakefile.h"
+#include "cmSystemTools.h"
+
+class cmExecutionStatus;
 
 // cmIncludeDirectoryCommand
 bool cmIncludeDirectoryCommand::InitialPass(
   std::vector<std::string> const& args, cmExecutionStatus&)
 {
-  if (args.size() < 1) {
+  if (args.empty()) {
     return true;
   }
 
@@ -78,7 +77,7 @@ static bool StartsWithGeneratorExpression(const std::string& input)
 // do a lot of cleanup on the arguments because this is one place where folks
 // sometimes take the output of a program and pass it directly into this
 // command not thinking that a single argument could be filled with spaces
-// and newlines etc liek below:
+// and newlines etc like below:
 //
 // "   /foo/bar
 //    /boo/hoo /dingle/berry "
@@ -98,7 +97,7 @@ void cmIncludeDirectoryCommand::GetIncludes(const std::string& arg,
       std::string inc = arg.substr(lastPos, pos);
       this->NormalizeInclude(inc);
       if (!inc.empty()) {
-        incs.push_back(inc);
+        incs.push_back(std::move(inc));
       }
     }
     lastPos = pos + 1;
@@ -106,7 +105,7 @@ void cmIncludeDirectoryCommand::GetIncludes(const std::string& arg,
   std::string inc = arg.substr(lastPos);
   this->NormalizeInclude(inc);
   if (!inc.empty()) {
-    incs.push_back(inc);
+    incs.push_back(std::move(inc));
   }
 }
 
@@ -114,17 +113,17 @@ void cmIncludeDirectoryCommand::NormalizeInclude(std::string& inc)
 {
   std::string::size_type b = inc.find_first_not_of(" \r");
   std::string::size_type e = inc.find_last_not_of(" \r");
-  if ((b != inc.npos) && (e != inc.npos)) {
+  if ((b != std::string::npos) && (e != std::string::npos)) {
     inc.assign(inc, b, 1 + e - b); // copy the remaining substring
   } else {
-    inc = "";
+    inc.clear();
     return;
   }
 
   if (!cmSystemTools::IsOff(inc.c_str())) {
     cmSystemTools::ConvertToUnixSlashes(inc);
 
-    if (!cmSystemTools::FileIsFullPath(inc.c_str())) {
+    if (!cmSystemTools::FileIsFullPath(inc)) {
       if (!StartsWithGeneratorExpression(inc)) {
         std::string tmp = this->Makefile->GetCurrentSourceDirectory();
         tmp += "/";

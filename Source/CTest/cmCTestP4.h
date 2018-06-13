@@ -1,21 +1,18 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2013 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCTestP4_h
 #define cmCTestP4_h
 
+#include "cmConfigure.h" // IWYU pragma: keep
+
 #include "cmCTestGlobalVC.h"
 
+#include <iosfwd>
 #include <map>
+#include <string>
 #include <vector>
+
+class cmCTest;
 
 /** \class cmCTestP4
  * \brief Interaction with the Perforce command-line tool
@@ -27,7 +24,7 @@ public:
   /** Construct with a CTest instance and update log stream.  */
   cmCTestP4(cmCTest* ctest, std::ostream& log);
 
-  virtual ~cmCTestP4();
+  ~cmCTestP4() override;
 
 private:
   std::vector<std::string> ChangeLists;
@@ -54,20 +51,21 @@ private:
   void SetP4Options(std::vector<char const*>& options);
 
   std::string GetWorkingRevision();
-  virtual void NoteOldRevision();
-  virtual void NoteNewRevision();
-  virtual bool UpdateImpl();
+  bool NoteOldRevision() override;
+  bool NoteNewRevision() override;
+  bool UpdateImpl() override;
   bool UpdateCustom(const std::string& custom);
 
-  void LoadRevisions();
-  void LoadModifications();
+  bool LoadRevisions() override;
+  bool LoadModifications() override;
 
-  // Parsing helper classes.
-  class IdentifyParser;
   class ChangesParser;
-  class UserParser;
   class DescribeParser;
   class DiffParser;
+  // Parsing helper classes.
+  class IdentifyParser;
+  class UserParser;
+
   friend class IdentifyParser;
   friend class ChangesParser;
   friend class UserParser;

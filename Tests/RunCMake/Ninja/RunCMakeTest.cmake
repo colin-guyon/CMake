@@ -15,6 +15,12 @@ else()
   message(FATAL_ERROR "'ninja --version' reported:\n${ninja_out}")
 endif()
 
+function(run_NinjaToolMissing)
+  set(RunCMake_MAKE_PROGRAM ninja-tool-missing)
+  run_cmake(NinjaToolMissing)
+endfunction()
+run_NinjaToolMissing()
+
 function(run_CMP0058 case)
   # Use a single build tree for a few tests without cleaning.
   set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/CMP0058-${case}-build)
@@ -32,6 +38,18 @@ run_CMP0058(WARN-by)
 run_CMP0058(NEW-no)
 run_CMP0058(NEW-by)
 
+run_cmake(CustomCommandDepfile)
+
+function(run_CommandConcat)
+  set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/CommandConcat-build)
+  set(RunCMake_TEST_NO_CLEAN 1)
+  file(REMOVE_RECURSE "${RunCMake_TEST_BINARY_DIR}")
+  file(MAKE_DIRECTORY "${RunCMake_TEST_BINARY_DIR}")
+  run_cmake(CommandConcat)
+  run_cmake_command(CommandConcat-build ${CMAKE_COMMAND} --build .)
+endfunction()
+run_CommandConcat()
+
 function(run_SubDir)
   # Use a single build tree for a few tests without cleaning.
   set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/SubDir-build)
@@ -41,16 +59,31 @@ function(run_SubDir)
   run_cmake(SubDir)
   if(WIN32)
     set(SubDir_all [[SubDir\all]])
+    set(SubDir_test [[SubDir\test]])
+    set(SubDir_install [[SubDir\install]])
+    set(SubDirBinary_test [[SubDirBinary\test]])
+    set(SubDirBinary_all [[SubDirBinary\all]])
+    set(SubDirBinary_install [[SubDirBinary\install]])
   else()
     set(SubDir_all [[SubDir/all]])
+    set(SubDir_test [[SubDir/test]])
+    set(SubDir_install [[SubDir/install]])
+    set(SubDirBinary_all [[SubDirBinary/all]])
+    set(SubDirBinary_test [[SubDirBinary/test]])
+    set(SubDirBinary_install [[SubDirBinary/install]])
   endif()
   run_cmake_command(SubDir-build ${CMAKE_COMMAND} --build . --target ${SubDir_all})
+  run_cmake_command(SubDir-test ${CMAKE_COMMAND} --build . --target ${SubDir_test})
+  run_cmake_command(SubDir-install ${CMAKE_COMMAND} --build . --target ${SubDir_install})
+  run_cmake_command(SubDirBinary-build ${CMAKE_COMMAND} --build . --target ${SubDirBinary_all})
+  run_cmake_command(SubDirBinary-test ${CMAKE_COMMAND} --build . --target ${SubDirBinary_test})
+  run_cmake_command(SubDirBinary-install ${CMAKE_COMMAND} --build . --target ${SubDirBinary_install})
 endfunction()
 run_SubDir()
 
 function(run_ninja dir)
   execute_process(
-    COMMAND "${RunCMake_MAKE_PROGRAM}"
+    COMMAND "${RunCMake_MAKE_PROGRAM}" ${ARGN}
     WORKING_DIRECTORY "${dir}"
     OUTPUT_VARIABLE ninja_stdout
     ERROR_VARIABLE ninja_stderr
@@ -71,6 +104,39 @@ ${ninja_stderr}
       "top ninja build failed exited with status ${ninja_result}")
   endif()
 endfunction(run_ninja)
+
+function (run_LooseObjectDepends)
+  set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/LooseObjectDepends-build)
+  run_cmake(LooseObjectDepends)
+  run_ninja("${RunCMake_TEST_BINARY_DIR}" "CMakeFiles/top.dir/top.c${CMAKE_C_OUTPUT_EXTENSION}")
+  if (EXISTS "${RunCMake_TEST_BINARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}dep${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    message(FATAL_ERROR
+      "The `dep` library was created when requesting an object file to be "
+      "built; this should no longer be necessary.")
+  endif ()
+  if (EXISTS "${RunCMake_TEST_BINARY_DIR}/CMakeFiles/dep.dir/dep.c${CMAKE_C_OUTPUT_EXTENSION}")
+    message(FATAL_ERROR
+      "The `dep.c` object file was created when requesting an object file to "
+      "be built; this should no longer be necessary.")
+  endif ()
+endfunction ()
+run_LooseObjectDepends()
+
+function (run_AssumedSources)
+  set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/AssumedSources-build)
+  run_cmake(AssumedSources)
+  run_ninja("${RunCMake_TEST_BINARY_DIR}" "target.c")
+  if (NOT EXISTS "${RunCMake_TEST_BINARY_DIR}/target.c")
+    message(FATAL_ERROR
+      "Dependencies for an assumed source did not hook up properly for 'target.c'.")
+  endif ()
+  run_ninja("${RunCMake_TEST_BINARY_DIR}" "target-no-depends.c")
+  if (EXISTS "${RunCMake_TEST_BINARY_DIR}/target-no-depends.c")
+    message(FATAL_ERROR
+      "Dependencies for an assumed source were magically hooked up for 'target-no-depends.c'.")
+  endif ()
+endfunction ()
+run_AssumedSources()
 
 function(sleep delay)
   execute_process(

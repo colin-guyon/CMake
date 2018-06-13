@@ -1,20 +1,10 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2014 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmWIXAccessControlList.h"
 
-#include <CPack/cmCPackGenerator.h>
+#include "cmCPackGenerator.h"
 
-#include <cmSystemTools.h>
+#include "cmSystemTools.h"
 
 cmWIXAccessControlList::cmWIXAccessControlList(
   cmCPackLog* logger, cmInstalledFile const& installedFile,
@@ -30,8 +20,8 @@ bool cmWIXAccessControlList::Apply()
   std::vector<std::string> entries;
   this->InstalledFile.GetPropertyAsList("CPACK_WIX_ACL", entries);
 
-  for (size_t i = 0; i < entries.size(); ++i) {
-    this->CreatePermissionElement(entries[i]);
+  for (std::string const& entry : entries) {
+    this->CreatePermissionElement(entry);
   }
 
   return true;
@@ -66,9 +56,9 @@ void cmWIXAccessControlList::CreatePermissionElement(std::string const& entry)
   if (!domain.empty()) {
     this->SourceWriter.AddAttribute("Domain", domain);
   }
-  for (size_t i = 0; i < permissions.size(); ++i) {
+  for (std::string const& permission : permissions) {
     this->EmitBooleanAttribute(entry,
-                               cmSystemTools::TrimWhitespace(permissions[i]));
+                               cmSystemTools::TrimWhitespace(permission));
   }
   this->SourceWriter.EndElement("Permission");
 }
@@ -127,7 +117,7 @@ void cmWIXAccessControlList::EmitBooleanAttribute(std::string const& entry,
                                                   std::string const& name)
 {
   if (!this->IsBooleanAttribute(name)) {
-    std::stringstream message;
+    std::ostringstream message;
     message << "Unknown boolean attribute '" << name << "'";
     this->ReportError(entry, message.str());
   }

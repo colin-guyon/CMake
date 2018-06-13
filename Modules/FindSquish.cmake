@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindSquish
 # ----------
@@ -116,24 +119,6 @@
 #
 #    This is deprecated. Use SQUISH_V3_ADD_TEST() if you are using Squish 3.x instead.
 
-
-#=============================================================================
-# Copyright 2008-2009 Kitware, Inc.
-# Copyright 2012 Alexander Neundorf
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
-
-
-include(CMakeParseArguments)
-
 set(SQUISH_INSTALL_DIR_STRING "Directory containing the bin, doc, and lib directories for Squish; this should be the root of the installation directory.")
 set(SQUISH_SERVER_EXECUTABLE_STRING "The squishserver executable program.")
 set(SQUISH_CLIENT_EXECUTABLE_STRING "The squishclient executable program.")
@@ -158,9 +143,6 @@ if(NOT SQUISH_INSTALL_DIR)
 
     # Look in places relative to the system executable search path.
     ${SQUISH_INSTALL_DIR_SEARCH}
-
-    # Look in standard UNIX install locations.
-    #/usr/local/squish
 
     DOC "The ${SQUISH_INSTALL_DIR_STRING}"
     )

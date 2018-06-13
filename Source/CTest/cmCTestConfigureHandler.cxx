@@ -1,22 +1,15 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCTestConfigureHandler.h"
 
 #include "cmCTest.h"
+#include "cmDuration.h"
 #include "cmGeneratedFileStream.h"
 #include "cmXMLWriter.h"
-#include "cmake.h"
-#include <cmsys/Process.h>
+
+#include <chrono>
+#include <ostream>
+#include <string>
 
 cmCTestConfigureHandler::cmCTestConfigureHandler()
 {
@@ -51,7 +44,7 @@ int cmCTestConfigureHandler::ProcessHandler()
     return -1;
   }
 
-  double elapsed_time_start = cmSystemTools::GetTime();
+  auto elapsed_time_start = std::chrono::steady_clock::now();
   std::string output;
   int retVal = 0;
   int res = 0;
@@ -63,8 +56,7 @@ int cmCTestConfigureHandler::ProcessHandler()
       return 1;
     }
     std::string start_time = this->CTest->CurrentTime();
-    unsigned int start_time_time =
-      static_cast<unsigned int>(cmSystemTools::GetTime());
+    auto start_time_time = std::chrono::system_clock::now();
 
     cmGeneratedFileStream ofs;
     this->StartLogFile("Configure", ofs);
@@ -72,7 +64,8 @@ int cmCTestConfigureHandler::ProcessHandler()
                        "Configure with command: " << cCommand << std::endl,
                        this->Quiet);
     res = this->CTest->RunMakeCommand(cCommand.c_str(), output, &retVal,
-                                      buildDirectory.c_str(), 0, ofs);
+                                      buildDirectory.c_str(),
+                                      cmDuration::zero(), ofs);
 
     if (ofs) {
       ofs.close();
@@ -81,6 +74,7 @@ int cmCTestConfigureHandler::ProcessHandler()
     if (os) {
       cmXMLWriter xml(os);
       this->CTest->StartXML(xml, this->AppendXML);
+      this->CTest->GenerateSubprojectsOutput(xml);
       xml.StartElement("Configure");
       xml.Element("StartDateTime", start_time);
       xml.Element("StartConfigureTime", start_time_time);
@@ -89,12 +83,11 @@ int cmCTestConfigureHandler::ProcessHandler()
       xml.Element("Log", output);
       xml.Element("ConfigureStatus", retVal);
       xml.Element("EndDateTime", this->CTest->CurrentTime());
-      xml.Element("EndConfigureTime",
-                  static_cast<unsigned int>(cmSystemTools::GetTime()));
-      xml.Element(
-        "ElapsedMinutes",
-        static_cast<int>((cmSystemTools::GetTime() - elapsed_time_start) / 6) /
-          10.0);
+      xml.Element("EndConfigureTime", std::chrono::system_clock::now());
+      xml.Element("ElapsedMinutes",
+                  std::chrono::duration_cast<std::chrono::minutes>(
+                    std::chrono::steady_clock::now() - elapsed_time_start)
+                    .count());
       xml.EndElement(); // Configure
       this->CTest->EndXML(xml);
     }

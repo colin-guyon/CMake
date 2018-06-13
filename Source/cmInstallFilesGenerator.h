@@ -1,18 +1,18 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmInstallFilesGenerator_h
 #define cmInstallFilesGenerator_h
 
+#include "cmConfigure.h" // IWYU pragma: keep
+
 #include "cmInstallGenerator.h"
+#include "cmScriptGenerator.h"
+
+#include <iosfwd>
+#include <string>
+#include <vector>
+
+class cmLocalGenerator;
 
 /** \class cmInstallFilesGenerator
  * \brief Generate file installation rules.
@@ -27,19 +27,18 @@ public:
                           const char* component, MessageLevel message,
                           bool exclude_from_all, const char* rename,
                           bool optional = false);
-  virtual ~cmInstallFilesGenerator();
+  ~cmInstallFilesGenerator() override;
 
-  void Compute(cmLocalGenerator* lg);
+  void Compute(cmLocalGenerator* lg) override;
 
   std::string GetDestination(std::string const& config) const;
 
 protected:
-  virtual void GenerateScriptActions(std::ostream& os, Indent const& indent);
-  virtual void GenerateScriptForConfig(std::ostream& os,
-                                       const std::string& config,
-                                       Indent const& indent);
+  void GenerateScriptActions(std::ostream& os, Indent indent) override;
+  void GenerateScriptForConfig(std::ostream& os, const std::string& config,
+                               Indent indent) override;
   void AddFilesInstallRule(std::ostream& os, std::string const& config,
-                           Indent const& indent,
+                           Indent indent,
                            std::vector<std::string> const& files);
 
   cmLocalGenerator* LocalGenerator;

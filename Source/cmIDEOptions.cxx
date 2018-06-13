@@ -1,24 +1,19 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmIDEOptions.h"
 
-#include "cmSystemTools.h"
+#include "cmsys/String.h"
+#include <iterator>
+#include <string.h>
 
-#include <cmsys/String.h>
+#include "cmIDEFlagTable.h"
+#include "cmSystemTools.h"
 
 cmIDEOptions::cmIDEOptions()
 {
   this->DoingDefine = false;
   this->AllowDefine = true;
+  this->DoingInclude = false;
   this->AllowSlash = false;
   this->DoingFollowing = 0;
   for (int i = 0; i < FlagTableCount; ++i) {
@@ -39,6 +34,13 @@ void cmIDEOptions::HandleFlag(const char* flag)
     return;
   }
 
+  // If the last option was -I then this option is the include directory.
+  if (this->DoingInclude) {
+    this->DoingInclude = false;
+    this->Includes.push_back(flag);
+    return;
+  }
+
   // If the last option expected a following value, this is it.
   if (this->DoingFollowing) {
     this->FlagMapUpdate(this->DoingFollowing, flag);
@@ -56,6 +58,17 @@ void cmIDEOptions::HandleFlag(const char* flag)
       } else {
         // Store this definition.
         this->Defines.push_back(flag + 2);
+      }
+      return;
+    }
+    // Look for include directory.
+    if (this->AllowInclude && flag[1] == 'I') {
+      if (flag[2] == '\0') {
+        // The next argument will have the include directory.
+        this->DoingInclude = true;
+      } else {
+        // Store this include directory.
+        this->Includes.push_back(flag + 2);
       }
       return;
     }
@@ -131,6 +144,8 @@ void cmIDEOptions::FlagMapUpdate(cmIDEFlagTable const* entry,
     this->FlagMap[entry->IDEName] = entry->value;
   } else if (entry->special & cmIDEFlagTable::SemicolonAppendable) {
     this->FlagMap[entry->IDEName].push_back(new_value);
+  } else if (entry->special & cmIDEFlagTable::SpaceAppendable) {
+    this->FlagMap[entry->IDEName].append_with_space(new_value);
   } else {
     // Use the user-specified value.
     this->FlagMap[entry->IDEName] = new_value;
@@ -154,12 +169,40 @@ void cmIDEOptions::AddDefines(const std::vector<std::string>& defines)
   this->Defines.insert(this->Defines.end(), defines.begin(), defines.end());
 }
 
-void cmIDEOptions::AddFlag(const char* flag, const char* value)
+std::vector<std::string> const& cmIDEOptions::GetDefines() const
+{
+  return this->Defines;
+}
+
+void cmIDEOptions::AddInclude(const std::string& include)
+{
+  this->Includes.push_back(include);
+}
+
+void cmIDEOptions::AddIncludes(const char* includes)
+{
+  if (includes) {
+    // Expand the list of includes.
+    cmSystemTools::ExpandListArgument(includes, this->Includes);
+  }
+}
+void cmIDEOptions::AddIncludes(const std::vector<std::string>& includes)
+{
+  this->Includes.insert(this->Includes.end(), includes.begin(),
+                        includes.end());
+}
+
+std::vector<std::string> const& cmIDEOptions::GetIncludes() const
+{
+  return this->Includes;
+}
+
+void cmIDEOptions::AddFlag(std::string const& flag, std::string const& value)
 {
   this->FlagMap[flag] = value;
 }
 
-void cmIDEOptions::AddFlag(const char* flag,
+void cmIDEOptions::AddFlag(std::string const& flag,
                            std::vector<std::string> const& value)
 {
   this->FlagMap[flag] = value;
@@ -178,7 +221,13 @@ void cmIDEOptions::AppendFlag(std::string const& flag,
   std::copy(value.begin(), value.end(), std::back_inserter(fv));
 }
 
-void cmIDEOptions::RemoveFlag(const char* flag)
+void cmIDEOptions::AppendFlagString(std::string const& flag,
+                                    std::string const& value)
+{
+  this->FlagMap[flag].append_with_space(value);
+}
+
+void cmIDEOptions::RemoveFlag(std::string const& flag)
 {
   this->FlagMap.erase(flag);
 }
@@ -188,12 +237,13 @@ bool cmIDEOptions::HasFlag(std::string const& flag) const
   return this->FlagMap.find(flag) != this->FlagMap.end();
 }
 
-const char* cmIDEOptions::GetFlag(const char* flag)
+const char* cmIDEOptions::GetFlag(std::string const& flag) const
 {
   // This method works only for single-valued flags!
-  std::map<std::string, FlagValue>::iterator i = this->FlagMap.find(flag);
-  if (i != this->FlagMap.end() && i->second.size() == 1) {
+  std::map<std::string, FlagValue>::const_iterator i =
+    this->FlagMap.find(flag);
+  if (i != this->FlagMap.cend() && i->second.size() == 1) {
     return i->second[0].c_str();
   }
-  return 0;
+  return nullptr;
 }

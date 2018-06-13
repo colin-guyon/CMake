@@ -1,29 +1,28 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmComputeTargetDepends.h"
 
 #include "cmComputeComponentGraph.h"
+#include "cmGeneratorTarget.h"
 #include "cmGlobalGenerator.h"
+#include "cmLinkItem.h"
 #include "cmLocalGenerator.h"
 #include "cmMakefile.h"
+#include "cmPolicies.h"
 #include "cmSourceFile.h"
 #include "cmState.h"
+#include "cmStateTypes.h"
 #include "cmSystemTools.h"
 #include "cmTarget.h"
+#include "cmTargetDepend.h"
 #include "cmake.h"
 
-#include <algorithm>
-
 #include <assert.h>
+#include <sstream>
+#include <stdio.h>
+#include <utility>
+
+class cmListFileBacktrace;
 
 /*
 
@@ -149,10 +148,10 @@ void cmComputeTargetDepends::GetTargetDirectDepends(cmGeneratorTarget const* t,
 
   // Get its final dependencies.
   EdgeList const& nl = this->FinalGraph[i];
-  for (EdgeList::const_iterator ni = nl.begin(); ni != nl.end(); ++ni) {
-    cmGeneratorTarget const* dep = this->Targets[*ni];
+  for (cmGraphEdge const& ni : nl) {
+    cmGeneratorTarget const* dep = this->Targets[ni];
     cmTargetDependSet::iterator di = deps.insert(dep).first;
-    di->SetType(ni->IsStrong());
+    di->SetType(ni.IsStrong());
   }
 }
 
@@ -161,15 +160,13 @@ void cmComputeTargetDepends::CollectTargets()
   // Collect all targets from all generators.
   std::vector<cmLocalGenerator*> const& lgens =
     this->GlobalGenerator->GetLocalGenerators();
-  for (unsigned int i = 0; i < lgens.size(); ++i) {
-    const std::vector<cmGeneratorTarget*> targets =
-      lgens[i]->GetGeneratorTargets();
-    for (std::vector<cmGeneratorTarget*>::const_iterator ti = targets.begin();
-         ti != targets.end(); ++ti) {
-      cmGeneratorTarget* gt = *ti;
+  for (cmLocalGenerator* lgen : lgens) {
+    const std::vector<cmGeneratorTarget*>& targets =
+      lgen->GetGeneratorTargets();
+    for (cmGeneratorTarget const* ti : targets) {
       int index = static_cast<int>(this->Targets.size());
-      this->TargetIndex[gt] = index;
-      this->Targets.push_back(gt);
+      this->TargetIndex[ti] = index;
+      this->Targets.push_back(ti);
     }
   }
 }
@@ -189,7 +186,7 @@ void cmComputeTargetDepends::CollectTargetDepends(int depender_index)
 {
   // Get the depender.
   cmGeneratorTarget const* depender = this->Targets[depender_index];
-  if (depender->GetType() == cmState::INTERFACE_LIBRARY) {
+  if (depender->GetType() == cmStateEnums::INTERFACE_LIBRARY) {
     return;
   }
 
@@ -203,21 +200,18 @@ void cmComputeTargetDepends::CollectTargetDepends(int depender_index)
     std::vector<std::string> configs;
     depender->Makefile->GetConfigurations(configs);
     if (configs.empty()) {
-      configs.push_back("");
+      configs.emplace_back();
     }
-    for (std::vector<std::string>::const_iterator it = configs.begin();
-         it != configs.end(); ++it) {
+    for (std::string const& it : configs) {
       std::vector<cmSourceFile const*> objectFiles;
-      depender->GetExternalObjects(objectFiles, *it);
-      for (std::vector<cmSourceFile const*>::const_iterator oi =
-             objectFiles.begin();
-           oi != objectFiles.end(); ++oi) {
-        std::string objLib = (*oi)->GetObjectLibrary();
+      depender->GetExternalObjects(objectFiles, it);
+      for (cmSourceFile const* o : objectFiles) {
+        std::string objLib = o->GetObjectLibrary();
         if (!objLib.empty() && emitted.insert(objLib).second) {
-          if (depender->GetType() != cmState::EXECUTABLE &&
-              depender->GetType() != cmState::STATIC_LIBRARY &&
-              depender->GetType() != cmState::SHARED_LIBRARY &&
-              depender->GetType() != cmState::MODULE_LIBRARY) {
+          if (depender->GetType() != cmStateEnums::EXECUTABLE &&
+              depender->GetType() != cmStateEnums::STATIC_LIBRARY &&
+              depender->GetType() != cmStateEnums::SHARED_LIBRARY &&
+              depender->GetType() != cmStateEnums::MODULE_LIBRARY) {
             this->GlobalGenerator->GetCMakeInstance()->IssueMessage(
               cmake::FATAL_ERROR,
               "Only executables and non-OBJECT libraries may "
@@ -229,17 +223,15 @@ void cmComputeTargetDepends::CollectTargetDepends(int depender_index)
         }
       }
 
-      cmLinkImplementation const* impl = depender->GetLinkImplementation(*it);
+      cmLinkImplementation const* impl = depender->GetLinkImplementation(it);
 
       // A target should not depend on itself.
       emitted.insert(depender->GetName());
-      for (std::vector<cmLinkImplItem>::const_iterator lib =
-             impl->Libraries.begin();
-           lib != impl->Libraries.end(); ++lib) {
+      for (cmLinkImplItem const& lib : impl->Libraries) {
         // Don't emit the same library twice for this target.
-        if (emitted.insert(*lib).second) {
-          this->AddTargetDepend(depender_index, *lib, true);
-          this->AddInterfaceDepends(depender_index, *lib, emitted);
+        if (emitted.insert(lib).second) {
+          this->AddTargetDepend(depender_index, lib, true);
+          this->AddInterfaceDepends(depender_index, lib, it, emitted);
         }
       }
     }
@@ -251,11 +243,10 @@ void cmComputeTargetDepends::CollectTargetDepends(int depender_index)
     std::set<std::string> emitted;
     // A target should not depend on itself.
     emitted.insert(depender->GetName());
-    for (std::set<cmLinkItem>::const_iterator util = tutils.begin();
-         util != tutils.end(); ++util) {
+    for (cmLinkItem const& litem : tutils) {
       // Don't emit the same utility twice for this target.
-      if (emitted.insert(*util).second) {
-        this->AddTargetDepend(depender_index, *util, false);
+      if (emitted.insert(litem).second) {
+        this->AddTargetDepend(depender_index, litem, false);
       }
     }
   }
@@ -268,13 +259,11 @@ void cmComputeTargetDepends::AddInterfaceDepends(
   cmGeneratorTarget const* depender = this->Targets[depender_index];
   if (cmLinkInterface const* iface =
         dependee->GetLinkInterface(config, depender)) {
-    for (std::vector<cmLinkItem>::const_iterator lib =
-           iface->Libraries.begin();
-         lib != iface->Libraries.end(); ++lib) {
+    for (cmLinkItem const& lib : iface->Libraries) {
       // Don't emit the same library twice for this target.
-      if (emitted.insert(*lib).second) {
-        this->AddTargetDepend(depender_index, *lib, true);
-        this->AddInterfaceDepends(depender_index, *lib, emitted);
+      if (emitted.insert(lib).second) {
+        this->AddTargetDepend(depender_index, lib, true);
+        this->AddInterfaceDepends(depender_index, lib, config, emitted);
       }
     }
   }
@@ -282,28 +271,22 @@ void cmComputeTargetDepends::AddInterfaceDepends(
 
 void cmComputeTargetDepends::AddInterfaceDepends(
   int depender_index, cmLinkItem const& dependee_name,
-  std::set<std::string>& emitted)
+  const std::string& config, std::set<std::string>& emitted)
 {
   cmGeneratorTarget const* depender = this->Targets[depender_index];
   cmGeneratorTarget const* dependee = dependee_name.Target;
   // Skip targets that will not really be linked.  This is probably a
   // name conflict between an external library and an executable
   // within the project.
-  if (dependee && dependee->GetType() == cmState::EXECUTABLE &&
+  if (dependee && dependee->GetType() == cmStateEnums::EXECUTABLE &&
       !dependee->IsExecutableWithExports()) {
-    dependee = 0;
+    dependee = nullptr;
   }
 
   if (dependee) {
-    this->AddInterfaceDepends(depender_index, dependee, "", emitted);
-    std::vector<std::string> configs;
-    depender->Makefile->GetConfigurations(configs);
-    for (std::vector<std::string>::const_iterator it = configs.begin();
-         it != configs.end(); ++it) {
-      // A target should not depend on itself.
-      emitted.insert(depender->GetName());
-      this->AddInterfaceDepends(depender_index, dependee, *it, emitted);
-    }
+    // A target should not depend on itself.
+    emitted.insert(depender->GetName());
+    this->AddInterfaceDepends(depender_index, dependee, config, emitted);
   }
 }
 
@@ -318,7 +301,7 @@ void cmComputeTargetDepends::AddTargetDepend(int depender_index,
   cmGeneratorTarget const* dependee = dependee_name.Target;
 
   if (!dependee && !linking &&
-      (depender->GetType() != cmState::GLOBAL_TARGET)) {
+      (depender->GetType() != cmStateEnums::GLOBAL_TARGET)) {
     cmake::MessageType messageType = cmake::AUTHOR_WARNING;
     bool issueMessage = false;
     std::ostringstream e;
@@ -353,9 +336,9 @@ void cmComputeTargetDepends::AddTargetDepend(int depender_index,
   // Skip targets that will not really be linked.  This is probably a
   // name conflict between an external library and an executable
   // within the project.
-  if (linking && dependee && dependee->GetType() == cmState::EXECUTABLE &&
+  if (linking && dependee && dependee->GetType() == cmStateEnums::EXECUTABLE &&
       !dependee->IsExecutableWithExports()) {
-    dependee = 0;
+    dependee = nullptr;
   }
 
   if (dependee) {
@@ -368,13 +351,12 @@ void cmComputeTargetDepends::AddTargetDepend(int depender_index,
                                              bool linking)
 {
   if (dependee->IsImported() ||
-      dependee->GetType() == cmState::INTERFACE_LIBRARY) {
+      dependee->GetType() == cmStateEnums::INTERFACE_LIBRARY) {
     // Skip IMPORTED and INTERFACE targets but follow their utility
     // dependencies.
     std::set<cmLinkItem> const& utils = dependee->GetUtilityItems();
-    for (std::set<cmLinkItem>::const_iterator i = utils.begin();
-         i != utils.end(); ++i) {
-      if (cmGeneratorTarget const* transitive_dependee = i->Target) {
+    for (cmLinkItem const& i : utils) {
+      if (cmGeneratorTarget const* transitive_dependee = i.Target) {
         this->AddTargetDepend(depender_index, transitive_dependee, false);
       }
     }
@@ -387,8 +369,7 @@ void cmComputeTargetDepends::AddTargetDepend(int depender_index,
     int dependee_index = tii->second;
 
     // Add this entry to the dependency graph.
-    this->InitialGraph[depender_index].push_back(
-      cmGraphEdge(dependee_index, !linking));
+    this->InitialGraph[depender_index].emplace_back(dependee_index, !linking);
   }
 }
 
@@ -402,11 +383,11 @@ void cmComputeTargetDepends::DisplayGraph(Graph const& graph,
     cmGeneratorTarget const* depender = this->Targets[depender_index];
     fprintf(stderr, "target %d is [%s]\n", depender_index,
             depender->GetName().c_str());
-    for (EdgeList::const_iterator ni = nl.begin(); ni != nl.end(); ++ni) {
-      int dependee_index = *ni;
+    for (cmGraphEdge const& ni : nl) {
+      int dependee_index = ni;
       cmGeneratorTarget const* dependee = this->Targets[dependee_index];
       fprintf(stderr, "  depends on target %d [%s] (%s)\n", dependee_index,
-              dependee->GetName().c_str(), ni->IsStrong() ? "strong" : "weak");
+              dependee->GetName().c_str(), ni.IsStrong() ? "strong" : "weak");
     }
   }
   fprintf(stderr, "\n");
@@ -421,8 +402,7 @@ void cmComputeTargetDepends::DisplayComponents(
   for (int c = 0; c < n; ++c) {
     NodeList const& nl = components[c];
     fprintf(stderr, "Component (%d):\n", c);
-    for (NodeList::const_iterator ni = nl.begin(); ni != nl.end(); ++ni) {
-      int i = *ni;
+    for (int i : nl) {
       fprintf(stderr, "  contains target %d [%s]\n", i,
               this->Targets[i]->GetName().c_str());
     }
@@ -453,8 +433,8 @@ bool cmComputeTargetDepends::CheckComponents(
     }
 
     // Make sure the component is all STATIC_LIBRARY targets.
-    for (NodeList::const_iterator ni = nl.begin(); ni != nl.end(); ++ni) {
-      if (this->Targets[*ni]->GetType() != cmState::STATIC_LIBRARY) {
+    for (int ni : nl) {
+      if (this->Targets[ni]->GetType() != cmStateEnums::STATIC_LIBRARY) {
         this->ComplainAboutBadComponent(ccg, c);
         return false;
       }
@@ -473,9 +453,8 @@ void cmComputeTargetDepends::ComplainAboutBadComponent(
   std::vector<NodeList> const& components = ccg.GetComponents();
   std::vector<int> const& cmap = ccg.GetComponentMap();
   NodeList const& cl = components[c];
-  for (NodeList::const_iterator ci = cl.begin(); ci != cl.end(); ++ci) {
+  for (int i : cl) {
     // Get the depender.
-    int i = *ci;
     cmGeneratorTarget const* depender = this->Targets[i];
 
     // Describe the depender.
@@ -484,12 +463,12 @@ void cmComputeTargetDepends::ComplainAboutBadComponent(
 
     // List its dependencies that are inside the component.
     EdgeList const& nl = this->InitialGraph[i];
-    for (EdgeList::const_iterator ni = nl.begin(); ni != nl.end(); ++ni) {
-      int j = *ni;
+    for (cmGraphEdge const& ni : nl) {
+      int j = ni;
       if (cmap[j] == c) {
         cmGeneratorTarget const* dependee = this->Targets[j];
         e << "    depends on \"" << dependee->GetName() << "\""
-          << " (" << (ni->IsStrong() ? "strong" : "weak") << ")\n";
+          << " (" << (ni.IsStrong() ? "strong" : "weak") << ")\n";
       }
     }
   }
@@ -521,10 +500,10 @@ bool cmComputeTargetDepends::IntraComponent(std::vector<int> const& cmap,
   if (emitted.insert(i).second) {
     // Honor strong intra-component edges in the final order.
     EdgeList const& el = this->InitialGraph[i];
-    for (EdgeList::const_iterator ei = el.begin(); ei != el.end(); ++ei) {
-      int j = *ei;
-      if (cmap[j] == c && ei->IsStrong()) {
-        this->FinalGraph[i].push_back(cmGraphEdge(j, true));
+    for (cmGraphEdge const& edge : el) {
+      int j = edge;
+      if (cmap[j] == c && edge.IsStrong()) {
+        this->FinalGraph[i].emplace_back(j, true);
         if (!this->IntraComponent(cmap, c, j, head, emitted, visited)) {
           return false;
         }
@@ -533,7 +512,7 @@ bool cmComputeTargetDepends::IntraComponent(std::vector<int> const& cmap,
 
     // Prepend to a linear linked-list of intra-component edges.
     if (*head >= 0) {
-      this->FinalGraph[i].push_back(cmGraphEdge(*head, false));
+      this->FinalGraph[i].emplace_back(*head, false);
     } else {
       this->ComponentTail[c] = i;
     }
@@ -580,11 +559,11 @@ bool cmComputeTargetDepends::ComputeFinalDepends(
        ++depender_component) {
     int depender_component_tail = this->ComponentTail[depender_component];
     EdgeList const& nl = cgraph[depender_component];
-    for (EdgeList::const_iterator ni = nl.begin(); ni != nl.end(); ++ni) {
-      int dependee_component = *ni;
+    for (cmGraphEdge const& ni : nl) {
+      int dependee_component = ni;
       int dependee_component_head = this->ComponentHead[dependee_component];
-      this->FinalGraph[depender_component_tail].push_back(
-        cmGraphEdge(dependee_component_head, ni->IsStrong()));
+      this->FinalGraph[depender_component_tail].emplace_back(
+        dependee_component_head, ni.IsStrong());
     }
   }
   return true;

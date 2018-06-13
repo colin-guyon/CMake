@@ -1,22 +1,26 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmGetPropertyCommand.h"
 
+#include <sstream>
+
 #include "cmGlobalGenerator.h"
+#include "cmInstalledFile.h"
+#include "cmListFileCache.h"
+#include "cmMakefile.h"
+#include "cmPolicies.h"
+#include "cmProperty.h"
 #include "cmPropertyDefinition.h"
 #include "cmSourceFile.h"
 #include "cmState.h"
+#include "cmSystemTools.h"
+#include "cmTarget.h"
+#include "cmTargetPropertyComputer.h"
 #include "cmTest.h"
 #include "cmake.h"
+
+class cmExecutionStatus;
+class cmMessenger;
 
 cmGetPropertyCommand::cmGetPropertyCommand()
 {
@@ -202,7 +206,7 @@ bool cmGetPropertyCommand::HandleDirectoryMode()
     // Construct the directory name.  Interpret relative paths with
     // respect to the current directory.
     std::string dir = this->Name;
-    if (!cmSystemTools::FileIsFullPath(dir.c_str())) {
+    if (!cmSystemTools::FileIsFullPath(dir)) {
       dir = this->Makefile->GetCurrentSourceDirectory();
       dir += "/";
       dir += this->Name;
@@ -228,6 +232,7 @@ bool cmGetPropertyCommand::HandleDirectoryMode()
       case cmPolicies::WARN:
         mf->IssueMessage(cmake::AUTHOR_WARNING,
                          cmPolicies::GetPolicyWarning(cmPolicies::CMP0059));
+        CM_FALLTHROUGH;
       case cmPolicies::OLD:
         return this->StoreResult(mf->GetDefineFlagsCMP0059());
       case cmPolicies::NEW:
@@ -248,24 +253,31 @@ bool cmGetPropertyCommand::HandleTargetMode()
     return false;
   }
 
-  if (this->PropertyName == "ALIASED_TARGET") {
-    if (this->Makefile->IsAlias(this->Name)) {
-      if (cmTarget* target = this->Makefile->FindTargetToUse(this->Name)) {
+  if (cmTarget* target = this->Makefile->FindTargetToUse(this->Name)) {
+    if (this->PropertyName == "ALIASED_TARGET") {
+      if (this->Makefile->IsAlias(this->Name)) {
         return this->StoreResult(target->GetName().c_str());
       }
+      return this->StoreResult(nullptr);
     }
-    return this->StoreResult((this->Variable + "-NOTFOUND").c_str());
+    const char* prop_cstr = nullptr;
+    cmListFileBacktrace bt = this->Makefile->GetBacktrace();
+    cmMessenger* messenger = this->Makefile->GetMessenger();
+    if (cmTargetPropertyComputer::PassesWhitelist(
+          target->GetType(), this->PropertyName, messenger, bt)) {
+      prop_cstr =
+        target->GetComputedProperty(this->PropertyName, messenger, bt);
+      if (!prop_cstr) {
+        prop_cstr = target->GetProperty(this->PropertyName);
+      }
+    }
+    return this->StoreResult(prop_cstr);
   }
-  if (cmTarget* target = this->Makefile->FindTargetToUse(this->Name)) {
-    return this->StoreResult(
-      target->GetProperty(this->PropertyName, this->Makefile));
-  } else {
-    std::ostringstream e;
-    e << "could not find TARGET " << this->Name
-      << ".  Perhaps it has not yet been created.";
-    this->SetError(e.str());
-    return false;
-  }
+  std::ostringstream e;
+  e << "could not find TARGET " << this->Name
+    << ".  Perhaps it has not yet been created.";
+  this->SetError(e.str());
+  return false;
 }
 
 bool cmGetPropertyCommand::HandleSourceMode()
@@ -278,13 +290,11 @@ bool cmGetPropertyCommand::HandleSourceMode()
   // Get the source file.
   if (cmSourceFile* sf = this->Makefile->GetOrCreateSource(this->Name)) {
     return this->StoreResult(sf->GetPropertyForUser(this->PropertyName));
-  } else {
-    std::ostringstream e;
-    e << "given SOURCE name that could not be found or created: "
-      << this->Name;
-    this->SetError(e.str());
-    return false;
   }
+  std::ostringstream e;
+  e << "given SOURCE name that could not be found or created: " << this->Name;
+  this->SetError(e.str());
+  return false;
 }
 
 bool cmGetPropertyCommand::HandleTestMode()
@@ -323,7 +333,7 @@ bool cmGetPropertyCommand::HandleCacheMode()
     return false;
   }
 
-  const char* value = 0;
+  const char* value = nullptr;
   if (this->Makefile->GetState()->GetCacheEntryValue(this->Name)) {
     value = this->Makefile->GetState()->GetCacheEntryProperty(
       this->Name, this->PropertyName);
@@ -347,12 +357,10 @@ bool cmGetPropertyCommand::HandleInstallMode()
     std::string value;
     bool isSet = file->GetProperty(this->PropertyName, value);
 
-    return this->StoreResult(isSet ? value.c_str() : 0);
-  } else {
-    std::ostringstream e;
-    e << "given INSTALL name that could not be found or created: "
-      << this->Name;
-    this->SetError(e.str());
-    return false;
+    return this->StoreResult(isSet ? value.c_str() : nullptr);
   }
+  std::ostringstream e;
+  e << "given INSTALL name that could not be found or created: " << this->Name;
+  this->SetError(e.str());
+  return false;
 }

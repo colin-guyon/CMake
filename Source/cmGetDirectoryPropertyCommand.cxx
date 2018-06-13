@@ -1,17 +1,14 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmGetDirectoryPropertyCommand.h"
 
+#include "cmGlobalGenerator.h"
+#include "cmMakefile.h"
+#include "cmPolicies.h"
+#include "cmSystemTools.h"
 #include "cmake.h"
+
+class cmExecutionStatus;
 
 // cmGetDirectoryPropertyCommand
 bool cmGetDirectoryPropertyCommand::InitialPass(
@@ -23,7 +20,7 @@ bool cmGetDirectoryPropertyCommand::InitialPass(
   }
 
   std::vector<std::string>::const_iterator i = args.begin();
-  std::string variable = *i;
+  std::string const& variable = *i;
   ++i;
 
   // get the directory argument if there is one
@@ -37,7 +34,7 @@ bool cmGetDirectoryPropertyCommand::InitialPass(
     }
     std::string sd = *i;
     // make sure the start dir is a full path
-    if (!cmSystemTools::FileIsFullPath(sd.c_str())) {
+    if (!cmSystemTools::FileIsFullPath(sd)) {
       sd = this->Makefile->GetCurrentSourceDirectory();
       sd += "/";
       sd += *i;
@@ -73,7 +70,7 @@ bool cmGetDirectoryPropertyCommand::InitialPass(
     return true;
   }
 
-  const char* prop = 0;
+  const char* prop = nullptr;
   if (!i->empty()) {
     if (*i == "DEFINITIONS") {
       switch (this->Makefile->GetPolicyStatus(cmPolicies::CMP0059)) {
@@ -81,6 +78,7 @@ bool cmGetDirectoryPropertyCommand::InitialPass(
           this->Makefile->IssueMessage(
             cmake::AUTHOR_WARNING,
             cmPolicies::GetPolicyWarning(cmPolicies::CMP0059));
+          CM_FALLTHROUGH;
         case cmPolicies::OLD:
           this->StoreResult(variable, this->Makefile->GetDefineFlagsCMP0059());
           return true;

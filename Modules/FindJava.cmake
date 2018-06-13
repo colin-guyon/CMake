@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindJava
 # --------
@@ -8,6 +11,7 @@
 # include files and libraries are.  The caller may set variable JAVA_HOME
 # to specify a Java installation prefix explicitly.
 #
+# See also the :module:`FindJNI` module to find Java development tools.
 #
 # Specify one or more of the following components as you call this find module. See example below.
 #
@@ -35,7 +39,7 @@
 #   Java_VERSION_MINOR        = The minor version of the package found.
 #   Java_VERSION_PATCH        = The patch version of the package found.
 #   Java_VERSION_TWEAK        = The tweak version of the package found (after '_')
-#   Java_VERSION              = This is set to: $major.$minor.$patch(.$tweak)
+#   Java_VERSION              = This is set to: $major[.$minor[.$patch[.$tweak]]]
 #
 #
 #
@@ -54,8 +58,6 @@
 # ::
 #
 #   Java_FOUND                    - TRUE if all components are found.
-#   Java_INCLUDE_DIRS             - Full paths to all include dirs.
-#   Java_LIBRARIES                - Full paths to all libraries.
 #   Java_<component>_FOUND        - TRUE if <component> is found.
 #
 #
@@ -68,20 +70,6 @@
 #   find_package(Java COMPONENTS Runtime)
 #   find_package(Java COMPONENTS Development)
 
-#=============================================================================
-# Copyright 2002-2009 Kitware, Inc.
-# Copyright 2009-2011 Mathieu Malaterre <mathieu.malaterre@gmail.com>
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
-
 include(${CMAKE_CURRENT_LIST_DIR}/CMakeFindJavaCommon.cmake)
 
 # The HINTS option should only be used for values computed from the system.
@@ -89,8 +77,37 @@ set(_JAVA_HINTS)
 if(_JAVA_HOME)
   list(APPEND _JAVA_HINTS ${_JAVA_HOME}/bin)
 endif()
-list(APPEND _JAVA_HINTS
-  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\2.0;JavaHome]/bin"
+if (WIN32)
+  macro (_JAVA_GET_INSTALLED_VERSIONS _KIND)
+    execute_process(COMMAND REG QUERY HKLM\\SOFTWARE\\JavaSoft\\${_KIND} /f "." /k
+      RESULT_VARIABLE _JAVA_RESULT
+      OUTPUT_VARIABLE _JAVA_VERSIONS
+      ERROR_QUIET)
+    if (NOT  _JAVA_RESULT)
+      string (REGEX MATCHALL "HKEY_LOCAL_MACHINE\\\\SOFTWARE\\\\JavaSoft\\\\${_KIND}\\\\[0-9.]+" _JAVA_VERSIONS "${_JAVA_VERSIONS}")
+      if (_JAVA_VERSIONS)
+        # sort versions. Most recent first
+        ## handle version 9 apart from other versions to get correct ordering
+        set (_JAVA_V9 ${_JAVA_VERSIONS})
+        list (FILTER _JAVA_VERSIONS EXCLUDE REGEX "${_KIND}\\\\9")
+        list (SORT _JAVA_VERSIONS)
+        list (REVERSE _JAVA_VERSIONS)
+        list (FILTER _JAVA_V9 INCLUDE REGEX "${_KIND}\\\\9")
+        list (SORT _JAVA_V9)
+        list (REVERSE _JAVA_V9)
+        list (APPEND _JAVA_VERSIONS ${_JAVA_V9})
+        foreach (_JAVA_HINT IN LISTS _JAVA_VERSIONS)
+          list(APPEND _JAVA_HINTS "[${_JAVA_HINT};JavaHome]/bin")
+        endforeach()
+      endif()
+    endif()
+  endmacro()
+
+  # search for installed versions for version 9 and upper
+  _JAVA_GET_INSTALLED_VERSIONS("JDK")
+  _JAVA_GET_INSTALLED_VERSIONS("JRE")
+
+  list(APPEND _JAVA_HINTS
   "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.9;JavaHome]/bin"
   "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.8;JavaHome]/bin"
   "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.7;JavaHome]/bin"
@@ -98,7 +115,16 @@ list(APPEND _JAVA_HINTS
   "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.5;JavaHome]/bin"
   "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.4;JavaHome]/bin"
   "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.3;JavaHome]/bin"
+  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Runtime Environment\\1.9;JavaHome]/bin"
+  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Runtime Environment\\1.8;JavaHome]/bin"
+  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Runtime Environment\\1.7;JavaHome]/bin"
+  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Runtime Environment\\1.6;JavaHome]/bin"
+  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Runtime Environment\\1.5;JavaHome]/bin"
+  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Runtime Environment\\1.4;JavaHome]/bin"
+  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Runtime Environment\\1.3;JavaHome]/bin"
   )
+endif()
+
 # Hard-coded guesses should still go in PATHS. This ensures that the user
 # environment can always override hard guesses.
 set(_JAVA_PATHS
@@ -137,36 +163,72 @@ if(Java_JAVA_EXECUTABLE)
         message( STATUS "Warning, could not run java -version")
       endif()
     else()
-      # extract major/minor version and patch level from "java -version" output
-      # Tested on linux using
-      # 1. Sun / Sun OEM
-      # 2. OpenJDK 1.6
-      # 3. GCJ 1.5
-      # 4. Kaffe 1.4.2
-      # 5. OpenJDK 1.7.x on OpenBSD
-      if(var MATCHES "java version \"([0-9]+\\.[0-9]+\\.[0-9_.]+.*)\"")
-        # This is most likely Sun / OpenJDK, or maybe GCJ-java compat layer
+      # Extract version components (up to 4 levels) from "java -version" output.
+      set(_java_version_regex [[(([0-9]+)(\.([0-9]+)(\.([0-9]+)(_([0-9]+))?)?)?.*)]])
+      if(var MATCHES "java version \"${_java_version_regex}\"")
+        # Sun, GCJ, older OpenJDK
         set(Java_VERSION_STRING "${CMAKE_MATCH_1}")
-      elseif(var MATCHES "java full version \"kaffe-([0-9]+\\.[0-9]+\\.[0-9_]+)\"")
+        set(Java_VERSION_MAJOR "${CMAKE_MATCH_2}")
+        if (CMAKE_MATCH_4)
+        set(Java_VERSION_MINOR "${CMAKE_MATCH_4}")
+        else()
+          set(Java_VERSION_MINOR 0)
+        endif()
+        if (CMAKE_MATCH_6)
+        set(Java_VERSION_PATCH "${CMAKE_MATCH_6}")
+        else()
+          set(Java_VERSION_PATCH 0)
+        endif()
+        set(Java_VERSION_TWEAK "${CMAKE_MATCH_8}")
+      elseif(var MATCHES "openjdk version \"${_java_version_regex}\"")
+        # OpenJDK
+        set(Java_VERSION_STRING "${CMAKE_MATCH_1}")
+        set(Java_VERSION_MAJOR "${CMAKE_MATCH_2}")
+        if (CMAKE_MATCH_4)
+        set(Java_VERSION_MINOR "${CMAKE_MATCH_4}")
+        else()
+          set(Java_VERSION_MINOR 0)
+        endif()
+        if (CMAKE_MATCH_6)
+        set(Java_VERSION_PATCH "${CMAKE_MATCH_6}")
+        else()
+          set(Java_VERSION_PATCH 0)
+        endif()
+        set(Java_VERSION_TWEAK "${CMAKE_MATCH_8}")
+      elseif(var MATCHES "openjdk version \"([0-9]+)-[A-Za-z]+\"")
+        # OpenJDK 9 early access builds or locally built
+        set(Java_VERSION_STRING "1.${CMAKE_MATCH_1}.0")
+        set(Java_VERSION_MAJOR "1")
+        set(Java_VERSION_MINOR "${CMAKE_MATCH_1}")
+        set(Java_VERSION_PATCH "0")
+        set(Java_VERSION_TWEAK "")
+      elseif(var MATCHES "java full version \"kaffe-${_java_version_regex}\"")
         # Kaffe style
         set(Java_VERSION_STRING "${CMAKE_MATCH_1}")
-      elseif(var MATCHES "openjdk version \"([0-9]+\\.[0-9]+\\.[0-9_]+.*)\"")
-        # OpenJDK ver 1.7.x on OpenBSD
-        set(Java_VERSION_STRING "${CMAKE_MATCH_1}")
+        set(Java_VERSION_MAJOR "${CMAKE_MATCH_2}")
+        set(Java_VERSION_MINOR "${CMAKE_MATCH_4}")
+        set(Java_VERSION_PATCH "${CMAKE_MATCH_6}")
+        set(Java_VERSION_TWEAK "${CMAKE_MATCH_8}")
       else()
         if(NOT Java_FIND_QUIETLY)
-          message(WARNING "regex not supported: ${var}. Please report")
+          string(REPLACE "\n" "\n  " ver_msg "\n${var}")
+          message(WARNING "Java version not recognized:${ver_msg}\nPlease report.")
         endif()
+        set(Java_VERSION_STRING "")
+        set(Java_VERSION_MAJOR "")
+        set(Java_VERSION_MINOR "")
+        set(Java_VERSION_PATCH "")
+        set(Java_VERSION_TWEAK "")
       endif()
-      string( REGEX REPLACE "([0-9]+).*" "\\1" Java_VERSION_MAJOR "${Java_VERSION_STRING}" )
-      string( REGEX REPLACE "[0-9]+\\.([0-9]+).*" "\\1" Java_VERSION_MINOR "${Java_VERSION_STRING}" )
-      string( REGEX REPLACE "[0-9]+\\.[0-9]+\\.([0-9]+).*" "\\1" Java_VERSION_PATCH "${Java_VERSION_STRING}" )
-      # warning tweak version can be empty:
-      string( REGEX REPLACE "[0-9]+\\.[0-9]+\\.[0-9]+[_\\.]?([0-9]*).*$" "\\1" Java_VERSION_TWEAK "${Java_VERSION_STRING}" )
-      if( Java_VERSION_TWEAK STREQUAL "" ) # check case where tweak is not defined
-        set(Java_VERSION ${Java_VERSION_MAJOR}.${Java_VERSION_MINOR}.${Java_VERSION_PATCH})
-      else()
-        set(Java_VERSION ${Java_VERSION_MAJOR}.${Java_VERSION_MINOR}.${Java_VERSION_PATCH}.${Java_VERSION_TWEAK})
+      set(Java_VERSION "${Java_VERSION_MAJOR}")
+      if(NOT "x${Java_VERSION}" STREQUAL "x")
+        foreach(c MINOR PATCH TWEAK)
+          if(NOT "x${Java_VERSION_${c}}" STREQUAL "x")
+            string(APPEND Java_VERSION ".${Java_VERSION_${c}}")
+          else()
+            break()
+          endif()
+        endforeach()
       endif()
     endif()
 
@@ -221,10 +283,18 @@ if(Java_FIND_COMPONENTS)
       endif()
     elseif(component STREQUAL "Development")
       list(APPEND _JAVA_REQUIRED_VARS Java_JAVA_EXECUTABLE Java_JAVAC_EXECUTABLE
-                                      Java_JAVAH_EXECUTABLE Java_JAVADOC_EXECUTABLE)
-      if(Java_JAVA_EXECUTABLE AND Java_JAVAC_EXECUTABLE
-          AND Java_JAVAH_EXECUTABLE AND Java_JAVADOC_EXECUTABLE)
-        set(Java_Development_FOUND TRUE)
+                                      Java_JAVADOC_EXECUTABLE)
+      if(Java_VERSION VERSION_LESS "10")
+        list(APPEND _JAVA_REQUIRED_VARS Java_JAVAH_EXECUTABLE)
+        if(Java_JAVA_EXECUTABLE AND Java_JAVAC_EXECUTABLE
+            AND Java_JAVAH_EXECUTABLE AND Java_JAVADOC_EXECUTABLE)
+          set(Java_Development_FOUND TRUE)
+        endif()
+      else()
+        if(Java_JAVA_EXECUTABLE AND Java_JAVAC_EXECUTABLE
+            AND Java_JAVADOC_EXECUTABLE)
+          set(Java_Development_FOUND TRUE)
+        endif()
       endif()
     elseif(component STREQUAL "IdlJ")
       list(APPEND _JAVA_REQUIRED_VARS Java_IDLJ_EXECUTABLE)
@@ -252,11 +322,19 @@ if(Java_FIND_COMPONENTS)
   endif()
 else()
   # Check for Development
-  find_package_handle_standard_args(Java
-    REQUIRED_VARS Java_JAVA_EXECUTABLE Java_JAR_EXECUTABLE Java_JAVAC_EXECUTABLE
-                  Java_JAVAH_EXECUTABLE Java_JAVADOC_EXECUTABLE
-    VERSION_VAR Java_VERSION
-    )
+  if(Java_VERSION VERSION_LESS "10")
+    find_package_handle_standard_args(Java
+      REQUIRED_VARS Java_JAVA_EXECUTABLE Java_JAR_EXECUTABLE Java_JAVAC_EXECUTABLE
+                    Java_JAVAH_EXECUTABLE Java_JAVADOC_EXECUTABLE
+      VERSION_VAR Java_VERSION_STRING
+      )
+  else()
+    find_package_handle_standard_args(Java
+      REQUIRED_VARS Java_JAVA_EXECUTABLE Java_JAR_EXECUTABLE Java_JAVAC_EXECUTABLE
+                    Java_JAVADOC_EXECUTABLE
+      VERSION_VAR Java_VERSION_STRING
+      )
+  endif()
 endif()
 
 
@@ -274,4 +352,3 @@ mark_as_advanced(
 set(JAVA_RUNTIME ${Java_JAVA_EXECUTABLE})
 set(JAVA_ARCHIVE ${Java_JAR_EXECUTABLE})
 set(JAVA_COMPILE ${Java_JAVAC_EXECUTABLE})
-

@@ -1,26 +1,16 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include <cm_utf8.h>
-
 #include <stdio.h>
-#include <string.h>
 
 typedef char test_utf8_char[5];
 
 static void test_utf8_char_print(test_utf8_char const c)
 {
   unsigned char const* d = reinterpret_cast<unsigned char const*>(c);
-  printf("[0x%02X,0x%02X,0x%02X,0x%02X]", (int)d[0], (int)d[1], (int)d[2],
-         (int)d[3]);
+  printf("[0x%02X,0x%02X,0x%02X,0x%02X]", static_cast<int>(d[0]),
+         static_cast<int>(d[1]), static_cast<int>(d[2]),
+         static_cast<int>(d[3]));
 }
 
 struct test_utf8_entry
@@ -97,7 +87,7 @@ static bool decode_bad(test_utf8_char const s)
   return true;
 }
 
-int testUTF8(int, char* [])
+int testUTF8(int /*unused*/, char* /*unused*/ [])
 {
   int result = 0;
   for (test_utf8_entry const* e = good_entry; e->n; ++e) {

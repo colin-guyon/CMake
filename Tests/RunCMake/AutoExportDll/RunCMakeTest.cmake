@@ -12,7 +12,8 @@ if("${RunCMake_GENERATOR}" MATCHES "Watcom WMake|Borland Makefiles")
 endif()
 # we build debug so the say.exe will be found in Debug/say.exe for
 # Visual Studio generators
-if("${RunCMake_GENERATOR}" MATCHES "Visual Studio|Xcode|Fastbuild")
+#if("${RunCMake_GENERATOR}" MATCHES "Visual Studio|Xcode|Fastbuild")
+if(RunCMake_GENERATOR_IS_MULTI_CONFIG)
   set(INTDIR "Debug/")
 endif()
 # build AutoExport

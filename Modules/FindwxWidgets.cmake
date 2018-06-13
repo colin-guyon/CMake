@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindwxWidgets
 # -------------
@@ -103,20 +106,6 @@
 #    include(${wxWidgets_USE_FILE})
 #    # and for each of your dependent executable/library targets:
 #    target_link_libraries(<YourTarget> ${wxWidgets_LIBRARIES})
-
-#=============================================================================
-# Copyright 2004-2009 Kitware, Inc.
-# Copyright 2007-2009 Miguel A. Figueroa-Villanueva <miguelf at ieee dot org>
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 #
 # FIXME: check this and provide a correct sample usage...
@@ -434,7 +423,7 @@ if(wxWidgets_FIND_STYLE STREQUAL "win32")
       list(APPEND wxWidgets_LIBRARIES opengl32 glu32)
     endif()
 
-    list(APPEND wxWidgets_LIBRARIES winmm comctl32 rpcrt4 wsock32)
+    list(APPEND wxWidgets_LIBRARIES winmm comctl32 oleacc rpcrt4 shlwapi version wsock32)
   endmacro()
 
   #-------------------------------------------------------------------
@@ -452,6 +441,7 @@ if(wxWidgets_FIND_STYLE STREQUAL "win32")
       D:/
       ENV ProgramFiles
     PATH_SUFFIXES
+      wxWidgets-3.1.0
       wxWidgets-3.0.2
       wxWidgets-3.0.1
       wxWidgets-3.0.0
@@ -501,12 +491,29 @@ if(wxWidgets_FIND_STYLE STREQUAL "win32")
     # Select one default tree inside the already determined wx tree.
     # Prefer static/shared order usually consistent with build
     # settings.
+    set(_WX_TOOL "")
+    set(_WX_TOOLVER "")
+    set(_WX_ARCH "")
     if(MINGW)
-      set(WX_LIB_DIR_PREFIX gcc)
-    elseif(CMAKE_CL_64)
-      set(WX_LIB_DIR_PREFIX vc_x64)
-    else()
-      set(WX_LIB_DIR_PREFIX vc)
+      set(_WX_TOOL gcc)
+    elseif(MSVC)
+      set(_WX_TOOL vc)
+      if(MSVC_VERSION EQUAL 1910)
+        set(_WX_TOOLVER 141)
+      elseif(MSVC_VERSION EQUAL 1900)
+        set(_WX_TOOLVER 140)
+      elseif(MSVC_VERSION EQUAL 1800)
+        set(_WX_TOOLVER 120)
+      elseif(MSVC_VERSION EQUAL 1700)
+        set(_WX_TOOLVER 110)
+      elseif(MSVC_VERSION EQUAL 1600)
+        set(_WX_TOOLVER 100)
+      elseif(MSVC_VERSION EQUAL 1500)
+        set(_WX_TOOLVER 90)
+      endif()
+      if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(_WX_ARCH _x64)
+      endif()
     endif()
     if(BUILD_SHARED_LIBS)
       find_path(wxWidgets_LIB_DIR
@@ -520,8 +527,12 @@ if(wxWidgets_FIND_STYLE STREQUAL "win32")
           mswunivu/wx/setup.h
           mswunivud/wx/setup.h
         PATHS
-        ${WX_ROOT_DIR}/lib/${WX_LIB_DIR_PREFIX}_dll   # prefer shared
-        ${WX_ROOT_DIR}/lib/${WX_LIB_DIR_PREFIX}_lib
+        ${WX_ROOT_DIR}/lib/${_WX_TOOL}${_WX_TOOLVER}_xp${_WX_ARCH}_dll   # prefer shared
+        ${WX_ROOT_DIR}/lib/${_WX_TOOL}${_WX_TOOLVER}${_WX_ARCH}_dll   # prefer shared
+        ${WX_ROOT_DIR}/lib/${_WX_TOOL}${_WX_ARCH}_dll                 # prefer shared
+        ${WX_ROOT_DIR}/lib/${_WX_TOOL}${_WX_TOOLVER}_xp${_WX_ARCH}_lib
+        ${WX_ROOT_DIR}/lib/${_WX_TOOL}${_WX_TOOLVER}${_WX_ARCH}_lib
+        ${WX_ROOT_DIR}/lib/${_WX_TOOL}${_WX_ARCH}_lib
         DOC "Path to wxWidgets libraries"
         NO_DEFAULT_PATH
         )
@@ -537,12 +548,19 @@ if(wxWidgets_FIND_STYLE STREQUAL "win32")
           mswunivu/wx/setup.h
           mswunivud/wx/setup.h
         PATHS
-        ${WX_ROOT_DIR}/lib/${WX_LIB_DIR_PREFIX}_lib   # prefer static
-        ${WX_ROOT_DIR}/lib/${WX_LIB_DIR_PREFIX}_dll
+        ${WX_ROOT_DIR}/lib/${_WX_TOOL}${_WX_TOOLVER}_xp${_WX_ARCH}_lib   # prefer static
+        ${WX_ROOT_DIR}/lib/${_WX_TOOL}${_WX_TOOLVER}${_WX_ARCH}_lib   # prefer static
+        ${WX_ROOT_DIR}/lib/${_WX_TOOL}${_WX_ARCH}_lib                 # prefer static
+        ${WX_ROOT_DIR}/lib/${_WX_TOOL}${_WX_TOOLVER}_xp${_WX_ARCH}_dll
+        ${WX_ROOT_DIR}/lib/${_WX_TOOL}${_WX_TOOLVER}${_WX_ARCH}_dll
+        ${WX_ROOT_DIR}/lib/${_WX_TOOL}${_WX_ARCH}_dll
         DOC "Path to wxWidgets libraries"
         NO_DEFAULT_PATH
         )
     endif()
+    unset(_WX_TOOL)
+    unset(_WX_TOOLVER)
+    unset(_WX_ARCH)
 
     # If wxWidgets_LIB_DIR changed, clear all libraries.
     if(NOT WX_LIB_DIR STREQUAL wxWidgets_LIB_DIR)
@@ -733,7 +751,7 @@ else()
     #-----------------------------------------------------------------
     # Support cross-compiling, only search in the target platform.
     find_program(wxWidgets_CONFIG_EXECUTABLE
-      NAMES wx-config wx-config-3.1 wx-config-3.0 wx-config-2.9 wx-config-2.8
+      NAMES $ENV{WX_CONFIG} wx-config wx-config-3.1 wx-config-3.0 wx-config-2.9 wx-config-2.8
       DOC "Location of wxWidgets library configuration provider binary (wx-config)."
       ONLY_CMAKE_FIND_ROOT_PATH
       )
@@ -764,28 +782,24 @@ else()
         )
       if(RET EQUAL 0)
         string(STRIP "${wxWidgets_CXX_FLAGS}" wxWidgets_CXX_FLAGS)
-        separate_arguments(wxWidgets_CXX_FLAGS)
+        separate_arguments(wxWidgets_CXX_FLAGS_LIST NATIVE_COMMAND "${wxWidgets_CXX_FLAGS}")
 
         DBG_MSG_V("wxWidgets_CXX_FLAGS=${wxWidgets_CXX_FLAGS}")
 
-        # parse definitions from cxxflags;
-        #   drop -D* from CXXFLAGS and the -D prefix
-        string(REGEX MATCHALL "-D[^;]+"
-          wxWidgets_DEFINITIONS  "${wxWidgets_CXX_FLAGS}")
-        string(REGEX REPLACE "-D[^;]+(;|$)" ""
-          wxWidgets_CXX_FLAGS "${wxWidgets_CXX_FLAGS}")
-        string(REGEX REPLACE ";$" ""
-          wxWidgets_CXX_FLAGS "${wxWidgets_CXX_FLAGS}")
-        string(REPLACE "-D" ""
-          wxWidgets_DEFINITIONS "${wxWidgets_DEFINITIONS}")
-
-        # parse include dirs from cxxflags; drop -I prefix
-        string(REGEX MATCHALL "-I[^;]+"
-          wxWidgets_INCLUDE_DIRS "${wxWidgets_CXX_FLAGS}")
-        string(REGEX REPLACE "-I[^;]+;" ""
-          wxWidgets_CXX_FLAGS "${wxWidgets_CXX_FLAGS}")
-        string(REPLACE "-I" ""
-          wxWidgets_INCLUDE_DIRS "${wxWidgets_INCLUDE_DIRS}")
+        # parse definitions and include dirs from cxxflags
+        #   drop the -D and -I prefixes
+        set(wxWidgets_CXX_FLAGS)
+        foreach(arg IN LISTS wxWidgets_CXX_FLAGS_LIST)
+          if("${arg}" MATCHES "^-I(.*)$")
+            # include directory
+            list(APPEND wxWidgets_INCLUDE_DIRS "${CMAKE_MATCH_1}")
+          elseif("${arg}" MATCHES "^-D(.*)$")
+            # compile definition
+            list(APPEND wxWidgets_DEFINITIONS "${CMAKE_MATCH_1}")
+          else()
+            list(APPEND wxWidgets_CXX_FLAGS "${arg}")
+          endif()
+        endforeach()
 
         DBG_MSG_V("wxWidgets_DEFINITIONS=${wxWidgets_DEFINITIONS}")
         DBG_MSG_V("wxWidgets_INCLUDE_DIRS=${wxWidgets_INCLUDE_DIRS}")
@@ -854,7 +868,7 @@ else()
           if(_retv EQUAL 0)
             file(TO_CMAKE_PATH ${_native_path} _native_path)
             DBG_MSG_V("Path ${_path} converted to ${_native_path}")
-            set(_tmp_path "${_tmp_path} ${_native_path}")
+            string(APPEND _tmp_path " ${_native_path}")
           endif()
         endforeach()
         DBG_MSG("Setting wxWidgets_INCLUDE_DIRS = ${_tmp_path}")
@@ -879,7 +893,29 @@ else()
   endif()
 endif()
 
-# Check if a specfic version was requested by find_package().
+# Check that all libraries are present, as wx-config does not check it
+set(_wx_lib_missing "")
+foreach(_wx_lib_ ${wxWidgets_LIBRARIES})
+  if("${_wx_lib_}" MATCHES "^-l(.*)")
+    set(_wx_lib_name "${CMAKE_MATCH_1}")
+    unset(_wx_lib_found CACHE)
+    find_library(_wx_lib_found NAMES ${_wx_lib_name} HINTS ${wxWidgets_LIBRARY_DIRS})
+    if(_wx_lib_found STREQUAL _wx_lib_found-NOTFOUND)
+      list(APPEND _wx_lib_missing ${_wx_lib_name})
+    endif()
+    unset(_wx_lib_found CACHE)
+  endif()
+endforeach()
+
+if (_wx_lib_missing)
+  string(REPLACE ";" " " _wx_lib_missing "${_wx_lib_missing}")
+  DBG_MSG_V("wxWidgets not found due to following missing libraries: ${_wx_lib_missing}")
+  set(wxWidgets_FOUND FALSE)
+  unset(wxWidgets_LIBRARIES)
+endif()
+unset(_wx_lib_missing)
+
+# Check if a specific version was requested by find_package().
 if(wxWidgets_FOUND)
   find_file(_filename wx/version.h PATHS ${wxWidgets_INCLUDE_DIRS} NO_DEFAULT_PATH)
   dbg_msg("_filename:  ${_filename}")
@@ -928,8 +964,9 @@ find_package_handle_standard_args(wxWidgets
 #=====================================================================
 
 # Resource file compiler.
-find_program(wxWidgets_wxrc_EXECUTABLE wxrc
-  ${wxWidgets_ROOT_DIR}/utils/wxrc/vc_msw
+find_program(wxWidgets_wxrc_EXECUTABLE
+  NAMES $ENV{WXRC_CMD} wxrc
+  PATHS ${wxWidgets_ROOT_DIR}/utils/wxrc/vc_msw
   DOC "Location of wxWidgets resource file compiler binary (wxrc)"
   )
 

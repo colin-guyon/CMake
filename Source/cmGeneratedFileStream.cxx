@@ -1,29 +1,31 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmGeneratedFileStream.h"
+
+#include <stdio.h>
 
 #include "cmSystemTools.h"
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
-#include <cm_zlib.h>
+#include "cm_codecvt.hxx"
+#include "cm_zlib.h"
 #endif
 
-cmGeneratedFileStream::cmGeneratedFileStream()
+cmGeneratedFileStream::cmGeneratedFileStream(Encoding encoding)
   : cmGeneratedFileStreamBase()
   , Stream()
 {
+#ifdef CMAKE_BUILD_WITH_CMAKE
+  if (encoding != codecvt::None) {
+    imbue(std::locale(getloc(), new codecvt(encoding)));
+  }
+#else
+  static_cast<void>(encoding);
+#endif
 }
 
-cmGeneratedFileStream::cmGeneratedFileStream(const char* name, bool quiet)
+cmGeneratedFileStream::cmGeneratedFileStream(const char* name, bool quiet,
+                                             Encoding encoding)
   : cmGeneratedFileStreamBase(name)
   , Stream(TempName.c_str())
 {
@@ -33,6 +35,13 @@ cmGeneratedFileStream::cmGeneratedFileStream(const char* name, bool quiet)
                          this->TempName.c_str());
     cmSystemTools::ReportLastSystemError("");
   }
+#ifdef CMAKE_BUILD_WITH_CMAKE
+  if (encoding != codecvt::None) {
+    imbue(std::locale(getloc(), new codecvt(encoding)));
+  }
+#else
+  static_cast<void>(encoding);
+#endif
 }
 
 cmGeneratedFileStream::~cmGeneratedFileStream()
@@ -42,7 +51,7 @@ cmGeneratedFileStream::~cmGeneratedFileStream()
   // stream will be destroyed which will close the temporary file.
   // Finally the base destructor will be called to replace the
   // destination file.
-  this->Okay = (*this) ? true : false;
+  this->Okay = !this->fail();
 }
 
 cmGeneratedFileStream& cmGeneratedFileStream::Open(const char* name,
@@ -56,7 +65,7 @@ cmGeneratedFileStream& cmGeneratedFileStream::Open(const char* name,
     this->Stream::open(this->TempName.c_str(),
                        std::ios::out | std::ios::binary);
   } else {
-    this->Stream::open(this->TempName.c_str(), std::ios::out);
+    this->Stream::open(this->TempName.c_str());
   }
 
   // Check if the file opened.
@@ -71,7 +80,7 @@ cmGeneratedFileStream& cmGeneratedFileStream::Open(const char* name,
 bool cmGeneratedFileStream::Close()
 {
   // Save whether the temporary output file is valid before closing.
-  this->Okay = (*this) ? true : false;
+  this->Okay = !this->fail();
 
   // Close the temporary output file.
   this->Stream::close();
@@ -138,7 +147,7 @@ void cmGeneratedFileStreamBase::Open(const char* name)
   cmSystemTools::RemoveFile(this->TempName);
 
   std::string dir = cmSystemTools::GetFilenamePath(this->TempName);
-  cmSystemTools::MakeDirectory(dir.c_str());
+  cmSystemTools::MakeDirectory(dir);
 }
 
 bool cmGeneratedFileStreamBase::Close()

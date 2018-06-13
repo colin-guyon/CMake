@@ -1,16 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
 
-#=============================================================================
-# Copyright 2002-2015 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 include(${CMAKE_ROOT}/Modules/CMakeDetermineCompiler.cmake)
 
@@ -44,7 +34,9 @@ if (NOT _CMAKE_TOOLCHAIN_LOCATION)
   get_filename_component(_CMAKE_TOOLCHAIN_LOCATION "${CMAKE_Swift_COMPILER}" PATH)
 endif ()
 
+set(_CMAKE_PROCESSING_LANGUAGE "Swift")
 include(CMakeFindBinUtils)
+unset(_CMAKE_PROCESSING_LANGUAGE)
 
 # configure variables set in this file for fast reload later on
 configure_file(${CMAKE_ROOT}/Modules/CMakeSwiftCompiler.cmake.in

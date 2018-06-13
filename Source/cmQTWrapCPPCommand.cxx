@@ -1,15 +1,15 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmQTWrapCPPCommand.h"
+
+#include "cmCustomCommandLines.h"
+#include "cmMakefile.h"
+#include "cmSourceFile.h"
+#include "cmSystemTools.h"
+
+#include <utility>
+
+class cmExecutionStatus;
 
 // cmQTWrapCPPCommand
 bool cmQTWrapCPPCommand::InitialPass(std::vector<std::string> const& args,
@@ -47,7 +47,7 @@ bool cmQTWrapCPPCommand::InitialPass(std::vector<std::string> const& args,
 
       // Compute the name of the header from which to generate the file.
       std::string hname;
-      if (cmSystemTools::FileIsFullPath(j->c_str())) {
+      if (cmSystemTools::FileIsFullPath(*j)) {
         hname = *j;
       } else {
         if (curr && curr->GetPropertyAsBool("GENERATED")) {
@@ -73,14 +73,14 @@ bool cmQTWrapCPPCommand::InitialPass(std::vector<std::string> const& args,
       commandLine.push_back(hname);
 
       cmCustomCommandLines commandLines;
-      commandLines.push_back(commandLine);
+      commandLines.push_back(std::move(commandLine));
 
       std::vector<std::string> depends;
       depends.push_back(moc_exe);
       depends.push_back(hname);
 
-      std::string no_main_dependency = "";
-      const char* no_working_dir = 0;
+      std::string no_main_dependency;
+      const char* no_working_dir = nullptr;
       this->Makefile->AddCustomCommandToOutput(
         newName, depends, no_main_dependency, commandLines, "Qt Wrapped File",
         no_working_dir);

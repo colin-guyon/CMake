@@ -14,6 +14,7 @@ All Modules
    :maxdepth: 1
 
    /module/AddFileDependencies
+   /module/AndroidTestUtilities
    /module/BundleUtilities
    /module/CheckCCompilerFlag
    /module/CheckCSourceCompiles
@@ -26,6 +27,7 @@ All Modules
    /module/CheckFortranFunctionExists
    /module/CheckFortranSourceCompiles
    /module/CheckFunctionExists
+   /module/CheckIPOSupported
    /module/CheckIncludeFileCXX
    /module/CheckIncludeFile
    /module/CheckIncludeFiles
@@ -52,17 +54,22 @@ All Modules
    /module/CMakePrintSystemInformation
    /module/CMakePushCheckState
    /module/CMakeVerifyManifest
+   /module/CPackArchive
    /module/CPackBundle
    /module/CPackComponent
    /module/CPackCygwin
    /module/CPackDeb
    /module/CPackDMG
+   /module/CPackFreeBSD
    /module/CPackIFW
+   /module/CPackIFWConfigureFile
    /module/CPackNSIS
    /module/CPackPackageMaker
+   /module/CPackProductBuild
    /module/CPackRPM
    /module/CPack
    /module/CPackWIX
+   /module/CSharpUtilities
    /module/CTest
    /module/CTestCoverageCollectGCOV
    /module/CTestScriptMode
@@ -73,6 +80,7 @@ All Modules
    /module/ExternalData
    /module/ExternalProject
    /module/FeatureSummary
+   /module/FetchContent
    /module/FindALSA
    /module/FindArmadillo
    /module/FindASPELL
@@ -120,7 +128,9 @@ All Modules
    /module/FindHTMLHelp
    /module/FindIce
    /module/FindIcotool
+   /module/FindICU
    /module/FindImageMagick
+   /module/FindIconv
    /module/FindIntl
    /module/FindITK
    /module/FindJasper
@@ -145,6 +155,7 @@ All Modules
    /module/FindMPEG2
    /module/FindMPEG
    /module/FindMPI
+   /module/FindOpenACC
    /module/FindOpenAL
    /module/FindOpenCL
    /module/FindOpenGL
@@ -174,6 +185,7 @@ All Modules
    /module/FindosgWidget
    /module/FindPackageHandleStandardArgs
    /module/FindPackageMessage
+   /module/FindPatch
    /module/FindPerlLibs
    /module/FindPerl
    /module/FindPHP4
@@ -209,6 +221,7 @@ All Modules
    /module/FindTIFF
    /module/FindUnixCommands
    /module/FindVTK
+   /module/FindVulkan
    /module/FindWget
    /module/FindWish
    /module/FindwxWidgets
@@ -223,6 +236,7 @@ All Modules
    /module/GenerateExportHeader
    /module/GetPrerequisites
    /module/GNUInstallDirs
+   /module/GoogleTest
    /module/InstallRequiredSystemLibraries
    /module/MacroAddFileDependencies
    /module/ProcessorCount

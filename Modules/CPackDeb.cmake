@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # CPackDeb
 # --------
@@ -29,11 +32,11 @@
 #  - https://cmake.org/Wiki/CMake:CPackConfiguration
 #  - https://cmake.org/Wiki/CMake:CPackPackageGenerators#DEB_.28UNIX_only.29
 #
-# List of CPackRPM specific variables:
+# List of CPackDEB specific variables:
 #
-# .. variable:: CPACK_DEB_PACKAGE_COMPONENT
+# .. variable:: CPACK_DEB_COMPONENT_INSTALL
 #
-#  Enable component packaging for CPackRPM
+#  Enable component packaging for CPackDEB
 #
 #  * Mandatory : NO
 #  * Default   : OFF
@@ -70,7 +73,8 @@
 #
 #    <PackageName>_<VersionNumber>-<DebianRevisionNumber>_<DebianArchitecture>.deb
 #
-#  Alternatively provided package file name must end with ``.deb`` suffix.
+#  Alternatively provided package file name must end
+#  with either ``.deb`` or ``.ipk`` suffix.
 #
 #  .. note::
 #
@@ -84,6 +88,16 @@
 #    get overwritten and it is up to the packager to set the variables in a
 #    manner that will prevent such errors.
 #
+# .. variable:: CPACK_DEBIAN_PACKAGE_EPOCH
+#
+#  The Debian package epoch
+#
+#  * Mandatory : No
+#  * Default   : -
+#
+#  Optional number that should be incremented when changing versioning schemas
+#  or fixing mistakes in the version numbers of older packages.
+#
 # .. variable:: CPACK_DEBIAN_PACKAGE_VERSION
 #
 #  The Debian package version
@@ -91,12 +105,25 @@
 #  * Mandatory : YES
 #  * Default   : :variable:`CPACK_PACKAGE_VERSION`
 #
+#  This variable may contain only alphanumerics (A-Za-z0-9) and the characters
+#  . + - ~ (full stop, plus, hyphen, tilde) and should start with a digit. If
+#  :variable:`CPACK_DEBIAN_PACKAGE_RELEASE` is not set then hyphens are not
+#  allowed.
+#
+#  .. note::
+#
+#    For backward compatibility with CMake 3.9 and lower a failed test of this
+#    variable's content is not a hard error when both
+#    :variable:`CPACK_DEBIAN_PACKAGE_RELEASE` and
+#    :variable:`CPACK_DEBIAN_PACKAGE_EPOCH` variables are not set. An author
+#    warning is reported instead.
+#
 # .. variable:: CPACK_DEBIAN_PACKAGE_RELEASE
 #
 #  The Debian package release - Debian revision number.
 #
-#  * Mandatory : YES
-#  * Default   : 1
+#  * Mandatory : No
+#  * Default   : -
 #
 #  This is the numbering of the DEB package itself, i.e. the version of the
 #  packaging and not the version of the content (see
@@ -176,6 +203,24 @@
 #  * Default   : "devel"
 #
 #  See https://www.debian.org/doc/debian-policy/ch-archive.html#s-subsections
+#
+# .. variable:: CPACK_DEBIAN_ARCHIVE_TYPE
+#
+#  The archive format used for creating the Debian package.
+#
+#  * Mandatory : YES
+#  * Default   : "paxr"
+#
+#  Possible values are:
+#
+#  - paxr
+#  - gnutar
+#
+#  .. note::
+#
+#    Default pax archive format is the most portable format and generates
+#    packages that do not treat sparse files specially.
+#    GNU tar format on the other hand supports longer filenames.
 #
 # .. variable:: CPACK_DEBIAN_COMPRESSION_TYPE
 #
@@ -425,7 +470,7 @@
 #  Usage::
 #
 #   set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
-#       "${CMAKE_CURRENT_SOURCE_DIR/prerm;${CMAKE_CURRENT_SOURCE_DIR}/postrm")
+#       "${CMAKE_CURRENT_SOURCE_DIR}/prerm;${CMAKE_CURRENT_SOURCE_DIR}/postrm")
 #
 #  .. note::
 #
@@ -476,24 +521,16 @@
 #
 #    This value is not interpreted. It is possible to pass an optional
 #    revision number of the referenced source package as well.
-
-#=============================================================================
-# Copyright 2007-2009 Kitware, Inc.
-# Copyright 2007-2009 Mathieu Malaterre <mathieu.malaterre@gmail.com>
-# Copyright 2014-2016 Alexander Smorkalov <alexander.smorkalov@itseez.com>
-# Copyright 2014-2016 Roman Donchenko <roman.donchenko@itseez.com>
-# Copyright 2014-2016 Roman Kharitonov <roman.kharitonov@itseez.com>
-# Copyright 2014-2016 Ilya Lavrenov <ilya.lavrenov@itseez.com>
 #
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
+# Building Debian packages on Windows
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
+# To communicate UNIX file permissions from the install stage
+# to the CPack DEB generator the "cmake_mode_t" NTFS
+# alternate data stream (ADT) is used.
+#
+# When a filesystem without ADT support is used only owner read/write
+# permissions can be preserved.
 
 # CPack script for creating Debian package
 # Author: Mathieu Malaterre
@@ -502,10 +539,6 @@
 
 if(CMAKE_BINARY_DIR)
   message(FATAL_ERROR "CPackDeb.cmake may only be used by CPack internally.")
-endif()
-
-if(NOT UNIX)
-  message(FATAL_ERROR "CPackDeb.cmake may only be used under UNIX.")
 endif()
 
 function(cpack_deb_variable_fallback OUTPUT_VAR_NAME)
@@ -577,19 +610,23 @@ function(cpack_deb_prepare_package_vars)
 
   if(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OR CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS)
     # Generating binary list - Get type of all install files
-    cmake_policy(PUSH)
-      # Tell file(GLOB_RECURSE) not to follow directory symlinks
-      # even if the project does not set this policy to NEW.
-      cmake_policy(SET CMP0009 NEW)
-      file(GLOB_RECURSE FILE_PATHS_ LIST_DIRECTORIES false RELATIVE "${WDIR}" "${WDIR}/*")
-    cmake_policy(POP)
+    file(GLOB_RECURSE FILE_PATHS_ LIST_DIRECTORIES false RELATIVE "${WDIR}" "${WDIR}/*")
+
+    find_program(FILE_EXECUTABLE file)
+    if(NOT FILE_EXECUTABLE)
+      message(FATAL_ERROR "CPackDeb: file utility is not available. CPACK_DEBIAN_PACKAGE_SHLIBDEPS and CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS options are not available.")
+    endif()
 
     # get file info so that we can determine if file is executable or not
     unset(CPACK_DEB_INSTALL_FILES)
     foreach(FILE_ IN LISTS FILE_PATHS_)
-      execute_process(COMMAND file "./${FILE_}"
+      execute_process(COMMAND env LC_ALL=C ${FILE_EXECUTABLE} "./${FILE_}"
         WORKING_DIRECTORY "${WDIR}"
+        RESULT_VARIABLE FILE_RESULT_
         OUTPUT_VARIABLE INSTALL_FILE_)
+      if(NOT FILE_RESULT_ EQUAL 0)
+        message (FATAL_ERROR "CPackDeb: execution of command: '${FILE_EXECUTABLE} ./${FILE_}' failed with exit code: ${FILE_RESULT_}")
+      endif()
       list(APPEND CPACK_DEB_INSTALL_FILES "${INSTALL_FILE_}")
     endforeach()
 
@@ -613,7 +650,7 @@ function(cpack_deb_prepare_package_vars)
     find_program(SHLIBDEPS_EXECUTABLE dpkg-shlibdeps)
 
     if(SHLIBDEPS_EXECUTABLE)
-      # Check version of the dpkg-shlibdeps tool using CPackRPM method
+      # Check version of the dpkg-shlibdeps tool using CPackDEB method
       execute_process(COMMAND env LC_ALL=C ${SHLIBDEPS_EXECUTABLE} --version
         OUTPUT_VARIABLE _TMP_VERSION
         ERROR_QUIET
@@ -717,6 +754,51 @@ function(cpack_deb_prepare_package_vars)
       message(FATAL_ERROR "CPackDeb: Debian package requires a package version")
     endif()
     set(CPACK_DEBIAN_PACKAGE_VERSION ${CPACK_PACKAGE_VERSION})
+  endif()
+
+  if(DEFINED CPACK_DEBIAN_PACKAGE_RELEASE OR DEFINED CPACK_DEBIAN_PACKAGE_EPOCH)
+    # only test the version format if CPACK_DEBIAN_PACKAGE_RELEASE or
+    # CPACK_DEBIAN_PACKAGE_EPOCH is set
+    if(NOT CPACK_DEBIAN_PACKAGE_VERSION MATCHES "^[0-9][A-Za-z0-9.+~-]*$")
+      message(FATAL_ERROR
+        "CPackDeb: Debian package version must confirm to \"^[0-9][A-Za-z0-9.+~-]*$\" regex!")
+    endif()
+  else()
+    # before CMake 3.10 version format was not tested so only warn to preserve
+    # backward compatibility
+    if(NOT CPACK_DEBIAN_PACKAGE_VERSION MATCHES "^([0-9]+:)?[0-9][A-Za-z0-9.+~-]*$")
+      message(AUTHOR_WARNING
+        "CPackDeb: Debian package versioning ([<epoch>:]<version>[-<release>])"
+        " should confirm to \"^([0-9]+:)?[0-9][A-Za-z0-9.+~-]*$\" regex in"
+        " order to satisfy Debian packaging rules.")
+    endif()
+  endif()
+
+  if(CPACK_DEBIAN_PACKAGE_RELEASE)
+    if(NOT CPACK_DEBIAN_PACKAGE_RELEASE MATCHES "^[A-Za-z0-9.+~]+$")
+      message(FATAL_ERROR
+        "CPackDeb: Debian package release must confirm to \"^[A-Za-z0-9.+~]+$\" regex!")
+    endif()
+    string(APPEND CPACK_DEBIAN_PACKAGE_VERSION
+      "-${CPACK_DEBIAN_PACKAGE_RELEASE}")
+  elseif(DEFINED CPACK_DEBIAN_PACKAGE_EPOCH)
+    # only test the version format if CPACK_DEBIAN_PACKAGE_RELEASE or
+    # CPACK_DEBIAN_PACKAGE_EPOCH is set - versions CPack/Deb generator before
+    # CMake 3.10 did not check for version format so we have to preserve
+    # backward compatibility
+    if(CPACK_DEBIAN_PACKAGE_VERSION MATCHES ".*-.*")
+      message(FATAL_ERROR
+        "CPackDeb: Debian package version must not contain hyphens when CPACK_DEBIAN_PACKAGE_RELEASE is not provided!")
+    endif()
+  endif()
+
+  if(CPACK_DEBIAN_PACKAGE_EPOCH)
+    if(NOT CPACK_DEBIAN_PACKAGE_EPOCH MATCHES "^[0-9]+$")
+      message(FATAL_ERROR
+        "CPackDeb: Debian package epoch must confirm to \"^[0-9]+$\" regex!")
+    endif()
+    set(CPACK_DEBIAN_PACKAGE_VERSION
+      "${CPACK_DEBIAN_PACKAGE_EPOCH}:${CPACK_DEBIAN_PACKAGE_VERSION}")
   endif()
 
   # Architecture: (mandatory)
@@ -842,11 +924,20 @@ function(cpack_deb_prepare_package_vars)
     set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
   endif()
 
+  if(CPACK_DEBIAN_ARCHIVE_TYPE)
+    set(archive_types_ "paxr;gnutar")
+    if(NOT CPACK_DEBIAN_ARCHIVE_TYPE IN_LIST archive_types_)
+      message(FATAL_ERROR "CPACK_DEBIAN_ARCHIVE_TYPE set to unsupported"
+        "type ${CPACK_DEBIAN_ARCHIVE_TYPE}")
+    endif()
+  else()
+    set(CPACK_DEBIAN_ARCHIVE_TYPE "paxr")
+  endif()
+
   # Compression: (recommended)
   if(NOT CPACK_DEBIAN_COMPRESSION_TYPE)
     set(CPACK_DEBIAN_COMPRESSION_TYPE "gzip")
   endif()
-
 
   # Recommends:
   # You should set: CPACK_DEBIAN_PACKAGE_RECOMMENDS
@@ -863,7 +954,7 @@ function(cpack_deb_prepare_package_vars)
   # - prerm
   # Usage:
   # set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
-  #    "${CMAKE_CURRENT_SOURCE_DIR/prerm;${CMAKE_CURRENT_SOURCE_DIR}/postrm")
+  #    "${CMAKE_CURRENT_SOURCE_DIR}/prerm;${CMAKE_CURRENT_SOURCE_DIR}/postrm")
 
   # Are we packaging components ?
   if(CPACK_DEB_PACKAGE_COMPONENT)
@@ -888,9 +979,9 @@ function(cpack_deb_prepare_package_vars)
     if(READELF_EXECUTABLE)
       foreach(_FILE IN LISTS CPACK_DEB_SHARED_OBJECT_FILES)
         extract_so_info("${_FILE}" libname soversion)
-        if(libname AND soversion)
+        if(libname AND DEFINED soversion)
           list(APPEND CPACK_DEBIAN_PACKAGE_SHLIBS_LIST
-               "${libname} ${soversion} ${CPACK_DEBIAN_PACKAGE_NAME} (${CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS_POLICY} ${CPACK_PACKAGE_VERSION})")
+               "${libname} ${soversion} ${CPACK_DEBIAN_PACKAGE_NAME} (${CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS_POLICY} ${CPACK_DEBIAN_PACKAGE_VERSION})")
         else()
           message(AUTHOR_WARNING "Shared library '${_FILE}' is missing soname or soversion. Library will not be added to DEBIAN/shlibs control file.")
         endif()
@@ -930,11 +1021,6 @@ function(cpack_deb_prepare_package_vars)
     set(CPACK_DEBIAN_GENERATE_POSTRM 0)
   endif()
 
-  if(NOT CPACK_DEBIAN_PACKAGE_RELEASE)
-    set(CPACK_DEBIAN_PACKAGE_RELEASE 1)
-  endif()
-
-
   cpack_deb_variable_fallback("CPACK_DEBIAN_FILE_NAME"
     "CPACK_DEBIAN_${_local_component_name}_FILE_NAME"
     "CPACK_DEBIAN_FILE_NAME")
@@ -943,15 +1029,11 @@ function(cpack_deb_prepare_package_vars)
       # Patch package file name to be in corrent debian format:
       # <foo>_<VersionNumber>-<DebianRevisionNumber>_<DebianArchitecture>.deb
       set(CPACK_OUTPUT_FILE_NAME
-        "${CPACK_DEBIAN_PACKAGE_NAME}_${CPACK_PACKAGE_VERSION}-${CPACK_DEBIAN_PACKAGE_RELEASE}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}.deb")
+        "${CPACK_DEBIAN_PACKAGE_NAME}_${CPACK_DEBIAN_PACKAGE_VERSION}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}.deb")
     else()
-      cmake_policy(PUSH)
-        cmake_policy(SET CMP0010 NEW)
-        if(NOT CPACK_DEBIAN_FILE_NAME MATCHES ".*\\.deb")
-      cmake_policy(POP)
-          message(FATAL_ERROR "'${CPACK_DEBIAN_FILE_NAME}' is not a valid DEB package file name as it must end with '.deb'!")
-        endif()
-      cmake_policy(POP)
+      if(NOT CPACK_DEBIAN_FILE_NAME MATCHES ".*\\.(deb|ipk)")
+        message(FATAL_ERROR "'${CPACK_DEBIAN_FILE_NAME}' is not a valid DEB package file name as it must end with '.deb' or '.ipk'!")
+      endif()
 
       set(CPACK_OUTPUT_FILE_NAME "${CPACK_DEBIAN_FILE_NAME}")
     endif()
@@ -1000,6 +1082,7 @@ function(cpack_deb_prepare_package_vars)
   set(GEN_CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_DEBIAN_PACKAGE_MAINTAINER}" PARENT_SCOPE)
   set(GEN_CPACK_DEBIAN_PACKAGE_DESCRIPTION "${CPACK_DEBIAN_PACKAGE_DESCRIPTION}" PARENT_SCOPE)
   set(GEN_CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS}" PARENT_SCOPE)
+  set(GEN_CPACK_DEBIAN_ARCHIVE_TYPE "${CPACK_DEBIAN_ARCHIVE_TYPE}" PARENT_SCOPE)
   set(GEN_CPACK_DEBIAN_COMPRESSION_TYPE "${CPACK_DEBIAN_COMPRESSION_TYPE}" PARENT_SCOPE)
   set(GEN_CPACK_DEBIAN_PACKAGE_RECOMMENDS "${CPACK_DEBIAN_PACKAGE_RECOMMENDS}" PARENT_SCOPE)
   set(GEN_CPACK_DEBIAN_PACKAGE_SUGGESTS "${CPACK_DEBIAN_PACKAGE_SUGGESTS}" PARENT_SCOPE)

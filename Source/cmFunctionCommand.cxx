@@ -1,17 +1,15 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmFunctionCommand.h"
 
-#include "cmake.h"
+#include <sstream>
+
+#include "cmAlgorithms.h"
+#include "cmExecutionStatus.h"
+#include "cmMakefile.h"
+#include "cmPolicies.h"
+#include "cmState.h"
+#include "cmSystemTools.h"
 
 // define the class for function commands
 class cmFunctionHelperCommand : public cmCommand
@@ -20,20 +18,12 @@ public:
   cmFunctionHelperCommand() {}
 
   ///! clean up any memory allocated by the function
-  ~cmFunctionHelperCommand() {}
-
-  /**
-   * This is used to avoid including this command
-   * in documentation. This is mainly used by
-   * cmMacroHelperCommand and cmFunctionHelperCommand
-   * which cannot provide appropriate documentation.
-   */
-  virtual bool ShouldAppearInDocumentation() const { return false; }
+  ~cmFunctionHelperCommand() override {}
 
   /**
    * This is a virtual constructor for the command.
    */
-  virtual cmCommand* Clone()
+  cmCommand* Clone() override
   {
     cmFunctionHelperCommand* newC = new cmFunctionHelperCommand;
     // we must copy when we clone
@@ -45,28 +35,17 @@ public:
   }
 
   /**
-   * This determines if the command is invoked when in script mode.
-   */
-  virtual bool IsScriptable() const { return true; }
-
-  /**
    * This is called when the command is first encountered in
    * the CMakeLists.txt file.
    */
-  virtual bool InvokeInitialPass(const std::vector<cmListFileArgument>& args,
-                                 cmExecutionStatus&);
+  bool InvokeInitialPass(const std::vector<cmListFileArgument>& args,
+                         cmExecutionStatus&) override;
 
-  virtual bool InitialPass(std::vector<std::string> const&, cmExecutionStatus&)
+  bool InitialPass(std::vector<std::string> const&,
+                   cmExecutionStatus&) override
   {
     return false;
   }
-
-  /**
-   * The name of the command as specified in CMakeList.txt.
-   */
-  virtual std::string GetName() const { return this->Args[0]; }
-
-  cmTypeMacro(cmFunctionHelperCommand, cmCommand);
 
   std::vector<std::string> Args;
   std::vector<cmListFileFunction> Functions;
@@ -125,14 +104,14 @@ bool cmFunctionHelperCommand::InvokeInitialPass(
 
   // Invoke all the functions that were collected in the block.
   // for each function
-  for (unsigned int c = 0; c < this->Functions.size(); ++c) {
+  for (cmListFileFunction const& func : this->Functions) {
     cmExecutionStatus status;
-    if (!this->Makefile->ExecuteCommand(this->Functions[c], status) ||
+    if (!this->Makefile->ExecuteCommand(func, status) ||
         status.GetNestedError()) {
       // The error message should have already included the call stack
       // so we do not need to report an error here.
       functionScope.Quiet();
-      inStatus.SetNestedError(true);
+      inStatus.SetNestedError();
       return false;
     }
     if (status.GetReturnInvoked()) {
@@ -160,18 +139,13 @@ bool cmFunctionFunctionBlocker::IsFunctionBlocked(
       f->Functions = this->Functions;
       f->FilePath = this->GetStartingContext().FilePath;
       mf.RecordPolicies(f->Policies);
-
-      std::string newName = "_" + this->Args[0];
-      mf.GetState()->RenameCommand(this->Args[0], newName);
-      mf.GetState()->AddCommand(f);
-
+      mf.GetState()->AddScriptedCommand(this->Args[0], f);
       // remove the function blocker now that the function is defined
       mf.RemoveFunctionBlocker(this, lff);
       return true;
-    } else {
-      // decrement for each nested function that ends
-      this->Depth--;
     }
+    // decrement for each nested function that ends
+    this->Depth--;
   }
 
   // if it wasn't an endfunction and we are not executing then we must be
@@ -201,7 +175,7 @@ bool cmFunctionFunctionBlocker::ShouldRemove(const cmListFileFunction& lff,
 bool cmFunctionCommand::InitialPass(std::vector<std::string> const& args,
                                     cmExecutionStatus&)
 {
-  if (args.size() < 1) {
+  if (args.empty()) {
     this->SetError("called with incorrect number of arguments");
     return false;
   }

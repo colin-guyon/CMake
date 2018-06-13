@@ -1,22 +1,11 @@
-#=============================================================================
-# CMake - Cross Platform Makefile Generator
-# Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-project(CMAKE_FORM)
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
 
-include_regular_expression("^.*$")
-include_directories(${CURSES_INCLUDE_PATH} "${CMAKE_CURRENT_BINARY_DIR}")
+project(CMAKE_FORM)
 
 configure_file(cmFormConfigure.h.in "${CMAKE_CURRENT_BINARY_DIR}/cmFormConfigure.h")
 
-set(  FORM_SRCS
+add_library(cmForm
              fld_arg.c
              fld_attr.c
              fld_current.c
@@ -57,10 +46,16 @@ set(  FORM_SRCS
              fty_num.c
              fty_regex.c
    )
-             
-include_directories(${CMAKE_FORM_SOURCE_DIR})
-add_library(cmForm ${FORM_SRCS} )
+
+target_include_directories(cmForm
+  PUBLIC
+    ${CURSES_INCLUDE_PATH}
+    ${CMAKE_FORM_BINARY_DIR}
+    ${CMAKE_FORM_SOURCE_DIR}
+  )
+
 target_link_libraries(cmForm ${CURSES_LIBRARY})
+
 if(CURSES_EXTRA_LIBRARY)
   target_link_libraries(cmForm ${CURSES_EXTRA_LIBRARY})
 endif()

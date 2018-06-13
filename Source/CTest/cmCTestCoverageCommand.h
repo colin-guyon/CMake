@@ -1,18 +1,17 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCTestCoverageCommand_h
 #define cmCTestCoverageCommand_h
 
+#include "cmConfigure.h" // IWYU pragma: keep
+
 #include "cmCTestHandlerCommand.h"
+
+#include <set>
+#include <string>
+
+class cmCTestGenericHandler;
+class cmCommand;
 
 /** \class cmCTestCoverage
  * \brief Run a ctest script
@@ -27,7 +26,7 @@ public:
   /**
    * This is a virtual constructor for the command.
    */
-  virtual cmCommand* Clone()
+  cmCommand* Clone() override
   {
     cmCTestCoverageCommand* ni = new cmCTestCoverageCommand;
     ni->CTest = this->CTest;
@@ -38,15 +37,15 @@ public:
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual std::string GetName() const { return "ctest_coverage"; }
+  std::string GetName() const override { return "ctest_coverage"; }
 
-  cmTypeMacro(cmCTestCoverageCommand, cmCTestHandlerCommand);
+  typedef cmCTestHandlerCommand Superclass;
 
 protected:
-  cmCTestGenericHandler* InitializeHandler();
+  cmCTestGenericHandler* InitializeHandler() override;
 
-  virtual bool CheckArgumentKeyword(std::string const& arg);
-  virtual bool CheckArgumentValue(std::string const& arg);
+  bool CheckArgumentKeyword(std::string const& arg) override;
+  bool CheckArgumentValue(std::string const& arg) override;
 
   enum
   {

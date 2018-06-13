@@ -1,28 +1,23 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmBuildNameCommand_h
 #define cmBuildNameCommand_h
 
+#include "cmConfigure.h" // IWYU pragma: keep
+
+#include <string>
+#include <vector>
+
 #include "cmCommand.h"
+
+class cmExecutionStatus;
 
 class cmBuildNameCommand : public cmCommand
 {
 public:
-  cmTypeMacro(cmBuildNameCommand, cmCommand);
-  virtual cmCommand* Clone() { return new cmBuildNameCommand; }
-  virtual bool InitialPass(std::vector<std::string> const& args,
-                           cmExecutionStatus& status);
-  virtual std::string GetName() const { return "build_name"; }
-  virtual bool IsScriptable() const { return true; }
+  cmCommand* Clone() override { return new cmBuildNameCommand; }
+  bool InitialPass(std::vector<std::string> const& args,
+                   cmExecutionStatus& status) override;
 };
 
 #endif

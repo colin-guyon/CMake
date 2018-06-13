@@ -1,17 +1,15 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmWhileCommand.h"
 
 #include "cmConditionEvaluator.h"
+#include "cmExecutionStatus.h"
+#include "cmExpandedCommandArgument.h"
+#include "cmMakefile.h"
+#include "cmSystemTools.h"
+#include "cmake.h"
+
+#include <memory> // IWYU pragma: keep
 
 cmWhileFunctionBlocker::cmWhileFunctionBlocker(cmMakefile* mf)
   : Makefile(mf)
@@ -37,7 +35,7 @@ bool cmWhileFunctionBlocker::IsFunctionBlocked(const cmListFileFunction& lff,
     // if this is the endwhile for this while loop then execute
     if (!this->Depth) {
       // Remove the function blocker for this scope or bail.
-      cmsys::auto_ptr<cmFunctionBlocker> fb(
+      std::unique_ptr<cmFunctionBlocker> fb(
         mf.RemoveFunctionBlocker(this, lff));
       if (!fb.get()) {
         return false;
@@ -64,11 +62,10 @@ bool cmWhileFunctionBlocker::IsFunctionBlocked(const cmListFileFunction& lff,
       while (isTrue) {
         if (!errorString.empty()) {
           std::string err = "had incorrect arguments: ";
-          unsigned int i;
-          for (i = 0; i < this->Args.size(); ++i) {
-            err += (this->Args[i].Delim ? "\"" : "");
-            err += this->Args[i].Value;
-            err += (this->Args[i].Delim ? "\"" : "");
+          for (cmListFileArgument const& arg : this->Args) {
+            err += (arg.Delim ? "\"" : "");
+            err += arg.Value;
+            err += (arg.Delim ? "\"" : "");
             err += " ";
           }
           err += "(";
@@ -82,11 +79,11 @@ bool cmWhileFunctionBlocker::IsFunctionBlocked(const cmListFileFunction& lff,
         }
 
         // Invoke all the functions that were collected in the block.
-        for (unsigned int c = 0; c < this->Functions.size(); ++c) {
+        for (cmListFileFunction const& fn : this->Functions) {
           cmExecutionStatus status;
-          mf.ExecuteCommand(this->Functions[c], status);
+          mf.ExecuteCommand(fn, status);
           if (status.GetReturnInvoked()) {
-            inStatus.SetReturnInvoked(true);
+            inStatus.SetReturnInvoked();
             return true;
           }
           if (status.GetBreakInvoked()) {
@@ -105,10 +102,9 @@ bool cmWhileFunctionBlocker::IsFunctionBlocked(const cmListFileFunction& lff,
                                            messageType);
       }
       return true;
-    } else {
-      // decrement for each nested while that ends
-      this->Depth--;
     }
+    // decrement for each nested while that ends
+    this->Depth--;
   }
 
   // record the command
@@ -134,7 +130,7 @@ bool cmWhileFunctionBlocker::ShouldRemove(const cmListFileFunction& lff,
 bool cmWhileCommand::InvokeInitialPass(
   const std::vector<cmListFileArgument>& args, cmExecutionStatus&)
 {
-  if (args.size() < 1) {
+  if (args.empty()) {
     this->SetError("called with incorrect number of arguments");
     return false;
   }

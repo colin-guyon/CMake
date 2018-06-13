@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # CPackComponent
 # --------------
@@ -34,6 +37,16 @@
 #  components defined by the project.  The user may set it to only include the
 #  specified components.
 #
+#  Instead of specifying all the desired components, it is possible to obtain a
+#  list of all defined components and then remove the unwanted ones from the
+#  list. The :command:`get_cmake_property` command can be used to obtain the
+#  ``COMPONENTS`` property, then the :command:`list(REMOVE_ITEM)` command can be
+#  used to remove the unwanted ones. For example, to use all defined components
+#  except ``foo`` and ``bar``::
+#
+#    get_cmake_property(CPACK_COMPONENTS_ALL COMPONENTS)
+#    list(REMOVE_ITEM CPACK_COMPONENTS_ALL "foo" "bar")
+#
 # .. variable:: CPACK_<GENNAME>_COMPONENT_INSTALL
 #
 #  Enable/Disable component install for CPack generator <GENNAME>.
@@ -53,7 +66,7 @@
 #  the component differently depending on the value of this variable:
 #
 #  * ONE_PER_GROUP (default): creates one package file per component group
-#  * ALL_COMPONENTS_IN_ONE : creates a single package with all (requested) component
+#  * ALL_COMPONENTS_IN_ONE : creates a single package with all (requested) components
 #  * IGNORE : creates one package per component, i.e. IGNORE component group
 #
 #  One can specify different grouping for different CPack generator by
@@ -75,9 +88,17 @@
 #
 #  The dependencies (list of components) on which this component depends.
 #
+# .. variable:: CPACK_COMPONENT_<compName>_HIDDEN
+#
+#  True if this component is hidden from the user.
+#
 # .. variable:: CPACK_COMPONENT_<compName>_REQUIRED
 #
-#  True is this component is required.
+#  True if this component is required.
+#
+# .. variable:: CPACK_COMPONENT_<compName>_DISABLED
+#
+#  True if this component is not selected to be installed by default.
 #
 # .. command:: cpack_add_component
 #
@@ -94,7 +115,8 @@
 #                       [DEPENDS comp1 comp2 ... ]
 #                       [INSTALL_TYPES type1 type2 ... ]
 #                       [DOWNLOADED]
-#                       [ARCHIVE_FILE filename])
+#                       [ARCHIVE_FILE filename]
+#                       [PLIST filename])
 #
 #
 #
@@ -151,6 +173,9 @@
 # be used for downloaded components.  If not supplied, CPack will create
 # a file with some name based on CPACK_PACKAGE_FILE_NAME and the name of
 # the component.  See cpack_configure_downloads for more information.
+#
+# PLIST gives a filename that is passed to pkgbuild with the
+# ``--component-plist`` argument when using the productbuild generator.
 #
 # .. command:: cpack_add_component_group
 #
@@ -284,54 +309,9 @@
 # NO_ADD_REMOVE turns off this behavior.  This option is ignored on Mac
 # OS X.
 
-#=============================================================================
-# Copyright 2006-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
-
 # Define var in order to avoid multiple inclusion
 if(NOT CPackComponent_CMake_INCLUDED)
 set(CPackComponent_CMake_INCLUDED 1)
-
-# Argument-parsing macro from https://cmake.org/Wiki/CMakeMacroParseArguments
-macro(cpack_parse_arguments prefix arg_names option_names)
-  set(${prefix}_DEFAULT_ARGS)
-  foreach(arg_name ${arg_names})
-    set(${prefix}_${arg_name})
-  endforeach()
-  foreach(option ${option_names})
-    set(${prefix}_${option} FALSE)
-  endforeach()
-
-  set(current_arg_name DEFAULT_ARGS)
-  set(current_arg_list)
-  foreach(arg ${ARGN})
-    set(larg_names ${arg_names})
-    list(FIND larg_names "${arg}" is_arg_name)
-    if (is_arg_name GREATER -1)
-      set(${prefix}_${current_arg_name} ${current_arg_list})
-      set(current_arg_name ${arg})
-      set(current_arg_list)
-    else ()
-      set(loption_names ${option_names})
-      list(FIND loption_names "${arg}" is_option)
-      if (is_option GREATER -1)
-        set(${prefix}_${arg} TRUE)
-      else ()
-        set(current_arg_list ${current_arg_list} ${arg})
-      endif ()
-    endif ()
-  endforeach()
-  set(${prefix}_${current_arg_name} ${current_arg_list})
-endmacro()
 
 # Macro that appends a SET command for the given variable name (var)
 # to the macro named strvar, but only if the variable named "var"
@@ -339,11 +319,11 @@ endmacro()
 # configuration file.
 macro(cpack_append_variable_set_command var strvar)
   if (DEFINED ${var})
-    set(${strvar} "${${strvar}}set(${var}")
+    string(APPEND ${strvar} "set(${var}")
     foreach(APPENDVAL ${${var}})
-      set(${strvar} "${${strvar}} ${APPENDVAL}")
+      string(APPEND ${strvar} " ${APPENDVAL}")
     endforeach()
-    set(${strvar} "${${strvar}})\n")
+    string(APPEND ${strvar} ")\n")
   endif ()
 endmacro()
 
@@ -355,8 +335,22 @@ macro(cpack_append_string_variable_set_command var strvar)
   if (DEFINED ${var})
     list(LENGTH ${var} CPACK_APP_VALUE_LEN)
     if(${CPACK_APP_VALUE_LEN} EQUAL 1)
-      set(${strvar} "${${strvar}}set(${var} \"${${var}}\")\n")
+      string(APPEND ${strvar} "set(${var} \"${${var}}\")\n")
     endif()
+  endif ()
+endmacro()
+
+# Macro that appends a SET command for the given list variable name (var)
+# to the macro named strvar, but only if the variable named "var"
+# has been defined. It's like add variable, but wrap each item to quotes.
+# The string will eventually be appended to a CPack configuration file.
+macro(cpack_append_list_variable_set_command var strvar)
+  if (DEFINED ${var})
+    string(APPEND ${strvar} "set(${var}")
+    foreach(_val IN LISTS ${var})
+      string(APPEND ${strvar} "\n  \"${_val}\"")
+    endforeach()
+    string(APPEND ${strvar} ")\n")
   endif ()
 endmacro()
 
@@ -368,7 +362,7 @@ macro(cpack_append_option_set_command var strvar)
   if (${var})
     list(LENGTH ${var} CPACK_APP_VALUE_LEN)
     if(${CPACK_APP_VALUE_LEN} EQUAL 1)
-      set(${strvar} "${${strvar}}set(${var} TRUE)\n")
+      string(APPEND ${strvar} "set(${var} TRUE)\n")
     endif()
   endif ()
 endmacro()
@@ -376,9 +370,10 @@ endmacro()
 # Macro that adds a component to the CPack installer
 macro(cpack_add_component compname)
   string(TOUPPER ${compname} _CPACK_ADDCOMP_UNAME)
-  cpack_parse_arguments(CPACK_COMPONENT_${_CPACK_ADDCOMP_UNAME}
-    "DISPLAY_NAME;DESCRIPTION;GROUP;DEPENDS;INSTALL_TYPES;ARCHIVE_FILE"
+  cmake_parse_arguments(CPACK_COMPONENT_${_CPACK_ADDCOMP_UNAME}
     "HIDDEN;REQUIRED;DISABLED;DOWNLOADED"
+    "DISPLAY_NAME;DESCRIPTION;GROUP;ARCHIVE_FILE;PLIST"
+    "DEPENDS;INSTALL_TYPES"
     ${ARGN}
     )
 
@@ -395,11 +390,11 @@ macro(cpack_add_component compname)
     # moduled was included.
     if(NOT CPACK_COMPONENTS_ALL_SET_BY_USER)
       get_cmake_property(_CPACK_ADDCOMP_COMPONENTS COMPONENTS)
-      set(_CPACK_ADDCOMP_STR "${_CPACK_ADDCOMP_STR}\nSET(CPACK_COMPONENTS_ALL")
+      string(APPEND _CPACK_ADDCOMP_STR "\nSET(CPACK_COMPONENTS_ALL")
       foreach(COMP ${_CPACK_ADDCOMP_COMPONENTS})
-       set(_CPACK_ADDCOMP_STR "${_CPACK_ADDCOMP_STR} ${COMP}")
+       string(APPEND _CPACK_ADDCOMP_STR " ${COMP}")
       endforeach()
-      set(_CPACK_ADDCOMP_STR "${_CPACK_ADDCOMP_STR})\n")
+      string(APPEND _CPACK_ADDCOMP_STR ")\n")
     endif()
   endif()
 
@@ -433,6 +428,9 @@ macro(cpack_add_component compname)
   cpack_append_option_set_command(
     CPACK_COMPONENT_${_CPACK_ADDCOMP_UNAME}_DOWNLOADED
     _CPACK_ADDCOMP_STR)
+  cpack_append_string_variable_set_command(
+    CPACK_COMPONENT_${_CPACK_ADDCOMP_UNAME}_PLIST
+    _CPACK_ADDCOMP_STR)
   # Backward compatibility issue.
   # Write to config iff the macros is used after CPack.cmake has been
   # included, other it's not necessary because the variables
@@ -445,9 +443,10 @@ endmacro()
 # Macro that adds a component group to the CPack installer
 macro(cpack_add_component_group grpname)
   string(TOUPPER ${grpname} _CPACK_ADDGRP_UNAME)
-  cpack_parse_arguments(CPACK_COMPONENT_GROUP_${_CPACK_ADDGRP_UNAME}
-    "DISPLAY_NAME;DESCRIPTION;PARENT_GROUP"
+  cmake_parse_arguments(CPACK_COMPONENT_GROUP_${_CPACK_ADDGRP_UNAME}
     "EXPANDED;BOLD_TITLE"
+    "DISPLAY_NAME;DESCRIPTION;PARENT_GROUP"
+    ""
     ${ARGN}
     )
 
@@ -479,7 +478,8 @@ endmacro()
 # Macro that adds an installation type to the CPack installer
 macro(cpack_add_install_type insttype)
   string(TOUPPER ${insttype} _CPACK_INSTTYPE_UNAME)
-  cpack_parse_arguments(CPACK_INSTALL_TYPE_${_CPACK_INSTTYPE_UNAME}
+  cmake_parse_arguments(CPACK_INSTALL_TYPE_${_CPACK_INSTTYPE_UNAME}
+    ""
     "DISPLAY_NAME"
     ""
     ${ARGN}
@@ -487,8 +487,8 @@ macro(cpack_add_install_type insttype)
 
   set(_CPACK_INSTTYPE_STR
     "\n# Configuration for installation type \"${insttype}\"\n")
-  set(_CPACK_INSTTYPE_STR
-    "${_CPACK_INSTTYPE_STR}list(APPEND CPACK_ALL_INSTALL_TYPES ${insttype})\n")
+  string(APPEND _CPACK_INSTTYPE_STR
+    "list(APPEND CPACK_ALL_INSTALL_TYPES ${insttype})\n")
   cpack_append_string_variable_set_command(
     CPACK_INSTALL_TYPE_${_CPACK_INSTTYPE_UNAME}_DISPLAY_NAME
     _CPACK_INSTTYPE_STR)
@@ -502,9 +502,10 @@ macro(cpack_add_install_type insttype)
 endmacro()
 
 macro(cpack_configure_downloads site)
-  cpack_parse_arguments(CPACK_DOWNLOAD
-    "UPLOAD_DIRECTORY"
+  cmake_parse_arguments(CPACK_DOWNLOAD
     "ALL;ADD_REMOVE;NO_ADD_REMOVE"
+    "UPLOAD_DIRECTORY"
+    ""
     ${ARGN}
     )
 

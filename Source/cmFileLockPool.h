@@ -1,26 +1,20 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2014 Ruslan Baratov
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmFileLockPool_h
 #define cmFileLockPool_h
 
-#include "cmStandardIncludes.h"
+#include "cmConfigure.h" // IWYU pragma: keep
 
-#include <list>
+#include <string>
+#include <vector>
 
-class cmFileLockResult;
 class cmFileLock;
+class cmFileLockResult;
 
 class cmFileLockPool
 {
+  CM_DISABLE_COPY(cmFileLockPool)
+
 public:
   cmFileLockPool();
   ~cmFileLockPool();
@@ -60,13 +54,12 @@ public:
   cmFileLockResult Release(const std::string& filename);
 
 private:
-  cmFileLockPool(const cmFileLockPool&);
-  cmFileLockPool& operator=(const cmFileLockPool&);
-
   bool IsAlreadyLocked(const std::string& filename) const;
 
   class ScopePool
   {
+    CM_DISABLE_COPY(ScopePool)
+
   public:
     ScopePool();
     ~ScopePool();
@@ -77,17 +70,14 @@ private:
     bool IsAlreadyLocked(const std::string& filename) const;
 
   private:
-    ScopePool(const ScopePool&);
-    ScopePool& operator=(const ScopePool&);
-
-    typedef std::list<cmFileLock*> List;
+    typedef std::vector<cmFileLock*> List;
     typedef List::iterator It;
     typedef List::const_iterator CIt;
 
     List Locks;
   };
 
-  typedef std::list<ScopePool*> List;
+  typedef std::vector<ScopePool*> List;
 
   typedef List::iterator It;
   typedef List::const_iterator CIt;

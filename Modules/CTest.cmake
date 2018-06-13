@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #[=======================================================================[.rst:
 CTest
 -----
@@ -48,38 +51,21 @@ the :variable:`CTEST_USE_LAUNCHERS` variable::
 in the ``CTestConfig.cmake`` file.
 #]=======================================================================]
 
-#=============================================================================
-# Copyright 2005-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
-
 option(BUILD_TESTING "Build the testing tree." ON)
 
 # function to turn generator name into a version string
-# like vs7 vs71 vs8 vs9
+# like vs8 vs9
 function(GET_VS_VERSION_STRING generator var)
   string(REGEX REPLACE "Visual Studio ([0-9][0-9]?)($|.*)" "\\1"
     NUMBER "${generator}")
-  if("${generator}" MATCHES "Visual Studio 7 .NET 2003")
-    set(ver_string "vs71")
-  else()
     set(ver_string "vs${NUMBER}")
-  endif()
   set(${var} ${ver_string} PARENT_SCOPE)
 endfunction()
 
 include(CTestUseLaunchers)
 
 if(BUILD_TESTING)
-  # Setup some auxilary macros
+  # Setup some auxiliary macros
   macro(SET_IF_NOT_SET var val)
     if(NOT DEFINED "${var}")
       set("${var}" "${val}")
@@ -224,16 +210,16 @@ if(BUILD_TESTING)
       set(BUILD_NAME_SYSTEM_NAME "Win32")
     endif()
     if(UNIX OR BORLAND)
-      get_filename_component(DART_CXX_NAME
-        "${CMAKE_CXX_COMPILER}" ${DART_NAME_COMPONENT})
+      get_filename_component(DART_COMPILER_NAME
+        "${DART_COMPILER}" ${DART_NAME_COMPONENT})
     else()
-      get_filename_component(DART_CXX_NAME
+      get_filename_component(DART_COMPILER_NAME
         "${CMAKE_MAKE_PROGRAM}" ${DART_NAME_COMPONENT})
     endif()
-    if(DART_CXX_NAME MATCHES "devenv")
-      GET_VS_VERSION_STRING("${CMAKE_GENERATOR}" DART_CXX_NAME)
+    if(DART_COMPILER_NAME MATCHES "devenv")
+      GET_VS_VERSION_STRING("${CMAKE_GENERATOR}" DART_COMPILER_NAME)
     endif()
-    set(BUILDNAME "${BUILD_NAME_SYSTEM_NAME}-${DART_CXX_NAME}")
+    set(BUILDNAME "${BUILD_NAME_SYSTEM_NAME}-${DART_COMPILER_NAME}")
   endif()
 
   # the build command

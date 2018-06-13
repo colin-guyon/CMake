@@ -1,20 +1,13 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2015 Stephen Kelly <steveire@gmail.com>
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmLinkedTree_h
 #define cmLinkedTree_h
 
-#include "cmStandardIncludes.h"
+#include "cmConfigure.h" // IWYU pragma: keep
 
 #include <assert.h>
+#include <iterator>
+#include <vector>
 
 /**
   @brief A adaptor for traversing a tree structure in a vector
@@ -56,7 +49,7 @@ public:
 
   public:
     iterator()
-      : Tree(0)
+      : Tree(nullptr)
       , Position(0)
     {
     }
@@ -144,7 +137,7 @@ public:
 
   iterator Push(iterator it) { return Push_impl(it, T()); }
 
-  iterator Push(iterator it, T t) { return Push_impl(it, t); }
+  iterator Push(iterator it, T t) { return Push_impl(it, std::move(t)); }
 
   bool IsLast(iterator it) { return it.Position == this->Data.size(); }
 
@@ -165,10 +158,10 @@ public:
 
   iterator Truncate()
   {
-    assert(this->UpPositions.size() > 0);
+    assert(!this->UpPositions.empty());
     this->UpPositions.erase(this->UpPositions.begin() + 1,
                             this->UpPositions.end());
-    assert(this->Data.size() > 0);
+    assert(!this->Data.empty());
     this->Data.erase(this->Data.begin() + 1, this->Data.end());
     return iterator(this, 1);
   }
@@ -184,12 +177,12 @@ private:
 
   T* GetPointer(PositionType pos) { return &this->Data[pos]; }
 
-  iterator Push_impl(iterator it, T t)
+  iterator Push_impl(iterator it, T&& t)
   {
     assert(this->UpPositions.size() == this->Data.size());
     assert(it.Position <= this->UpPositions.size());
     this->UpPositions.push_back(it.Position);
-    this->Data.push_back(t);
+    this->Data.push_back(std::move(t));
     return iterator(this, this->UpPositions.size());
   }
 

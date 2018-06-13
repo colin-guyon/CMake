@@ -1,50 +1,49 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2004-2009 Kitware, Inc.
-  Copyright 2004 Alexander Neundorf (neundorf@kde.org)
-  Copyright 2013 Eran Ifrah (eran.ifrah@gmail.com)
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmExtraCodeLiteGenerator.h"
 
 #include "cmGeneratedFileStream.h"
-#include "cmGlobalUnixMakefileGenerator3.h"
-#include "cmLocalUnixMakefileGenerator3.h"
+#include "cmGeneratorTarget.h"
+#include "cmGlobalGenerator.h"
+#include "cmLocalGenerator.h"
 #include "cmMakefile.h"
 #include "cmSourceFile.h"
+#include "cmStateTypes.h"
 #include "cmSystemTools.h"
+#include "cmXMLWriter.h"
 #include "cmake.h"
 
-#include "cmStandardIncludes.h"
-#include "cmXMLWriter.h"
-#include <cmsys/Directory.hxx>
-#include <cmsys/SystemInformation.hxx>
-#include <cmsys/SystemTools.hxx>
-
-void cmExtraCodeLiteGenerator::GetDocumentation(cmDocumentationEntry& entry,
-                                                const std::string&) const
-{
-  entry.Name = this->GetName();
-  entry.Brief = "Generates CodeLite project files.";
-}
+#include "cmsys/SystemInformation.hxx"
+#include <map>
+#include <set>
+#include <sstream>
+#include <string.h>
+#include <utility>
 
 cmExtraCodeLiteGenerator::cmExtraCodeLiteGenerator()
   : cmExternalMakefileProjectGenerator()
   , ConfigName("NoConfig")
   , CpuCount(2)
 {
+}
+
+cmExternalMakefileProjectGeneratorFactory*
+cmExtraCodeLiteGenerator::GetFactory()
+{
+  static cmExternalMakefileProjectGeneratorSimpleFactory<
+    cmExtraCodeLiteGenerator>
+    factory("CodeLite", "Generates CodeLite project files.");
+
+  if (factory.GetSupportedGlobalGenerators().empty()) {
 #if defined(_WIN32)
-  this->SupportedGlobalGenerators.push_back("MinGW Makefiles");
-  this->SupportedGlobalGenerators.push_back("NMake Makefiles");
+    factory.AddSupportedGlobalGenerator("MinGW Makefiles");
+    factory.AddSupportedGlobalGenerator("NMake Makefiles");
 #endif
-  this->SupportedGlobalGenerators.push_back("Ninja");
-  this->SupportedGlobalGenerators.push_back("Unix Makefiles");
+    factory.AddSupportedGlobalGenerator("Ninja");
+    factory.AddSupportedGlobalGenerator("Unix Makefiles");
+  }
+
+  return &factory;
 }
 
 void cmExtraCodeLiteGenerator::Generate()
@@ -55,25 +54,24 @@ void cmExtraCodeLiteGenerator::Generate()
   std::string workspaceFileName;
   std::string workspaceSourcePath;
 
-  const std::map<std::string, std::vector<cmLocalGenerator*> >& projectMap =
+  const std::map<std::string, std::vector<cmLocalGenerator*>>& projectMap =
     this->GlobalGenerator->GetProjectMap();
 
   // loop projects and locate the root project.
   // and extract the information for creating the worspace
-  for (std::map<std::string, std::vector<cmLocalGenerator*> >::const_iterator
-         it = projectMap.begin();
-       it != projectMap.end(); ++it) {
-    const cmMakefile* mf = it->second[0]->GetMakefile();
+  // root makefile
+  for (auto const& it : projectMap) {
+    const cmMakefile* mf = it.second[0]->GetMakefile();
     this->ConfigName = GetConfigurationName(mf);
 
-    if (strcmp(it->second[0]->GetCurrentBinaryDirectory(),
-               it->second[0]->GetBinaryDirectory()) == 0) {
-      workspaceOutputDir = it->second[0]->GetCurrentBinaryDirectory();
-      workspaceProjectName = it->second[0]->GetProjectName();
-      workspaceSourcePath = it->second[0]->GetSourceDirectory();
+    if (it.second[0]->GetCurrentBinaryDirectory() ==
+        it.second[0]->GetBinaryDirectory()) {
+      workspaceOutputDir = it.second[0]->GetCurrentBinaryDirectory();
+      workspaceProjectName = it.second[0]->GetProjectName();
+      workspaceSourcePath = it.second[0]->GetSourceDirectory();
       workspaceFileName = workspaceOutputDir + "/";
       workspaceFileName += workspaceProjectName + ".workspace";
-      this->WorkspacePath = it->second[0]->GetCurrentBinaryDirectory();
+      this->WorkspacePath = it.second[0]->GetCurrentBinaryDirectory();
       ;
       break;
     }
@@ -86,26 +84,14 @@ void cmExtraCodeLiteGenerator::Generate()
   xml.StartElement("CodeLite_Workspace");
   xml.Attribute("Name", workspaceProjectName);
 
-  // for each sub project in the workspace create a codelite project
-  for (std::map<std::string, std::vector<cmLocalGenerator*> >::const_iterator
-         it = projectMap.begin();
-       it != projectMap.end(); ++it) {
-    // retrive project information
-    std::string outputDir = it->second[0]->GetCurrentBinaryDirectory();
-    std::string projectName = it->second[0]->GetProjectName();
-    std::string filename = outputDir + "/" + projectName + ".project";
+  bool const targetsAreProjects =
+    this->GlobalGenerator->GlobalSettingIsOn("CMAKE_CODELITE_USE_TARGETS");
 
-    // Make the project file relative to the workspace
-    filename = cmSystemTools::RelativePath(this->WorkspacePath.c_str(),
-                                           filename.c_str());
-
-    // create a project file
-    this->CreateProjectFile(it->second);
-    xml.StartElement("Project");
-    xml.Attribute("Name", projectName);
-    xml.Attribute("Path", filename);
-    xml.Attribute("Active", "No");
-    xml.EndElement();
+  std::vector<std::string> ProjectNames;
+  if (targetsAreProjects) {
+    ProjectNames = CreateProjectsByTarget(&xml);
+  } else {
+    ProjectNames = CreateProjectsByProjectMaps(&xml);
   }
 
   xml.StartElement("BuildMatrix");
@@ -113,14 +99,9 @@ void cmExtraCodeLiteGenerator::Generate()
   xml.Attribute("Name", this->ConfigName);
   xml.Attribute("Selected", "yes");
 
-  for (std::map<std::string, std::vector<cmLocalGenerator*> >::const_iterator
-         it = projectMap.begin();
-       it != projectMap.end(); ++it) {
-    // retrive project information
-    std::string projectName = it->second[0]->GetProjectName();
-
+  for (std::string const& it : ProjectNames) {
     xml.StartElement("Project");
-    xml.Attribute("Name", projectName);
+    xml.Attribute("Name", it);
     xml.Attribute("ConfigName", this->ConfigName);
     xml.EndElement();
   }
@@ -128,6 +109,75 @@ void cmExtraCodeLiteGenerator::Generate()
   xml.EndElement(); // WorkspaceConfiguration
   xml.EndElement(); // BuildMatrix
   xml.EndElement(); // CodeLite_Workspace
+}
+
+// Create projects where targets are the projects
+std::vector<std::string> cmExtraCodeLiteGenerator::CreateProjectsByTarget(
+  cmXMLWriter* xml)
+{
+  std::vector<std::string> retval;
+  // for each target in the workspace create a codelite project
+  const std::vector<cmLocalGenerator*>& lgs =
+    this->GlobalGenerator->GetLocalGenerators();
+  for (cmLocalGenerator* lg : lgs) {
+    for (cmGeneratorTarget* lt : lg->GetGeneratorTargets()) {
+      cmStateEnums::TargetType type = lt->GetType();
+      std::string outputDir = lg->GetCurrentBinaryDirectory();
+      std::string targetName = lt->GetName();
+      std::string filename = outputDir + "/" + targetName + ".project";
+      retval.push_back(targetName);
+      // Make the project file relative to the workspace
+      std::string relafilename =
+        cmSystemTools::RelativePath(this->WorkspacePath, filename);
+      std::string visualname = targetName;
+      switch (type) {
+        case cmStateEnums::SHARED_LIBRARY:
+        case cmStateEnums::STATIC_LIBRARY:
+        case cmStateEnums::MODULE_LIBRARY:
+          visualname = "lib" + visualname;
+          CM_FALLTHROUGH;
+        case cmStateEnums::EXECUTABLE:
+          xml->StartElement("Project");
+          xml->Attribute("Name", visualname);
+          xml->Attribute("Path", relafilename);
+          xml->Attribute("Active", "No");
+          xml->EndElement();
+
+          CreateNewProjectFile(lt, filename);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+  return retval;
+}
+
+// The "older way of doing it.
+std::vector<std::string> cmExtraCodeLiteGenerator::CreateProjectsByProjectMaps(
+  cmXMLWriter* xml)
+{
+  std::vector<std::string> retval;
+  // for each sub project in the workspace create a codelite project
+  for (auto const& it : this->GlobalGenerator->GetProjectMap()) {
+
+    std::string outputDir = it.second[0]->GetCurrentBinaryDirectory();
+    std::string projectName = it.second[0]->GetProjectName();
+    retval.push_back(projectName);
+    std::string filename = outputDir + "/" + projectName + ".project";
+
+    // Make the project file relative to the workspace
+    filename = cmSystemTools::RelativePath(this->WorkspacePath, filename);
+
+    // create a project file
+    this->CreateProjectFile(it.second);
+    xml->StartElement("Project");
+    xml->Attribute("Name", projectName);
+    xml->Attribute("Path", filename);
+    xml->Attribute("Active", "No");
+    xml->EndElement();
+  }
+  return retval;
 }
 
 /* create the project file */
@@ -140,6 +190,59 @@ void cmExtraCodeLiteGenerator::CreateProjectFile(
 
   filename += projectName + ".project";
   this->CreateNewProjectFile(lgs, filename);
+}
+
+std::string cmExtraCodeLiteGenerator::CollectSourceFiles(
+  const cmMakefile* makefile, const cmGeneratorTarget* gt,
+  std::map<std::string, cmSourceFile*>& cFiles,
+  std::set<std::string>& otherFiles)
+{
+  std::string projectType;
+  switch (gt->GetType()) {
+    case cmStateEnums::EXECUTABLE: {
+      projectType = "Executable";
+    } break;
+    case cmStateEnums::STATIC_LIBRARY: {
+      projectType = "Static Library";
+    } break;
+    case cmStateEnums::SHARED_LIBRARY: {
+      projectType = "Dynamic Library";
+    } break;
+    case cmStateEnums::MODULE_LIBRARY: {
+      projectType = "Dynamic Library";
+    } break;
+    default: // intended fallthrough
+      break;
+  }
+
+  switch (gt->GetType()) {
+    case cmStateEnums::EXECUTABLE:
+    case cmStateEnums::STATIC_LIBRARY:
+    case cmStateEnums::SHARED_LIBRARY:
+    case cmStateEnums::MODULE_LIBRARY: {
+      std::vector<cmSourceFile*> sources;
+      gt->GetSourceFiles(sources,
+                         makefile->GetSafeDefinition("CMAKE_BUILD_TYPE"));
+      for (cmSourceFile* s : sources) {
+        // check whether it is a source or a include file
+        // then put it accordingly into one of the two containers
+        switch (cmSystemTools::GetFileFormat(s->GetExtension().c_str())) {
+          case cmSystemTools::C_FILE_FORMAT:
+          case cmSystemTools::CXX_FILE_FORMAT:
+          case cmSystemTools::CUDA_FILE_FORMAT:
+          case cmSystemTools::FORTRAN_FILE_FORMAT: {
+            cFiles[s->GetFullPath()] = s;
+          } break;
+          default: {
+            otherFiles.insert(s->GetFullPath());
+          }
+        }
+      }
+    }
+    default: // intended fallthrough
+      break;
+  }
+  return projectType;
 }
 
 void cmExtraCodeLiteGenerator::CreateNewProjectFile(
@@ -158,111 +261,19 @@ void cmExtraCodeLiteGenerator::CreateNewProjectFile(
   xml.Attribute("Name", lgs[0]->GetProjectName());
   xml.Attribute("InternalType", "");
 
+  std::string projectType;
+
   // Collect all used source files in the project
   // Sort them into two containers, one for C/C++ implementation files
   // which may have an acompanying header, one for all other files
-  std::string projectType;
-
-  std::vector<std::string> srcExts =
-    this->GlobalGenerator->GetCMakeInstance()->GetSourceExtensions();
-  std::vector<std::string> headerExts =
-    this->GlobalGenerator->GetCMakeInstance()->GetHeaderExtensions();
-
   std::map<std::string, cmSourceFile*> cFiles;
   std::set<std::string> otherFiles;
-  for (std::vector<cmLocalGenerator*>::const_iterator lg = lgs.begin();
-       lg != lgs.end(); lg++) {
-    cmMakefile* makefile = (*lg)->GetMakefile();
-    std::vector<cmGeneratorTarget*> targets = (*lg)->GetGeneratorTargets();
-    for (std::vector<cmGeneratorTarget*>::iterator ti = targets.begin();
-         ti != targets.end(); ti++) {
 
-      switch ((*ti)->GetType()) {
-        case cmState::EXECUTABLE: {
-          projectType = "Executable";
-        } break;
-        case cmState::STATIC_LIBRARY: {
-          projectType = "Static Library";
-        } break;
-        case cmState::SHARED_LIBRARY: {
-          projectType = "Dynamic Library";
-        } break;
-        case cmState::MODULE_LIBRARY: {
-          projectType = "Dynamic Library";
-        } break;
-        default: // intended fallthrough
-          break;
-      }
-
-      switch ((*ti)->GetType()) {
-        case cmState::EXECUTABLE:
-        case cmState::STATIC_LIBRARY:
-        case cmState::SHARED_LIBRARY:
-        case cmState::MODULE_LIBRARY: {
-          std::vector<cmSourceFile*> sources;
-          cmGeneratorTarget* gt = *ti;
-          gt->GetSourceFiles(sources,
-                             makefile->GetSafeDefinition("CMAKE_BUILD_TYPE"));
-          for (std::vector<cmSourceFile*>::const_iterator si = sources.begin();
-               si != sources.end(); si++) {
-            // check whether it is a C/C++ implementation file
-            bool isCFile = false;
-            std::string lang = (*si)->GetLanguage();
-            if (lang == "C" || lang == "CXX") {
-              std::string srcext = (*si)->GetExtension();
-              for (std::vector<std::string>::const_iterator ext =
-                     srcExts.begin();
-                   ext != srcExts.end(); ++ext) {
-                if (srcext == *ext) {
-                  isCFile = true;
-                  break;
-                }
-              }
-            }
-
-            // then put it accordingly into one of the two containers
-            if (isCFile) {
-              cFiles[(*si)->GetFullPath()] = *si;
-            } else {
-              otherFiles.insert((*si)->GetFullPath());
-            }
-          }
-        }
-        default: // intended fallthrough
-          break;
-      }
-    }
-  }
-
-  // The following loop tries to add header files matching to implementation
-  // files to the project. It does that by iterating over all source files,
-  // replacing the file name extension with ".h" and checks whether such a
-  // file exists. If it does, it is inserted into the map of files.
-  // A very similar version of that code exists also in the kdevelop
-  // project generator.
-  for (std::map<std::string, cmSourceFile*>::const_iterator sit =
-         cFiles.begin();
-       sit != cFiles.end(); ++sit) {
-    std::string headerBasename = cmSystemTools::GetFilenamePath(sit->first);
-    headerBasename += "/";
-    headerBasename += cmSystemTools::GetFilenameWithoutExtension(sit->first);
-
-    // check if there's a matching header around
-    for (std::vector<std::string>::const_iterator ext = headerExts.begin();
-         ext != headerExts.end(); ++ext) {
-      std::string hname = headerBasename;
-      hname += ".";
-      hname += *ext;
-      // if it's already in the set, don't check if it exists on disk
-      std::set<std::string>::const_iterator headerIt = otherFiles.find(hname);
-      if (headerIt != otherFiles.end()) {
-        break;
-      }
-
-      if (cmSystemTools::FileExists(hname.c_str())) {
-        otherFiles.insert(hname);
-        break;
-      }
+  for (cmLocalGenerator* lg : lgs) {
+    cmMakefile* makefile = lg->GetMakefile();
+    const std::vector<cmGeneratorTarget*>& targets = lg->GetGeneratorTargets();
+    for (cmGeneratorTarget* target : targets) {
+      projectType = CollectSourceFiles(makefile, target, cFiles, otherFiles);
     }
   }
 
@@ -270,6 +281,136 @@ void cmExtraCodeLiteGenerator::CreateNewProjectFile(
   // their relative path)
   std::string projectPath = cmSystemTools::GetFilenamePath(filename);
 
+  CreateProjectSourceEntries(cFiles, otherFiles, &xml, projectPath, mf,
+                             projectType, "");
+
+  xml.EndElement(); // CodeLite_Project
+}
+
+void cmExtraCodeLiteGenerator::FindMatchingHeaderfiles(
+  std::map<std::string, cmSourceFile*>& cFiles,
+  std::set<std::string>& otherFiles)
+{
+
+  const std::vector<std::string>& headerExts =
+    this->GlobalGenerator->GetCMakeInstance()->GetHeaderExtensions();
+
+  // The following loop tries to add header files matching to implementation
+  // files to the project. It does that by iterating over all source files,
+  // replacing the file name extension with ".h" and checks whether such a
+  // file exists. If it does, it is inserted into the map of files.
+  // A very similar version of that code exists also in the CodeBlocks
+  // project generator.
+  for (auto const& sit : cFiles) {
+    std::string headerBasename = cmSystemTools::GetFilenamePath(sit.first);
+    headerBasename += "/";
+    headerBasename += cmSystemTools::GetFilenameWithoutExtension(sit.first);
+
+    // check if there's a matching header around
+    for (std::string const& ext : headerExts) {
+      std::string hname = headerBasename;
+      hname += ".";
+      hname += ext;
+      // if it's already in the set, don't check if it exists on disk
+      std::set<std::string>::const_iterator headerIt = otherFiles.find(hname);
+      if (headerIt != otherFiles.end()) {
+        break;
+      }
+
+      if (cmSystemTools::FileExists(hname)) {
+        otherFiles.insert(hname);
+        break;
+      }
+    }
+  }
+}
+
+void cmExtraCodeLiteGenerator::CreateFoldersAndFiles(
+  std::set<std::string>& cFiles, cmXMLWriter& xml,
+  const std::string& projectPath)
+{
+  std::vector<std::string> tmp_path;
+  std::vector<std::string> components;
+  size_t numOfEndEl = 0;
+
+  for (std::string const& cFile : cFiles) {
+    std::string frelapath = cmSystemTools::RelativePath(projectPath, cFile);
+    cmsys::SystemTools::SplitPath(frelapath, components, false);
+    components.pop_back(); // erase last member -> it is file, not folder
+    components.erase(components.begin()); // erase "root"
+
+    size_t sizeOfSkip = 0;
+
+    for (size_t i = 0; i < components.size(); ++i) {
+      // skip relative path
+      if (components[i] == ".." || components[i] == ".") {
+        sizeOfSkip++;
+        continue;
+      }
+
+      // same folder
+      if (tmp_path.size() > i - sizeOfSkip &&
+          tmp_path[i - sizeOfSkip] == components[i]) {
+        continue;
+      }
+
+      // delete "old" subfolders
+      if (tmp_path.size() > i - sizeOfSkip) {
+        numOfEndEl = tmp_path.size() - i + sizeOfSkip;
+        tmp_path.erase(tmp_path.end() - numOfEndEl, tmp_path.end());
+        for (; numOfEndEl--;) {
+          xml.EndElement();
+        }
+      }
+
+      // add folder
+      xml.StartElement("VirtualDirectory");
+      xml.Attribute("Name", components[i]);
+      tmp_path.push_back(components[i]);
+    }
+
+    // delete "old" subfolders
+    numOfEndEl = tmp_path.size() - components.size() + sizeOfSkip;
+    if (numOfEndEl) {
+      tmp_path.erase(tmp_path.end() - numOfEndEl, tmp_path.end());
+      for (; numOfEndEl--;) {
+        xml.EndElement();
+      }
+    }
+
+    // add file
+    xml.StartElement("File");
+    xml.Attribute("Name", frelapath);
+    xml.EndElement();
+  }
+
+  // end of folders
+  numOfEndEl = tmp_path.size();
+  for (; numOfEndEl--;) {
+    xml.EndElement();
+  }
+}
+
+void cmExtraCodeLiteGenerator::CreateFoldersAndFiles(
+  std::map<std::string, cmSourceFile*>& cFiles, cmXMLWriter& xml,
+  const std::string& projectPath)
+{
+  std::set<std::string> s;
+  for (auto const& it : cFiles) {
+    s.insert(it.first);
+  }
+  this->CreateFoldersAndFiles(s, xml, projectPath);
+}
+
+void cmExtraCodeLiteGenerator::CreateProjectSourceEntries(
+  std::map<std::string, cmSourceFile*>& cFiles,
+  std::set<std::string>& otherFiles, cmXMLWriter* _xml,
+  const std::string& projectPath, const cmMakefile* mf,
+  const std::string& projectType, const std::string& targetName)
+{
+
+  cmXMLWriter& xml(*_xml);
+  FindMatchingHeaderfiles(cFiles, otherFiles);
   // Create 2 virtual folders: src and include
   // and place all the implementation files into the src
   // folder, the rest goes to the include folder
@@ -278,24 +419,12 @@ void cmExtraCodeLiteGenerator::CreateNewProjectFile(
 
   // insert all source files in the codelite project
   // first the C/C++ implementation files, then all others
-  for (std::map<std::string, cmSourceFile*>::const_iterator sit =
-         cFiles.begin();
-       sit != cFiles.end(); ++sit) {
-    xml.StartElement("File");
-    xml.Attribute("Name", cmSystemTools::RelativePath(projectPath.c_str(),
-                                                      sit->first.c_str()));
-    xml.EndElement();
-  }
+  this->CreateFoldersAndFiles(cFiles, xml, projectPath);
   xml.EndElement(); // VirtualDirectory
+
   xml.StartElement("VirtualDirectory");
   xml.Attribute("Name", "include");
-  for (std::set<std::string>::const_iterator sit = otherFiles.begin();
-       sit != otherFiles.end(); ++sit) {
-    xml.StartElement("File");
-    xml.Attribute(
-      "Name", cmSystemTools::RelativePath(projectPath.c_str(), sit->c_str()));
-    xml.EndElement();
-  }
+  this->CreateFoldersAndFiles(otherFiles, xml, projectPath);
   xml.EndElement(); // VirtualDirectory
 
   // Get the number of CPUs. We use this information for the make -jN
@@ -340,11 +469,22 @@ void cmExtraCodeLiteGenerator::CreateNewProjectFile(
   xml.EndElement(); // ResourceCompiler
 
   xml.StartElement("General");
-  xml.Attribute("OutputFile", "$(IntermediateDirectory)/$(ProjectName)");
+  std::string outputPath = mf->GetSafeDefinition("EXECUTABLE_OUTPUT_PATH");
+  std::string relapath;
+  if (!outputPath.empty()) {
+    relapath = cmSystemTools::RelativePath(this->WorkspacePath, outputPath);
+    xml.Attribute("OutputFile", relapath + "/$(ProjectName)");
+  } else {
+    xml.Attribute("OutputFile", "$(IntermediateDirectory)/$(ProjectName)");
+  }
   xml.Attribute("IntermediateDirectory", "./");
   xml.Attribute("Command", "./$(ProjectName)");
   xml.Attribute("CommandArguments", "");
-  xml.Attribute("WorkingDirectory", "$(IntermediateDirectory)");
+  if (!outputPath.empty()) {
+    xml.Attribute("WorkingDirectory", relapath);
+  } else {
+    xml.Attribute("WorkingDirectory", "$(IntermediateDirectory)");
+  }
   xml.Attribute("PauseExecWhenProcTerminates", "yes");
   xml.EndElement(); // General
 
@@ -362,9 +502,9 @@ void cmExtraCodeLiteGenerator::CreateNewProjectFile(
 
   xml.StartElement("CustomBuild");
   xml.Attribute("Enabled", "yes");
-  xml.Element("RebuildCommand", GetRebuildCommand(mf));
-  xml.Element("CleanCommand", GetCleanCommand(mf));
-  xml.Element("BuildCommand", GetBuildCommand(mf));
+  xml.Element("RebuildCommand", GetRebuildCommand(mf, targetName));
+  xml.Element("CleanCommand", GetCleanCommand(mf, targetName));
+  xml.Element("BuildCommand", GetBuildCommand(mf, targetName));
   xml.Element("SingleFileCommand", GetSingleFileBuildCommand(mf));
   xml.Element("PreprocessFileCommand");
   xml.Element("WorkingDirectory", "$(WorkspacePath)");
@@ -398,6 +538,51 @@ void cmExtraCodeLiteGenerator::CreateNewProjectFile(
 
   xml.EndElement(); // GlobalSettings
   xml.EndElement(); // Settings
+}
+
+void cmExtraCodeLiteGenerator::CreateNewProjectFile(
+  const cmGeneratorTarget* gt, const std::string& filename)
+{
+  const cmMakefile* mf = gt->Makefile;
+  cmGeneratedFileStream fout(filename.c_str());
+  if (!fout) {
+    return;
+  }
+  cmXMLWriter xml(fout);
+
+  ////////////////////////////////////
+  xml.StartDocument("utf-8");
+  xml.StartElement("CodeLite_Project");
+  std::string targetName = gt->GetName();
+  std::string visualname = targetName;
+  switch (gt->GetType()) {
+    case cmStateEnums::STATIC_LIBRARY:
+    case cmStateEnums::SHARED_LIBRARY:
+    case cmStateEnums::MODULE_LIBRARY:
+      visualname = "lib" + targetName;
+    default: // intended fallthrough
+      break;
+  }
+  xml.Attribute("Name", visualname);
+  xml.Attribute("InternalType", "");
+
+  // Collect all used source files in the project
+  // Sort them into two containers, one for C/C++ implementation files
+  // which may have an acompanying header, one for all other files
+  std::string projectType;
+
+  std::map<std::string, cmSourceFile*> cFiles;
+  std::set<std::string> otherFiles;
+
+  projectType = CollectSourceFiles(mf, gt, cFiles, otherFiles);
+
+  // Get the project path ( we need it later to convert files to
+  // their relative path)
+  std::string projectPath = cmSystemTools::GetFilenamePath(filename);
+
+  CreateProjectSourceEntries(cFiles, otherFiles, &xml, projectPath, mf,
+                             projectType, targetName);
+
   xml.EndElement(); // CodeLite_Project
 }
 
@@ -407,7 +592,7 @@ std::string cmExtraCodeLiteGenerator::GetCodeLiteCompilerName(
   // figure out which language to use
   // for now care only for C and C++
   std::string compilerIdVar = "CMAKE_CXX_COMPILER_ID";
-  if (this->GlobalGenerator->GetLanguageEnabled("CXX") == false) {
+  if (!this->GlobalGenerator->GetLanguageEnabled("CXX")) {
     compilerIdVar = "CMAKE_C_COMPILER_ID";
   }
 
@@ -441,31 +626,43 @@ std::string cmExtraCodeLiteGenerator::GetConfigurationName(
 }
 
 std::string cmExtraCodeLiteGenerator::GetBuildCommand(
-  const cmMakefile* mf) const
+  const cmMakefile* mf, const std::string& targetName) const
 {
   std::string generator = mf->GetSafeDefinition("CMAKE_GENERATOR");
   std::string make = mf->GetRequiredDefinition("CMAKE_MAKE_PROGRAM");
   std::string buildCommand = make; // Default
+  std::ostringstream ss;
   if (generator == "NMake Makefiles" || generator == "Ninja") {
-    buildCommand = make;
+    ss << make;
   } else if (generator == "MinGW Makefiles" || generator == "Unix Makefiles") {
-    std::ostringstream ss;
     ss << make << " -j " << this->CpuCount;
-    buildCommand = ss.str();
   }
+  if (!targetName.empty()) {
+    ss << " " << targetName;
+  }
+  buildCommand = ss.str();
   return buildCommand;
 }
 
 std::string cmExtraCodeLiteGenerator::GetCleanCommand(
-  const cmMakefile* mf) const
+  const cmMakefile* mf, const std::string& targetName) const
 {
-  return GetBuildCommand(mf) + " clean";
+  std::string generator = mf->GetSafeDefinition("CMAKE_GENERATOR");
+  std::ostringstream ss;
+  std::string buildcommand = GetBuildCommand(mf, "");
+  if (!targetName.empty() && generator == "Ninja") {
+    ss << buildcommand << " -t clean " << targetName;
+  } else {
+    ss << buildcommand << " clean";
+  }
+  return ss.str();
 }
 
 std::string cmExtraCodeLiteGenerator::GetRebuildCommand(
-  const cmMakefile* mf) const
+  const cmMakefile* mf, const std::string& targetName) const
 {
-  return GetCleanCommand(mf) + " && " + GetBuildCommand(mf);
+  return GetCleanCommand(mf, targetName) + " && " +
+    GetBuildCommand(mf, targetName);
 }
 
 std::string cmExtraCodeLiteGenerator::GetSingleFileBuildCommand(
@@ -476,7 +673,11 @@ std::string cmExtraCodeLiteGenerator::GetSingleFileBuildCommand(
   std::string generator = mf->GetSafeDefinition("CMAKE_GENERATOR");
   if (generator == "Unix Makefiles" || generator == "MinGW Makefiles") {
     std::ostringstream ss;
-    ss << make << " -f$(ProjectPath)/Makefile $(CurrentFileName).cpp.o";
+#if defined(_WIN32)
+    ss << make << " -f$(ProjectPath)/Makefile -B $(CurrentFileFullName).obj";
+#else
+    ss << make << " -f$(ProjectPath)/Makefile -B $(CurrentFileFullName).o";
+#endif
     buildCommand = ss.str();
   }
   return buildCommand;

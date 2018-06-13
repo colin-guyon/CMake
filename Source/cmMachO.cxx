@@ -1,19 +1,12 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-#include "cmStandardIncludes.h" // to get CMAKE_USE_MACH_PARSER first
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmMachO.h"
 
-#include <cmsys/FStream.hxx>
+#include "cmsys/FStream.hxx"
+#include <algorithm>
+#include <stddef.h>
+#include <string>
+#include <vector>
 
 // Include the Mach-O format information system header.
 #include <mach-o/fat.h>
@@ -141,7 +134,7 @@ public:
     : cmMachOHeaderAndLoadCommands(_swap)
   {
   }
-  bool read_mach_o(cmsys::ifstream& fin)
+  bool read_mach_o(cmsys::ifstream& fin) override
   {
     if (!read(fin, this->Header)) {
       return false;
@@ -258,8 +251,7 @@ cmMachOInternal::cmMachOInternal(const char* fname)
     }
 
     // parse each Mach-O file
-    for (size_t i = 0; i < this->FatArchs.size(); i++) {
-      const fat_arch& arch = this->FatArchs[i];
+    for (const auto& arch : this->FatArchs) {
       if (!this->read_mach_o(OSSwapBigToHostInt32(arch.offset))) {
         return;
       }
@@ -272,8 +264,8 @@ cmMachOInternal::cmMachOInternal(const char* fname)
 
 cmMachOInternal::~cmMachOInternal()
 {
-  for (size_t i = 0; i < this->MachOList.size(); i++) {
-    delete this->MachOList[i];
+  for (auto& i : this->MachOList) {
+    delete i;
   }
 }
 
@@ -290,7 +282,7 @@ bool cmMachOInternal::read_mach_o(uint32_t file_offset)
     return false;
   }
 
-  cmMachOHeaderAndLoadCommands* f = NULL;
+  cmMachOHeaderAndLoadCommands* f = nullptr;
   if (magic == MH_CIGAM || magic == MH_MAGIC) {
     bool swap = false;
     if (magic == MH_CIGAM) {
@@ -320,7 +312,7 @@ bool cmMachOInternal::read_mach_o(uint32_t file_offset)
 // External class implementation.
 
 cmMachO::cmMachO(const char* fname)
-  : Internal(0)
+  : Internal(nullptr)
 {
   this->Internal = new cmMachOInternal(fname);
 }

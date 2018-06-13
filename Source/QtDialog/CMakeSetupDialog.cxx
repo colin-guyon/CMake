@@ -1,19 +1,10 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "CMakeSetupDialog.h"
 
 #include <QCloseEvent>
 #include <QCoreApplication>
+#include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QDragEnterEvent>
 #include <QFileDialog>
@@ -41,7 +32,7 @@
 
 QCMakeThread::QCMakeThread(QObject* p)
   : QThread(p)
-  , CMakeInstance(NULL)
+  , CMakeInstance(nullptr)
 {
 }
 
@@ -57,7 +48,7 @@ void QCMakeThread::run()
   emit this->cmakeInitialized();
   this->exec();
   delete this->CMakeInstance;
-  this->CMakeInstance = NULL;
+  this->CMakeInstance = nullptr;
 }
 
 CMakeSetupDialog::CMakeSetupDialog()
@@ -197,6 +188,9 @@ CMakeSetupDialog::CMakeSetupDialog()
   connect(this->Output, SIGNAL(customContextMenuRequested(const QPoint&)),
           this, SLOT(doOutputContextMenu(const QPoint&)));
 
+  // disable open project button
+  this->OpenProjectButton->setDisabled(true);
+
   // start the cmake worker thread
   this->CMakeThread = new QCMakeThread(this);
   QObject::connect(this->CMakeThread, SIGNAL(cmakeInitialized()), this,
@@ -227,6 +221,8 @@ void CMakeSetupDialog::initialize()
 
   QObject::connect(this->GenerateButton, SIGNAL(clicked(bool)), this,
                    SLOT(doGenerate()));
+  QObject::connect(this->OpenProjectButton, SIGNAL(clicked(bool)), this,
+                   SLOT(doOpenProject()));
 
   QObject::connect(this->BrowseSourceDirectoryButton, SIGNAL(clicked(bool)),
                    this, SLOT(doSourceBrowse()));
@@ -255,6 +251,10 @@ void CMakeSetupDialog::initialize()
   QObject::connect(this->CMakeThread->cmakeInstance(),
                    SIGNAL(outputMessage(QString)), this,
                    SLOT(message(QString)));
+
+  QObject::connect(this->CMakeThread->cmakeInstance(),
+                   SIGNAL(openPossible(bool)), this->OpenProjectButton,
+                   SLOT(setEnabled(bool)));
 
   QObject::connect(this->groupedCheck, SIGNAL(toggled(bool)), this,
                    SLOT(setGroupedView(bool)));
@@ -497,6 +497,12 @@ void CMakeSetupDialog::doGenerate()
   this->ProgressBar->reset();
 
   this->ConfigureNeeded = true;
+}
+
+void CMakeSetupDialog::doOpenProject()
+{
+  QMetaObject::invokeMethod(this->CMakeThread->cmakeInstance(), "open",
+                            Qt::QueuedConnection);
 }
 
 void CMakeSetupDialog::closeEvent(QCloseEvent* e)
@@ -830,17 +836,18 @@ void CMakeSetupDialog::doAbout()
     "\n"
     "CMake GUI maintained by csimsoft,\n"
     "built using Qt %2 (qt-project.org).\n"
-#ifdef CMake_GUI_DISTRIBUTE_WITH_Qt_LGPL
+#ifdef USE_LGPL
     "\n"
     "The Qt Toolkit is Copyright (C) Digia Plc and/or its subsidiary(-ies).\n"
-    "Qt is licensed under terms of the GNU LGPLv2.1, available at:\n"
+    "Qt is licensed under terms of the GNU LGPLv" USE_LGPL ", available at:\n"
     " \"%3\""
 #endif
     );
   msg = msg.arg(cmVersion::GetCMakeVersion());
   msg = msg.arg(qVersion());
-#ifdef CMake_GUI_DISTRIBUTE_WITH_Qt_LGPL
-  std::string lgpl = cmSystemTools::GetCMakeRoot() + "/Licenses/LGPLv2.1.txt";
+#ifdef USE_LGPL
+  std::string lgpl =
+    cmSystemTools::GetCMakeRoot() + "/Licenses/LGPLv" USE_LGPL ".txt";
   msg = msg.arg(lgpl.c_str());
 #endif
 
@@ -971,10 +978,10 @@ void CMakeSetupDialog::removeSelectedCacheEntries()
 {
   QModelIndexList idxs = this->CacheValues->selectionModel()->selectedRows();
   QList<QPersistentModelIndex> pidxs;
-  foreach (QModelIndex i, idxs) {
+  foreach (QModelIndex const& i, idxs) {
     pidxs.append(i);
   }
-  foreach (QPersistentModelIndex pi, pidxs) {
+  foreach (QPersistentModelIndex const& pi, pidxs) {
     this->CacheValues->model()->removeRow(pi.row(), pi.parent());
   }
 }
@@ -1001,16 +1008,19 @@ void CMakeSetupDialog::enterState(CMakeSetupDialog::State s)
   if (s == Interrupting) {
     this->ConfigureButton->setEnabled(false);
     this->GenerateButton->setEnabled(false);
+    this->OpenProjectButton->setEnabled(false);
   } else if (s == Configuring) {
     this->setEnabledState(false);
     this->GenerateButton->setEnabled(false);
     this->GenerateAction->setEnabled(false);
+    this->OpenProjectButton->setEnabled(false);
     this->ConfigureButton->setText(tr("&Stop"));
   } else if (s == Generating) {
     this->CacheModified = false;
     this->setEnabledState(false);
     this->ConfigureButton->setEnabled(false);
     this->GenerateAction->setEnabled(false);
+    this->OpenProjectButton->setEnabled(false);
     this->GenerateButton->setText(tr("&Stop"));
   } else if (s == ReadyConfigure) {
     this->setEnabledState(true);
@@ -1124,7 +1134,7 @@ void CMakeSetupDialog::showUserChanges()
   QString command;
   QString cache;
 
-  foreach (QCMakeProperty prop, changes) {
+  foreach (QCMakeProperty const& prop, changes) {
     QString type;
     switch (prop.Type) {
       case QCMakeProperty::BOOL:
@@ -1147,12 +1157,9 @@ void CMakeSetupDialog::showUserChanges()
       value = prop.Value.toString();
     }
 
-    QString line("%1:%2=");
-    line = line.arg(prop.Key);
-    line = line.arg(type);
-
-    command += QString("-D%1\"%2\" ").arg(line).arg(value);
-    cache += QString("%1%2\n").arg(line).arg(value);
+    QString const line = QString("%1:%2=").arg(prop.Key, type);
+    command += QString("-D%1\"%2\" ").arg(line, value);
+    cache += QString("%1%2\n").arg(line, value);
   }
 
   textedit->append(tr("Commandline options:"));
@@ -1170,7 +1177,7 @@ void CMakeSetupDialog::setSearchFilter(const QString& str)
   this->CacheValues->setSearchFilter(str);
 }
 
-void CMakeSetupDialog::doOutputContextMenu(const QPoint& pt)
+void CMakeSetupDialog::doOutputContextMenu(QPoint pt)
 {
   QMenu* menu = this->Output->createStandardContextMenu();
 

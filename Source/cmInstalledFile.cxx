@@ -1,30 +1,22 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2014 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmInstalledFile.h"
 
 #include "cmAlgorithms.h"
+#include "cmListFileCache.h"
 #include "cmMakefile.h"
 #include "cmSystemTools.h"
 
+#include <utility>
+
 cmInstalledFile::cmInstalledFile()
-  : NameExpression(0)
+  : NameExpression(nullptr)
 {
 }
 
 cmInstalledFile::~cmInstalledFile()
 {
-  if (NameExpression) {
-    delete NameExpression;
-  }
+  delete NameExpression;
 }
 
 cmInstalledFile::Property::Property()
@@ -96,11 +88,9 @@ bool cmInstalledFile::GetProperty(const std::string& prop,
   std::string output;
   std::string separator;
 
-  for (ExpressionVectorType::const_iterator j =
-         property.ValueExpressions.begin();
-       j != property.ValueExpressions.end(); ++j) {
+  for (auto ve : property.ValueExpressions) {
     output += separator;
-    output += (*j)->GetInput();
+    output += ve->GetInput();
     separator = ";";
   }
 

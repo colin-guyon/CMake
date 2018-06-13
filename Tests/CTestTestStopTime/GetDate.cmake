@@ -49,6 +49,7 @@ macro(GET_DATE)
   # 01/12/2006  08:55:12
   # mm/dd/YYYY HH:MM:SS
   #
+  unset(ENV{SOURCE_DATE_EPOCH})
   string(TIMESTAMP "${GD_PREFIX}OV" "%m/%d/%Y %H:%M:%S")
 
   if(${GD_PREFIX}VERBOSE)
@@ -67,7 +68,7 @@ macro(GET_DATE)
 
   #
   # Extract six individual components by matching a regex with paren groupings.
-  # Use the replace functionality and \\1 thru \\6 to extract components.
+  # Use the replace functionality and \\1 through \\6 to extract components.
   #
   set(${GD_PREFIX}REGEX "([^/]+)/([^/]+)/([^ ]+) +([^:]+):([^:]+):([^\\.]+)")
 
@@ -106,11 +107,11 @@ macro(ADD_SECONDS sec)
   set(new_min ${${GD_PREFIX}MINUTE})
   set(new_hr ${${GD_PREFIX}HOUR})
   math(EXPR new_sec "${sec} + ${${GD_PREFIX}SECOND}")
-  while(${new_sec} GREATER 60 OR ${new_sec} EQUAL 60)
+  while(${new_sec} GREATER_EQUAL 60)
     math(EXPR new_sec "${new_sec} - 60")
     math(EXPR new_min "${${GD_PREFIX}MINUTE} + 1")
   endwhile()
-  while(${new_min} GREATER 60 OR ${new_min} EQUAL 60)
+  while(${new_min} GREATER_EQUAL 60)
     math(EXPR new_min "${new_min} - 60")
     math(EXPR new_hr "${${GD_PREFIX}HOUR} + 1")
   endwhile()

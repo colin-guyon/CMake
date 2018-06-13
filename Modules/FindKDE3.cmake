@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindKDE3
 # --------
@@ -134,20 +137,6 @@
 #
 # Author: Alexander Neundorf <neundorf@kde.org>
 
-#=============================================================================
-# Copyright 2006-2009 Kitware, Inc.
-# Copyright 2006 Alexander Neundorf <neundorf@kde.org>
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
-
 if(NOT UNIX AND KDE3_FIND_REQUIRED)
    message(FATAL_ERROR "Compiling KDE3 applications and libraries under Windows is not supported")
 endif()
@@ -211,8 +200,7 @@ find_path(KDE3_INCLUDE_DIR kpassdlg.h
   PATHS
   /opt/kde3/include
   /opt/kde/include
-  /usr/include/kde
-  /usr/local/include/kde
+  PATH_SUFFIXES include/kde
   )
 
 #now the KDE library directory
@@ -232,6 +220,8 @@ get_filename_component(KDE3_LIB_DIR ${KDE3_KDECORE_LIBRARY} PATH )
 if(NOT KDE3_LIBTOOL_DIR)
    if(KDE3_KDECORE_LIBRARY MATCHES lib64)
      set(KDE3_LIBTOOL_DIR /lib64/kde3)
+   elseif(KDE3_KDECORE_LIBRARY MATCHES libx32)
+     set(KDE3_LIBTOOL_DIR /libx32/kde3)
    else()
      set(KDE3_LIBTOOL_DIR /lib/kde3)
    endif()

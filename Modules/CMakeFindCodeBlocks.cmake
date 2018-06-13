@@ -1,16 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
 
-#=============================================================================
-# Copyright 2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 # This file is included in CMakeSystemSpecificInformation.cmake if
 # the CodeBlocks extra generator has been selected.
@@ -38,3 +28,6 @@ endif()
 
 # This variable is used by the CodeBlocks generator and appended to the make invocation commands.
 set(CMAKE_CODEBLOCKS_MAKE_ARGUMENTS "${_CMAKE_CODEBLOCKS_INITIAL_MAKE_ARGS}" CACHE STRING "Additional command line arguments when CodeBlocks invokes make. Enter e.g. -j<some_number> to get parallel builds")
+
+# This variable is used by the CodeBlocks generator and allows the user to overwrite the autodetected CodeBlocks compiler id
+set(CMAKE_CODEBLOCKS_COMPILER_ID "" CACHE STRING "Id string of the compiler for the CodeBlocks IDE. Automatically detected when left empty")

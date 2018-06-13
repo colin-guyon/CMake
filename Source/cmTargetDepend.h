@@ -1,18 +1,11 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2010 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmTargetDepend_h
 #define cmTargetDepend_h
 
-#include "cmStandardIncludes.h"
+#include "cmConfigure.h" // IWYU pragma: keep
+
+#include <set>
 
 class cmGeneratorTarget;
 
@@ -23,7 +16,7 @@ class cmTargetDepend
   cmGeneratorTarget const* Target;
 
   // The set order depends only on the Target, so we use
-  // mutable members to acheive a map with set syntax.
+  // mutable members to achieve a map with set syntax.
   mutable bool Link;
   mutable bool Util;
 
@@ -37,7 +30,7 @@ public:
   operator cmGeneratorTarget const*() const { return this->Target; }
   cmGeneratorTarget const* operator->() const { return this->Target; }
   cmGeneratorTarget const& operator*() const { return *this->Target; }
-  friend bool operator<(cmTargetDepend const& l, cmTargetDepend const& r)
+  friend bool operator<(cmTargetDepend l, cmTargetDepend r)
   {
     return l.Target < r.Target;
   }

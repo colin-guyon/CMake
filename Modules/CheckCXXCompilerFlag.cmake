@@ -1,38 +1,38 @@
-#.rst:
-# CheckCXXCompilerFlag
-# --------------------
-#
-# Check whether the CXX compiler supports a given flag.
-#
-# CHECK_CXX_COMPILER_FLAG(<flag> <var>)
-#
-# ::
-#
-#   <flag> - the compiler flag
-#   <var>  - variable to store the result
-#
-# This internally calls the check_cxx_source_compiles macro and sets
-# CMAKE_REQUIRED_DEFINITIONS to <flag>.  See help for
-# CheckCXXSourceCompiles for a listing of variables that can otherwise
-# modify the build.  The result only tells that the compiler does not
-# give an error message when it encounters the flag.  If the flag has
-# any effect or even a specific one is beyond the scope of this module.
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
 
-#=============================================================================
-# Copyright 2006-2010 Kitware, Inc.
-# Copyright 2006 Alexander Neundorf <neundorf@kde.org>
-# Copyright 2011 Matthias Kretz <kretz@kde.org>
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
+#[=======================================================================[.rst:
+CheckCXXCompilerFlag
+------------------------
 
+Check whether the CXX compiler supports a given flag.
+
+.. command:: check_cxx_compiler_flag
+
+  ::
+
+    check_cxx_compiler_flag(<flag> <var>)
+
+  Check that the ``<flag>`` is accepted by the compiler without
+  a diagnostic.  Stores the result in an internal cache entry
+  named ``<var>``.
+
+This command temporarily sets the ``CMAKE_REQUIRED_DEFINITIONS`` variable
+and calls the ``check_cxx_source_compiles`` macro from the
+:module:`CheckCXXSourceCompiles` module.  See documentation of that
+module for a listing of variables that can otherwise modify the build.
+
+A positive result from this check indicates only that the compiler did not
+issue a diagnostic message when given the flag.  Whether the flag has any
+effect or even a specific one is beyond the scope of this module.
+
+.. note::
+  Since the :command:`try_compile` command forwards flags from variables
+  like :variable:`CMAKE_CXX_FLAGS <CMAKE_<LANG>_FLAGS>`, unknown flags
+  in such variables may cause a false negative for this check.
+#]=======================================================================]
+
+include_guard(GLOBAL)
 include(CheckCXXSourceCompiles)
 include(CMakeCheckCompilerFlagCommonPatterns)
 

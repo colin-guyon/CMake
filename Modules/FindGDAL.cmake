@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindGDAL
 # --------
@@ -21,19 +24,6 @@
 #     GDAL_FOUND - True if libgdal is found
 #     GDAL_LIBRARY - A variable pointing to the GDAL library
 #     GDAL_INCLUDE_DIR - Where to find the headers
-
-#=============================================================================
-# Copyright 2007-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 #
 # $GDALDIR is an environment variable that would
@@ -60,13 +50,6 @@ find_path(GDAL_INCLUDE_DIR gdal.h
      include/gdal
      include/GDAL
      include
-  PATHS
-      ~/Library/Frameworks/gdal.framework/Headers
-      /Library/Frameworks/gdal.framework/Headers
-      /sw # Fink
-      /opt/local # DarwinPorts
-      /opt/csw # Blastwave
-      /opt
 )
 
 if(UNIX)
@@ -79,11 +62,6 @@ if(UNIX)
           ENV GDAL_DIR
           ENV GDAL_ROOT
         PATH_SUFFIXES bin
-        PATHS
-            /sw # Fink
-            /opt/local # DarwinPorts
-            /opt/csw # Blastwave
-            /opt
     )
 
     if(GDAL_CONFIG)
@@ -104,12 +82,6 @@ find_library(GDAL_LIBRARY
      ENV GDAL_ROOT
      ${_gdal_libpath}
   PATH_SUFFIXES lib
-  PATHS
-    /sw
-    /opt/local
-    /opt/csw
-    /opt
-    /usr/freeware
 )
 
 include(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)

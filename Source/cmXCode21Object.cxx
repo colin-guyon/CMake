@@ -1,15 +1,9 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmXCode21Object.h"
+
+#include <ostream>
+#include <string>
 
 #include "cmSystemTools.h"
 
@@ -40,9 +34,7 @@ void cmXCode21Object::PrintList(std::vector<cmXCodeObject*> const& v,
                                 std::ostream& out, PBXType t)
 {
   bool hasOne = false;
-  for (std::vector<cmXCodeObject*>::const_iterator i = v.begin(); i != v.end();
-       ++i) {
-    cmXCodeObject* obj = *i;
+  for (auto obj : v) {
     if (obj->GetType() == OBJECT && obj->GetIsA() == t) {
       hasOne = true;
       break;
@@ -52,9 +44,7 @@ void cmXCode21Object::PrintList(std::vector<cmXCodeObject*> const& v,
     return;
   }
   out << "\n/* Begin " << PBXTypeNames[t] << " section */\n";
-  for (std::vector<cmXCodeObject*>::const_iterator i = v.begin(); i != v.end();
-       ++i) {
-    cmXCodeObject* obj = *i;
+  for (auto obj : v) {
     if (obj->GetType() == OBJECT && obj->GetIsA() == t) {
       obj->Print(out);
     }

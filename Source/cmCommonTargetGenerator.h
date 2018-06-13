@@ -1,23 +1,17 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2015 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCommonTargetGenerator_h
 #define cmCommonTargetGenerator_h
 
-#include "cmStandardIncludes.h"
+#include "cmConfigure.h" // IWYU pragma: keep
 
-#include "cmLocalGenerator.h"
+#include <map>
+#include <string>
+#include <vector>
 
 class cmGeneratorTarget;
 class cmGlobalCommonGenerator;
+class cmLinkLineComputer;
 class cmLocalCommonGenerator;
 class cmMakefile;
 class cmSourceFile;
@@ -28,51 +22,27 @@ class cmSourceFile;
 class cmCommonTargetGenerator
 {
 public:
-  cmCommonTargetGenerator(cmOutputConverter::RelativeRoot wd,
-                          cmGeneratorTarget* gt);
+  cmCommonTargetGenerator(cmGeneratorTarget* gt);
   virtual ~cmCommonTargetGenerator();
 
   std::string const& GetConfigName() const;
 
 protected:
-  // Add language feature flags.
-  void AddFeatureFlags(std::string& flags, const std::string& lang);
-
   // Feature query methods.
   const char* GetFeature(const std::string& feature);
-  bool GetFeatureAsBool(const std::string& feature);
 
   // Helper to add flag for windows .def file.
-  void AddModuleDefinitionFlag(std::string& flags);
+  void AddModuleDefinitionFlag(cmLinkLineComputer* linkLineComputer,
+                               std::string& flags);
 
-  cmOutputConverter::RelativeRoot WorkingDirectory;
   cmGeneratorTarget* GeneratorTarget;
   cmMakefile* Makefile;
-  cmLocalCommonGenerator* LocalGenerator;
-  cmGlobalCommonGenerator* GlobalGenerator;
+  cmLocalCommonGenerator* LocalCommonGenerator;
+  cmGlobalCommonGenerator* GlobalCommonGenerator;
   std::string ConfigName;
-
-  // The windows module definition source file (.def), if any.
-  cmSourceFile const* ModuleDefinitionFile;
-
-  // Target-wide Fortran module output directory.
-  bool FortranModuleDirectoryComputed;
-  std::string FortranModuleDirectory;
-  std::string GetFortranModuleDirectory();
-  virtual std::string ComputeFortranModuleDirectory() const;
-
-  // Compute target-specific Fortran language flags.
-  void AddFortranFlags(std::string& flags);
-
-  std::string Convert(
-    std::string const& source, cmOutputConverter::RelativeRoot relative,
-    cmOutputConverter::OutputFormat output = cmOutputConverter::UNCHANGED);
 
   void AppendFortranFormatFlags(std::string& flags,
                                 cmSourceFile const& source);
-
-  // Return the a string with -F flags on apple
-  std::string GetFrameworkFlags(std::string const& l);
 
   virtual void AddIncludeFlags(std::string& flags,
                                std::string const& lang) = 0;
@@ -90,6 +60,7 @@ protected:
   std::string GetManifests();
 
   std::vector<std::string> GetLinkedTargetDirectories() const;
+  std::string ComputeTargetCompilePDB() const;
 };
 
 #endif

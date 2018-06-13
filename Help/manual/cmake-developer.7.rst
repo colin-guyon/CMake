@@ -11,30 +11,7 @@ Introduction
 ============
 
 This manual is intended for reference by developers modifying the CMake
-source tree itself.
-
-
-Permitted C++ Subset
-====================
-
-CMake is required to build with ancient C++ compilers and standard library
-implementations.  Some common C++ constructs may not be used in CMake in order
-to build with such toolchains.
-
-std::auto_ptr
--------------
-
-Some implementations have a ``std::auto_ptr`` which can not be used as a
-return value from a function. ``std::auto_ptr`` may not be used. Use
-``cmsys::auto_ptr`` instead.
-
-size_t
-------
-
-Various implementations have differing implementation of ``size_t``.  When
-assigning the result of ``.size()`` on a container for example, the result
-should be assigned to ``size_t`` not to ``std::size_t``, ``unsigned int`` or
-similar types.
+source tree itself, and by those authoring externally-maintained modules.
 
 Adding Compile Features
 =======================
@@ -518,8 +495,16 @@ containing just the line::
 
 The ``cmake-module`` directive will scan the module file to extract
 reStructuredText markup from comment blocks that start in ``.rst:``.
-Add to the top of ``Modules/<module-name>.cmake`` a
-:ref:`Line Comment` block of the form:
+At the top of ``Modules/<module-name>.cmake``, begin with the following
+license notice:
+
+.. code-block:: cmake
+
+ # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+ # file Copyright.txt or https://cmake.org/licensing for details.
+
+After this notice, add a *BLANK* line.  Then, add documentation using
+a :ref:`Line Comment` block of the form:
 
 .. code-block:: cmake
 
@@ -531,7 +516,7 @@ Add to the top of ``Modules/<module-name>.cmake`` a
 
 or a :ref:`Bracket Comment` of the form:
 
-.. code-block:: cmake
+::
 
  #[[.rst:
  <module-name>
@@ -549,7 +534,10 @@ All such comments must start with ``#`` in the first column.
 
 For example, a ``Modules/Findxxx.cmake`` module may contain:
 
-.. code-block:: cmake
+::
+
+ # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+ # file Copyright.txt or https://cmake.org/licensing for details.
 
  #.rst:
  # FindXxx
@@ -577,25 +565,6 @@ For example, a ``Modules/Findxxx.cmake`` module may contain:
  macro(xxx_do_something)
    <code>
  endmacro()
-
-After the top documentation block, leave a *BLANK* line, and then add a
-copyright and licence notice block like this one (change only the year
-range and name)
-
-.. code-block:: cmake
-
-  #=============================================================================
-  # Copyright 2009-2011 Your Name
-  #
-  # Distributed under the OSI-approved BSD License (the "License");
-  # see accompanying file Copyright.txt for details.
-  #
-  # This software is distributed WITHOUT ANY WARRANTY; without even the
-  # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  # See the License for more information.
-  #=============================================================================
-  # (To distribute this file outside of CMake, substitute the full
-  #  License text for the above reference.)
 
 Test the documentation formatting by running
 ``cmake --help-module <module-name>``, and also by enabling the
@@ -790,10 +759,17 @@ A Sample Find Module
 We will describe how to create a simple find module for a library
 ``Foo``.
 
-The first thing that is needed is documentation.  CMake's documentation
-system requires you to start the file with a documentation marker and
-the name of the module.  You should follow this with a simple statement
-of what the module does.
+The first thing that is needed is a license notice.
+
+.. code-block:: cmake
+
+ # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+ # file Copyright.txt or https://cmake.org/licensing for details.
+
+Next we need module documentation.  CMake's documentation system requires you
+to follow the license notice with a blank line and then with a documentation
+marker and the name of the module.  You should follow this with a simple
+statement of what the module does.
 
 .. code-block:: cmake
 
@@ -823,24 +799,6 @@ variables and imported targets are set by the module, such as
 If the package provides any macros, they should be listed here, but can
 be documented where they are defined.  See the `Module
 Documentation`_ section above for more details.
-
-After the documentation, leave a blank line, and then add a copyright and
-licence notice block
-
-.. code-block:: cmake
-
-  #=============================================================================
-  # Copyright 2009-2011 Your Name
-  #
-  # Distributed under the OSI-approved BSD License (the "License");
-  # see accompanying file Copyright.txt for details.
-  #
-  # This software is distributed WITHOUT ANY WARRANTY; without even the
-  # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  # See the License for more information.
-  #=============================================================================
-  # (To distribute this file outside of CMake, substitute the full
-  #  License text for the above reference.)
 
 Now the actual libraries and so on have to be found.  The code here will
 obviously vary from module to module (dealing with that, after all, is the

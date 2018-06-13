@@ -9,17 +9,17 @@ Conditionally execute a group of commands.
    # then section.
    COMMAND1(ARGS ...)
    COMMAND2(ARGS ...)
-   ...
+   #...
  elseif(expression2)
    # elseif section.
    COMMAND1(ARGS ...)
    COMMAND2(ARGS ...)
-   ...
+   #...
  else(expression)
    # else section.
    COMMAND1(ARGS ...)
    COMMAND2(ARGS ...)
-   ...
+   #...
  endif(expression)
 
 Evaluates the given expression.  If the result is true, the commands
@@ -30,10 +30,12 @@ else and endif clause is optional.  Long expressions can be used and
 there is a traditional order of precedence.  Parenthetical expressions
 are evaluated first followed by unary tests such as ``EXISTS``,
 ``COMMAND``, and ``DEFINED``.  Then any binary tests such as
-``EQUAL``, ``LESS``, ``GREATER``, ``STRLESS``, ``STRGREATER``,
-``STREQUAL``, and ``MATCHES`` will be evaluated.  Then boolean ``NOT``
-operators and finally boolean ``AND`` and then ``OR`` operators will
-be evaluated.
+``EQUAL``, ``LESS``, ``LESS_EQUAL``, ``GREATER``, ``GREATER_EQUAL``,
+``STREQUAL``, ``STRLESS``, ``STRLESS_EQUAL``, ``STRGREATER``,
+``STRGREATER_EQUAL``, ``VERSION_EQUAL``, ``VERSION_LESS``,
+``VERSION_LESS_EQUAL``, ``VERSION_GREATER``, ``VERSION_GREATER_EQUAL``,
+and ``MATCHES`` will be evaluated.  Then boolean ``NOT`` operators and
+finally boolean ``AND`` and then ``OR`` operators will be evaluated.
 
 Possible expressions are:
 
@@ -101,7 +103,8 @@ Possible expressions are:
 
 ``if(<variable|string> MATCHES regex)``
  True if the given string or variable's value matches the given regular
- expression.
+ expression.  See :ref:`Regex Specification` for regex format.
+ ``()`` groups are captured in :variable:`CMAKE_MATCH_<n>` variables.
 
 ``if(<variable|string> LESS <variable|string>)``
  True if the given string or variable's value is a valid number and less
@@ -115,6 +118,14 @@ Possible expressions are:
  True if the given string or variable's value is a valid number and equal
  to that on the right.
 
+``if(<variable|string> LESS_EQUAL <variable|string>)``
+ True if the given string or variable's value is a valid number and less
+ than or equal to that on the right.
+
+``if(<variable|string> GREATER_EQUAL <variable|string>)``
+ True if the given string or variable's value is a valid number and greater
+ than or equal to that on the right.
+
 ``if(<variable|string> STRLESS <variable|string>)``
  True if the given string or variable's value is lexicographically less
  than the string or variable on the right.
@@ -127,7 +138,19 @@ Possible expressions are:
  True if the given string or variable's value is lexicographically equal
  to the string or variable on the right.
 
+``if(<variable|string> STRLESS_EQUAL <variable|string>)``
+ True if the given string or variable's value is lexicographically less
+ than or equal to the string or variable on the right.
+
+``if(<variable|string> STRGREATER_EQUAL <variable|string>)``
+ True if the given string or variable's value is lexicographically greater
+ than or equal to the string or variable on the right.
+
 ``if(<variable|string> VERSION_LESS <variable|string>)``
+ Component-wise integer version number comparison (version format is
+ ``major[.minor[.patch[.tweak]]]``).
+
+``if(<variable|string> VERSION_GREATER <variable|string>)``
  Component-wise integer version number comparison (version format is
  ``major[.minor[.patch[.tweak]]]``).
 
@@ -135,7 +158,11 @@ Possible expressions are:
  Component-wise integer version number comparison (version format is
  ``major[.minor[.patch[.tweak]]]``).
 
-``if(<variable|string> VERSION_GREATER <variable|string>)``
+``if(<variable|string> VERSION_LESS_EQUAL <variable|string>)``
+ Component-wise integer version number comparison (version format is
+ ``major[.minor[.patch[.tweak]]]``).
+
+``if(<variable|string> VERSION_GREATER_EQUAL <variable|string>)``
  Component-wise integer version number comparison (version format is
  ``major[.minor[.patch[.tweak]]]``).
 
@@ -186,20 +213,21 @@ above-documented signature accepts ``<variable|string>``:
 * If the left hand argument to ``MATCHES`` is missing it returns false
   without error
 
-* Both left and right hand arguments to ``LESS``, ``GREATER``, and
-  ``EQUAL`` are independently tested to see if they are defined
-  variables, if so their defined values are used otherwise the original
-  value is used.
+* Both left and right hand arguments to ``LESS``, ``GREATER``, ``EQUAL``,
+  ``LESS_EQUAL``, and ``GREATER_EQUAL``, are independently tested to see if
+  they are defined variables, if so their defined values are used otherwise
+  the original value is used.
 
-* Both left and right hand arguments to ``STRLESS``, ``STREQUAL``, and
-  ``STRGREATER`` are independently tested to see if they are defined
-  variables, if so their defined values are used otherwise the original
-  value is used.
+* Both left and right hand arguments to ``STRLESS``, ``STRGREATER``,
+  ``STREQUAL``, ``STRLESS_EQUAL``, and ``STRGREATER_EQUAL`` are independently
+  tested to see if they are defined variables, if so their defined values are
+  used otherwise the original value is used.
 
 * Both left and right hand arguments to ``VERSION_LESS``,
-  ``VERSION_EQUAL``, and ``VERSION_GREATER`` are independently tested
-  to see if they are defined variables, if so their defined values are
-  used otherwise the original value is used.
+  ``VERSION_GREATER``, ``VERSION_EQUAL``, ``VERSION_LESS_EQUAL``, and
+  ``VERSION_GREATER_EQUAL`` are independently tested to see if they are defined
+  variables, if so their defined values are used otherwise the original value
+  is used.
 
 * The right hand argument to ``NOT`` is tested to see if it is a boolean
   constant, if so the value is used, otherwise it is assumed to be a

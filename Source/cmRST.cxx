@@ -1,21 +1,17 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2013 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmRST.h"
 
 #include "cmAlgorithms.h"
 #include "cmSystemTools.h"
 #include "cmVersion.h"
-#include <cmsys/FStream.hxx>
+
+#include "cmsys/FStream.hxx"
+#include <algorithm>
 #include <ctype.h>
+#include <iterator>
+#include <stddef.h>
+#include <utility>
 
 cmRST::cmRST(std::ostream& os, std::string const& docroot)
   : OS(os)
@@ -84,13 +80,13 @@ void cmRST::ProcessModule(std::istream& is)
     if (!rst.empty() && rst != "#") {
       // Bracket mode: check for end bracket
       std::string::size_type pos = line.find(rst);
-      if (pos == line.npos) {
+      if (pos == std::string::npos) {
         this->ProcessLine(line);
       } else {
         if (line[0] != '#') {
           this->ProcessLine(line.substr(0, pos));
         }
-        rst = "";
+        rst.clear();
         this->Reset();
         this->OutputLinePending = true;
       }
@@ -100,14 +96,14 @@ void cmRST::ProcessModule(std::istream& is)
         if (line == "#") {
           this->ProcessLine("");
           continue;
-        } else if (line.substr(0, 2) == "# ") {
-          this->ProcessLine(line.substr(2, line.npos));
-          continue;
-        } else {
-          rst = "";
-          this->Reset();
-          this->OutputLinePending = true;
         }
+        if (line.substr(0, 2) == "# ") {
+          this->ProcessLine(line.substr(2));
+          continue;
+        }
+        rst.clear();
+        this->Reset();
+        this->OutputLinePending = true;
       }
       if (line == "#.rst:") {
         rst = "#";
@@ -160,8 +156,8 @@ void cmRST::ProcessLine(std::string const& line)
                        isspace(line[2]))) {
     this->Reset();
     this->Markup =
-      (line.find_first_not_of(" \t", 2) == line.npos ? MarkupEmpty
-                                                     : MarkupNormal);
+      (line.find_first_not_of(" \t", 2) == std::string::npos ? MarkupEmpty
+                                                             : MarkupNormal);
     if (this->CMakeDirective.find(line)) {
       // Output cmake domain directives and their content normally.
       this->NormalLine(line);
@@ -256,7 +252,7 @@ void cmRST::OutputLine(std::string const& line_in, bool inlineMarkup)
       // no explicit "(...)" then add "()" to the text.
       if (this->CMakeRole.match(2) == "command" &&
           this->CMakeRole.match(5).empty() &&
-          text.find_first_of("()") == text.npos) {
+          text.find_first_of("()") == std::string::npos) {
         text += "()";
       }
       this->OS << "``" << text << "``";
@@ -296,9 +292,7 @@ std::string cmRST::ReplaceSubstitutions(std::string const& line)
 
 void cmRST::OutputMarkupLines(bool inlineMarkup)
 {
-  for (std::vector<std::string>::iterator i = this->MarkupLines.begin();
-       i != this->MarkupLines.end(); ++i) {
-    std::string line = *i;
+  for (auto line : this->MarkupLines) {
     if (!line.empty()) {
       line = " " + line;
     }
@@ -351,15 +345,13 @@ void cmRST::ProcessDirectiveReplace()
   // Record markup lines as replacement text.
   std::string& replacement = this->Replace[this->ReplaceName];
   replacement += cmJoin(this->MarkupLines, " ");
-  this->ReplaceName = "";
+  this->ReplaceName.clear();
 }
 
 void cmRST::ProcessDirectiveTocTree()
 {
   // Process documents referenced by toctree directive.
-  for (std::vector<std::string>::iterator i = this->MarkupLines.begin();
-       i != this->MarkupLines.end(); ++i) {
-    std::string const& line = *i;
+  for (std::string const& line : this->MarkupLines) {
     if (!line.empty() && line[0] != ':') {
       if (this->TocTreeLink.find(line)) {
         std::string const& link = this->TocTreeLink.match(1);

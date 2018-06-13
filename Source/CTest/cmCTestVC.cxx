@@ -1,21 +1,16 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCTestVC.h"
 
 #include "cmCTest.h"
 #include "cmSystemTools.h"
 #include "cmXMLWriter.h"
 
-#include <cmsys/Process.h>
+#include "cmsys/Process.h"
+#include <sstream>
+#include <stdio.h>
+#include <time.h>
+#include <vector>
 
 cmCTestVC::cmCTestVC(cmCTest* ct, std::ostream& log)
   : CTest(ct)
@@ -52,7 +47,7 @@ bool cmCTestVC::InitialCheckout(const char* command)
   std::string parent = cmSystemTools::GetFilenamePath(this->SourceDirectory);
   cmCTestLog(this->CTest, HANDLER_OUTPUT,
              "   Perform checkout in directory: " << parent << "\n");
-  if (!cmSystemTools::MakeDirectory(parent.c_str())) {
+  if (!cmSystemTools::MakeDirectory(parent)) {
     cmCTestLog(this->CTest, ERROR_MESSAGE,
                "Cannot create directory: " << parent << std::endl);
     return false;
@@ -61,11 +56,11 @@ bool cmCTestVC::InitialCheckout(const char* command)
   // Construct the initial checkout command line.
   std::vector<std::string> args = cmSystemTools::ParseArguments(command);
   std::vector<char const*> vc_co;
-  for (std::vector<std::string>::const_iterator ai = args.begin();
-       ai != args.end(); ++ai) {
-    vc_co.push_back(ai->c_str());
+  vc_co.reserve(args.size() + 1);
+  for (std::string const& arg : args) {
+    vc_co.push_back(arg.c_str());
   }
-  vc_co.push_back(0);
+  vc_co.push_back(nullptr);
 
   // Run the initial checkout command and log its output.
   this->Log << "--- Begin Initial Checkout ---\n";
@@ -81,7 +76,8 @@ bool cmCTestVC::InitialCheckout(const char* command)
 }
 
 bool cmCTestVC::RunChild(char const* const* cmd, OutputParser* out,
-                         OutputParser* err, const char* workDir)
+                         OutputParser* err, const char* workDir,
+                         Encoding encoding)
 {
   this->Log << this->ComputeCommandLine(cmd) << "\n";
 
@@ -89,7 +85,7 @@ bool cmCTestVC::RunChild(char const* const* cmd, OutputParser* out,
   cmsysProcess_SetCommand(cp, cmd);
   workDir = workDir ? workDir : this->SourceDirectory.c_str();
   cmsysProcess_SetWorkingDirectory(cp, workDir);
-  this->RunProcess(cp, out, err);
+  this->RunProcess(cp, out, err, encoding);
   int result = cmsysProcess_GetExitValue(cp);
   cmsysProcess_Delete(cp);
   return result == 0;
@@ -107,7 +103,7 @@ std::string cmCTestVC::ComputeCommandLine(char const* const* cmd)
 }
 
 bool cmCTestVC::RunUpdateCommand(char const* const* cmd, OutputParser* out,
-                                 OutputParser* err)
+                                 OutputParser* err, Encoding encoding)
 {
   // Report the command line.
   this->UpdateCommandLine = this->ComputeCommandLine(cmd);
@@ -117,7 +113,7 @@ bool cmCTestVC::RunUpdateCommand(char const* const* cmd, OutputParser* out,
   }
 
   // Run the command.
-  return this->RunChild(cmd, out, err);
+  return this->RunChild(cmd, out, err, nullptr, encoding);
 }
 
 std::string cmCTestVC::GetNightlyTime()
@@ -151,23 +147,25 @@ bool cmCTestVC::Update()
   // just note the current version and finish
   if (!cmSystemTools::IsOn(
         this->CTest->GetCTestConfiguration("UpdateVersionOnly").c_str())) {
-    this->NoteOldRevision();
+    result = this->NoteOldRevision() && result;
     this->Log << "--- Begin Update ---\n";
-    result = this->UpdateImpl();
+    result = this->UpdateImpl() && result;
     this->Log << "--- End Update ---\n";
   }
-  this->NoteNewRevision();
+  result = this->NoteNewRevision() && result;
   return result;
 }
 
-void cmCTestVC::NoteOldRevision()
+bool cmCTestVC::NoteOldRevision()
 {
   // We do nothing by default.
+  return true;
 }
 
-void cmCTestVC::NoteNewRevision()
+bool cmCTestVC::NoteNewRevision()
 {
   // We do nothing by default.
+  return true;
 }
 
 bool cmCTestVC::UpdateImpl()
@@ -185,7 +183,7 @@ bool cmCTestVC::WriteXML(cmXMLWriter& xml)
   return result;
 }
 
-bool cmCTestVC::WriteXMLUpdates(cmXMLWriter&)
+bool cmCTestVC::WriteXMLUpdates(cmXMLWriter& /*unused*/)
 {
   cmCTestLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
              "* CTest cannot extract updates for this VCS tool.\n");

@@ -96,13 +96,13 @@ _cmake()
             _filedir
             return
             ;;
-        --build)
+        --build|--open)
             _filedir -d
             return
             ;;
         -E)
             COMPREPLY=( $( compgen -W "$( cmake -E help |& sed -n \
-                '/^  /{s|^  \([^ ]\{1,\}\) .*$|\1|;p}' 2>/dev/null )" \
+                '/^  [^ ]/{s|^  \([^ ]\{1,\}\) .*$|\1|;p}' 2>/dev/null )" \
                 -- "$cur" ) )
             return
             ;;

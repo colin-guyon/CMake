@@ -1,14 +1,5 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2012 Stephen Kelly <steveire@gmail.com>
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmGeneratorExpressionLexer.h"
 
 cmGeneratorExpressionLexer::cmGeneratorExpressionLexer()
@@ -21,8 +12,7 @@ static void InsertText(const char* upto, const char* c,
                        std::vector<cmGeneratorExpressionToken>& result)
 {
   if (upto != c) {
-    result.push_back(cmGeneratorExpressionToken(
-      cmGeneratorExpressionToken::Text, upto, c - upto));
+    result.emplace_back(cmGeneratorExpressionToken::Text, upto, c - upto);
   }
 }
 
@@ -30,6 +20,12 @@ std::vector<cmGeneratorExpressionToken> cmGeneratorExpressionLexer::Tokenize(
   const std::string& input)
 {
   std::vector<cmGeneratorExpressionToken> result;
+
+  if (input.find('$') == std::string::npos) {
+    result.push_back(cmGeneratorExpressionToken(
+      cmGeneratorExpressionToken::Text, input.c_str(), input.size()));
+    return result;
+  }
 
   const char* c = input.c_str();
   const char* upto = c;
@@ -39,8 +35,8 @@ std::vector<cmGeneratorExpressionToken> cmGeneratorExpressionLexer::Tokenize(
       case '$':
         if (c[1] == '<') {
           InsertText(upto, c, result);
-          result.push_back(cmGeneratorExpressionToken(
-            cmGeneratorExpressionToken::BeginExpression, c, 2));
+          result.emplace_back(cmGeneratorExpressionToken::BeginExpression, c,
+                              2);
           upto = c + 2;
           ++c;
           SawBeginExpression = true;
@@ -48,21 +44,18 @@ std::vector<cmGeneratorExpressionToken> cmGeneratorExpressionLexer::Tokenize(
         break;
       case '>':
         InsertText(upto, c, result);
-        result.push_back(cmGeneratorExpressionToken(
-          cmGeneratorExpressionToken::EndExpression, c, 1));
+        result.emplace_back(cmGeneratorExpressionToken::EndExpression, c, 1);
         upto = c + 1;
         SawGeneratorExpression = SawBeginExpression;
         break;
       case ':':
         InsertText(upto, c, result);
-        result.push_back(cmGeneratorExpressionToken(
-          cmGeneratorExpressionToken::ColonSeparator, c, 1));
+        result.emplace_back(cmGeneratorExpressionToken::ColonSeparator, c, 1);
         upto = c + 1;
         break;
       case ',':
         InsertText(upto, c, result);
-        result.push_back(cmGeneratorExpressionToken(
-          cmGeneratorExpressionToken::CommaSeparator, c, 1));
+        result.emplace_back(cmGeneratorExpressionToken::CommaSeparator, c, 1);
         upto = c + 1;
         break;
       default:

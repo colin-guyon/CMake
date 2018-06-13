@@ -1,25 +1,25 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmComputeLinkDepends.h"
 
 #include "cmAlgorithms.h"
 #include "cmComputeComponentGraph.h"
+#include "cmGeneratorTarget.h"
 #include "cmGlobalGenerator.h"
 #include "cmLocalGenerator.h"
 #include "cmMakefile.h"
+#include "cmStateTypes.h"
+#include "cmSystemTools.h"
 #include "cmTarget.h"
 #include "cmake.h"
 
+#include <algorithm>
 #include <assert.h>
+#include <iterator>
+#include <sstream>
+#include <stdio.h>
+#include <string.h>
+#include <utility>
 
 /*
 
@@ -194,7 +194,7 @@ cmComputeLinkDepends::cmComputeLinkDepends(const cmGeneratorTarget* target,
   this->OldLinkDirMode = false;
 
   // No computation has been done.
-  this->CCG = 0;
+  this->CCG = nullptr;
 }
 
 cmComputeLinkDepends::~cmComputeLinkDepends()
@@ -262,7 +262,7 @@ cmComputeLinkDepends::Compute()
     LinkEntry const& e = this->EntryList[i];
     cmGeneratorTarget const* t = e.Target;
     // Entries that we know the linker will re-use do not need to be repeated.
-    bool uniquify = t && t->GetType() == cmState::SHARED_LIBRARY;
+    bool uniquify = t && t->GetType() == cmStateEnums::SHARED_LIBRARY;
     if (!uniquify || emmitted.insert(i).second) {
       this->FinalLinkEntries.push_back(e);
     }
@@ -285,9 +285,9 @@ std::map<std::string, int>::iterator cmComputeLinkDepends::AllocateLinkEntry(
     item, static_cast<int>(this->EntryList.size()));
   std::map<std::string, int>::iterator lei =
     this->LinkEntryIndex.insert(index_entry).first;
-  this->EntryList.push_back(LinkEntry());
-  this->InferredDependSets.push_back(0);
-  this->EntryConstraintGraph.push_back(EdgeList());
+  this->EntryList.emplace_back();
+  this->InferredDependSets.push_back(nullptr);
+  this->EntryConstraintGraph.emplace_back();
   return lei;
 }
 
@@ -314,7 +314,7 @@ int cmComputeLinkDepends::AddLinkEntry(cmLinkItem const& item)
   // If the item has dependencies queue it to follow them.
   if (entry.Target) {
     // Target dependencies are always known.  Follow them.
-    BFSEntry qe = { index, 0 };
+    BFSEntry qe = { index, nullptr };
     this->BFSQueue.push(qe);
   } else {
     // Look for an old-style <item>_LIB_DEPENDS variable.
@@ -333,7 +333,7 @@ int cmComputeLinkDepends::AddLinkEntry(cmLinkItem const& item)
   return index;
 }
 
-void cmComputeLinkDepends::FollowLinkEntry(BFSEntry const& qe)
+void cmComputeLinkDepends::FollowLinkEntry(BFSEntry qe)
 {
   // Get this entry representation.
   int depender_index = qe.Index;
@@ -345,7 +345,7 @@ void cmComputeLinkDepends::FollowLinkEntry(BFSEntry const& qe)
     if (cmLinkInterface const* iface =
           entry.Target->GetLinkInterface(this->Config, this->Target)) {
       const bool isIface =
-        entry.Target->GetType() == cmState::INTERFACE_LIBRARY;
+        entry.Target->GetType() == cmStateEnums::INTERFACE_LIBRARY;
       // This target provides its own link interface information.
       this->AddLinkEntries(depender_index, iface->Libraries);
 
@@ -357,10 +357,8 @@ void cmComputeLinkDepends::FollowLinkEntry(BFSEntry const& qe)
       this->FollowSharedDeps(depender_index, iface);
 
       // Support for CMP0003.
-      for (std::vector<cmLinkItem>::const_iterator oi =
-             iface->WrongConfigLibraries.begin();
-           oi != iface->WrongConfigLibraries.end(); ++oi) {
-        this->CheckWrongConfigItem(*oi);
+      for (cmLinkItem const& oi : iface->WrongConfigLibraries) {
+        this->CheckWrongConfigItem(oi);
       }
     }
   } else {
@@ -385,10 +383,9 @@ void cmComputeLinkDepends::FollowSharedDeps(int depender_index,
 void cmComputeLinkDepends::QueueSharedDependencies(
   int depender_index, std::vector<cmLinkItem> const& deps)
 {
-  for (std::vector<cmLinkItem>::const_iterator li = deps.begin();
-       li != deps.end(); ++li) {
+  for (cmLinkItem const& li : deps) {
     SharedDepEntry qe;
-    qe.Item = *li;
+    qe.Item = li;
     qe.DependerIndex = depender_index;
     this->SharedDepQueue.push(qe);
   }
@@ -445,25 +442,24 @@ void cmComputeLinkDepends::AddVarLinkEntries(int depender_index,
   std::vector<cmLinkItem> actual_libs;
   cmTargetLinkLibraryType llt = GENERAL_LibraryType;
   bool haveLLT = false;
-  for (std::vector<std::string>::const_iterator di = deplist.begin();
-       di != deplist.end(); ++di) {
-    if (*di == "debug") {
+  for (std::string const& d : deplist) {
+    if (d == "debug") {
       llt = DEBUG_LibraryType;
       haveLLT = true;
-    } else if (*di == "optimized") {
+    } else if (d == "optimized") {
       llt = OPTIMIZED_LibraryType;
       haveLLT = true;
-    } else if (*di == "general") {
+    } else if (d == "general") {
       llt = GENERAL_LibraryType;
       haveLLT = true;
-    } else if (!di->empty()) {
+    } else if (!d.empty()) {
       // If no explicit link type was given prior to this entry then
       // check if the entry has its own link type variable.  This is
       // needed for compatibility with dependency files generated by
       // the export_library_dependencies command from CMake 2.4 and
       // lower.
       if (!haveLLT) {
-        std::string var = *di;
+        std::string var = d;
         var += "_LINK_TYPE";
         if (const char* val = this->Makefile->GetDefinition(var)) {
           if (strcmp(val, "debug") == 0) {
@@ -476,10 +472,9 @@ void cmComputeLinkDepends::AddVarLinkEntries(int depender_index,
 
       // If the library is meant for this link type then use it.
       if (llt == GENERAL_LibraryType || llt == this->LinkType) {
-        cmLinkItem item(*di, this->FindTargetToLink(depender_index, *di));
-        actual_libs.push_back(item);
+        actual_libs.emplace_back(d, this->FindTargetToLink(depender_index, d));
       } else if (this->OldLinkDirMode) {
-        cmLinkItem item(*di, this->FindTargetToLink(depender_index, *di));
+        cmLinkItem item(d, this->FindTargetToLink(depender_index, d));
         this->CheckWrongConfigItem(item);
       }
 
@@ -499,10 +494,8 @@ void cmComputeLinkDepends::AddDirectLinkEntries()
   cmLinkImplementation const* impl =
     this->Target->GetLinkImplementation(this->Config);
   this->AddLinkEntries(-1, impl->Libraries);
-  for (std::vector<cmLinkItem>::const_iterator wi =
-         impl->WrongConfigLibraries.begin();
-       wi != impl->WrongConfigLibraries.end(); ++wi) {
-    this->CheckWrongConfigItem(*wi);
+  for (cmLinkItem const& wi : impl->WrongConfigLibraries) {
+    this->CheckWrongConfigItem(wi);
   }
 }
 
@@ -514,17 +507,16 @@ void cmComputeLinkDepends::AddLinkEntries(int depender_index,
   std::map<int, DependSet> dependSets;
 
   // Loop over the libraries linked directly by the depender.
-  for (typename std::vector<T>::const_iterator li = libs.begin();
-       li != libs.end(); ++li) {
+  for (T const& l : libs) {
     // Skip entries that will resolve to the target getting linked or
     // are empty.
-    cmLinkItem const& item = *li;
+    cmLinkItem const& item = l;
     if (item == this->Target->GetName() || item.empty()) {
       continue;
     }
 
     // Add a link entry for this item.
-    int dependee_index = this->AddLinkEntry(*li);
+    int dependee_index = this->AddLinkEntry(l);
 
     // The dependee must come after the depender.
     if (depender_index >= 0) {
@@ -535,16 +527,15 @@ void cmComputeLinkDepends::AddLinkEntries(int depender_index,
     }
 
     // Update the inferred dependencies for earlier items.
-    for (std::map<int, DependSet>::iterator dsi = dependSets.begin();
-         dsi != dependSets.end(); ++dsi) {
+    for (auto& dependSet : dependSets) {
       // Add this item to the inferred dependencies of other items.
       // Target items are never inferred dependees because unknown
       // items are outside libraries that should not be depending on
       // targets.
       if (!this->EntryList[dependee_index].Target &&
           !this->EntryList[dependee_index].IsFlag &&
-          dependee_index != dsi->first) {
-        dsi->second.insert(dependee_index);
+          dependee_index != dependSet.first) {
+        dependSet.second.insert(dependee_index);
       }
     }
 
@@ -556,9 +547,8 @@ void cmComputeLinkDepends::AddLinkEntries(int depender_index,
   }
 
   // Store the inferred dependency sets discovered for this list.
-  for (std::map<int, DependSet>::iterator dsi = dependSets.begin();
-       dsi != dependSets.end(); ++dsi) {
-    this->InferredDependSets[dsi->first]->push_back(dsi->second);
+  for (auto const& dependSet : dependSets) {
+    this->InferredDependSets[dependSet.first]->push_back(dependSet.second);
   }
 }
 
@@ -608,14 +598,14 @@ void cmComputeLinkDepends::InferDependencies()
 
 void cmComputeLinkDepends::CleanConstraintGraph()
 {
-  for (Graph::iterator i = this->EntryConstraintGraph.begin();
-       i != this->EntryConstraintGraph.end(); ++i) {
+  for (cmGraphEdgeList& edgeList : this->EntryConstraintGraph) {
     // Sort the outgoing edges for each graph node so that the
     // original order will be preserved as much as possible.
-    std::sort(i->begin(), i->end());
+    std::sort(edgeList.begin(), edgeList.end());
 
     // Make the edge list unique.
-    i->erase(std::unique(i->begin(), i->end()), i->end());
+    edgeList.erase(std::unique(edgeList.begin(), edgeList.end()),
+                   edgeList.end());
   }
 }
 
@@ -660,9 +650,8 @@ void cmComputeLinkDepends::OrderLinkEntires()
   }
 
   // Start with the original link line.
-  for (std::vector<int>::const_iterator i = this->OriginalEntries.begin();
-       i != this->OriginalEntries.end(); ++i) {
-    this->VisitEntry(*i);
+  for (int originalEntry : this->OriginalEntries) {
+    this->VisitEntry(originalEntry);
   }
 
   // Now explore anything left pending.  Since the component graph is
@@ -684,13 +673,12 @@ void cmComputeLinkDepends::DisplayComponents()
   for (unsigned int c = 0; c < components.size(); ++c) {
     fprintf(stderr, "Component (%u):\n", c);
     NodeList const& nl = components[c];
-    for (NodeList::const_iterator ni = nl.begin(); ni != nl.end(); ++ni) {
-      int i = *ni;
+    for (int i : nl) {
       fprintf(stderr, "  item %d [%s]\n", i, this->EntryList[i].Item.c_str());
     }
     EdgeList const& ol = this->CCG->GetComponentGraphEdges(c);
-    for (EdgeList::const_iterator oi = ol.begin(); oi != ol.end(); ++oi) {
-      int i = *oi;
+    for (cmGraphEdge const& oi : ol) {
+      int i = oi;
       fprintf(stderr, "  followed by Component (%d)\n", i);
     }
     fprintf(stderr, "  topo order index %d\n", this->ComponentOrder[c]);
@@ -771,10 +759,10 @@ void cmComputeLinkDepends::VisitEntry(int index)
   // are now pending.
   if (completed) {
     EdgeList const& ol = this->CCG->GetComponentGraphEdges(component);
-    for (EdgeList::const_iterator oi = ol.begin(); oi != ol.end(); ++oi) {
+    for (cmGraphEdge const& oi : ol) {
       // This entire component is now pending no matter whether it has
       // been partially seen already.
-      this->MakePendingComponent(*oi);
+      this->MakePendingComponent(oi);
     }
   }
 }
@@ -816,8 +804,8 @@ cmComputeLinkDepends::MakePendingComponent(unsigned int component)
 int cmComputeLinkDepends::ComputeComponentCount(NodeList const& nl)
 {
   unsigned int count = 2;
-  for (NodeList::const_iterator ni = nl.begin(); ni != nl.end(); ++ni) {
-    if (cmGeneratorTarget const* target = this->EntryList[*ni].Target) {
+  for (int ni : nl) {
+    if (cmGeneratorTarget const* target = this->EntryList[ni].Target) {
       if (cmLinkInterface const* iface =
             target->GetLinkInterface(this->Config, this->Target)) {
         if (iface->Multiplicity > count) {
@@ -832,13 +820,11 @@ int cmComputeLinkDepends::ComputeComponentCount(NodeList const& nl)
 void cmComputeLinkDepends::DisplayFinalEntries()
 {
   fprintf(stderr, "target [%s] links to:\n", this->Target->GetName().c_str());
-  for (std::vector<LinkEntry>::const_iterator lei =
-         this->FinalLinkEntries.begin();
-       lei != this->FinalLinkEntries.end(); ++lei) {
-    if (lei->Target) {
-      fprintf(stderr, "  target [%s]\n", lei->Target->GetName().c_str());
+  for (LinkEntry const& lei : this->FinalLinkEntries) {
+    if (lei.Target) {
+      fprintf(stderr, "  target [%s]\n", lei.Target->GetName().c_str());
     } else {
-      fprintf(stderr, "  item [%s]\n", lei->Item.c_str());
+      fprintf(stderr, "  item [%s]\n", lei.Item.c_str());
     }
   }
   fprintf(stderr, "\n");

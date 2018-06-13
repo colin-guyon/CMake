@@ -1,15 +1,5 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2015 Kitware, Inc., Gregor Jasny
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "RegexExplorer.h"
 
 RegexExplorer::RegexExplorer(QWidget* p)
@@ -18,7 +8,7 @@ RegexExplorer::RegexExplorer(QWidget* p)
 {
   this->setupUi(this);
 
-  for (int i = 1; i < cmsys::RegularExpression::NSUBEXP; ++i) {
+  for (int i = 1; i < cmsys::RegularExpressionMatch::NSUBEXP; ++i) {
     matchNumber->addItem(QString("Match %1").arg(QString::number(i)),
                          QVariant(i));
   }
@@ -74,10 +64,32 @@ void RegexExplorer::on_inputText_textChanged()
     return;
   }
 
+  std::string matchingText;
+
+  if (matchAll->isChecked()) {
+    const char* p = m_text.c_str();
+    while (m_regexParser.find(p)) {
+      std::string::size_type l = m_regexParser.start();
+      std::string::size_type r = m_regexParser.end();
+      if (r - l == 0) {
+        // matched empty string
+        clearMatch();
+        return;
+      }
+      if (!matchingText.empty()) {
+        matchingText += ";";
+      }
+      matchingText += std::string(p + l, r - l);
+      p += r;
+    }
+  } else {
+    matchingText = m_regexParser.match(0);
+  }
+
 #ifdef QT_NO_STL
-  QString matchText = m_regexParser.match(0).c_str();
+  QString matchText = matchingText.c_str();
 #else
-  QString matchText = QString::fromStdString(m_regexParser.match(0));
+  QString matchText = QString::fromStdString(matchingText);
 #endif
   match0->setPlainText(matchText);
 
@@ -93,7 +105,7 @@ void RegexExplorer::on_matchNumber_currentIndexChanged(int index)
   QVariant itemData = matchNumber->itemData(index);
   int idx = itemData.toInt();
 
-  if (idx < 1 || idx >= cmsys::RegularExpression::NSUBEXP) {
+  if (idx < 1 || idx >= cmsys::RegularExpressionMatch::NSUBEXP) {
     return;
   }
 
@@ -105,8 +117,16 @@ void RegexExplorer::on_matchNumber_currentIndexChanged(int index)
   matchN->setPlainText(match);
 }
 
+void RegexExplorer::on_matchAll_toggled(bool checked)
+{
+  Q_UNUSED(checked);
+
+  on_inputText_textChanged();
+}
+
 void RegexExplorer::clearMatch()
 {
+  m_matched = false;
   match0->clear();
   matchN->clear();
 }

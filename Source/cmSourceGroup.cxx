@@ -1,14 +1,5 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmSourceGroup.h"
 
 class cmSourceGroupInternals
@@ -17,7 +8,7 @@ public:
   std::vector<cmSourceGroup> GroupChildren;
 };
 
-cmSourceGroup::cmSourceGroup(const char* name, const char* regex,
+cmSourceGroup::cmSourceGroup(const std::string& name, const char* regex,
                              const char* parentName)
   : Name(name)
 {
@@ -69,28 +60,24 @@ void cmSourceGroup::AddGroupFile(const std::string& name)
   this->GroupFiles.insert(name);
 }
 
-const char* cmSourceGroup::GetName() const
+std::string const& cmSourceGroup::GetName() const
 {
-  return this->Name.c_str();
+  return this->Name;
 }
 
-const char* cmSourceGroup::GetFullName() const
+std::string const& cmSourceGroup::GetFullName() const
 {
-  return this->FullName.c_str();
+  return this->FullName;
 }
 
-bool cmSourceGroup::MatchesRegex(const char* name)
+bool cmSourceGroup::MatchesRegex(const std::string& name)
 {
   return this->GroupRegex.find(name);
 }
 
-bool cmSourceGroup::MatchesFiles(const char* name)
+bool cmSourceGroup::MatchesFiles(const std::string& name) const
 {
-  std::set<std::string>::const_iterator i = this->GroupFiles.find(name);
-  if (i != this->GroupFiles.end()) {
-    return true;
-  }
-  return false;
+  return this->GroupFiles.find(name) != this->GroupFiles.cend();
 }
 
 void cmSourceGroup::AssignSource(const cmSourceFile* sf)
@@ -108,58 +95,37 @@ void cmSourceGroup::AddChild(cmSourceGroup const& child)
   this->Internal->GroupChildren.push_back(child);
 }
 
-cmSourceGroup* cmSourceGroup::LookupChild(const char* name) const
+cmSourceGroup* cmSourceGroup::LookupChild(const std::string& name)
 {
-  // initializing iterators
-  std::vector<cmSourceGroup>::const_iterator iter =
-    this->Internal->GroupChildren.begin();
-  const std::vector<cmSourceGroup>::const_iterator end =
-    this->Internal->GroupChildren.end();
-
-  // st
-  for (; iter != end; ++iter) {
-    std::string sgName = iter->GetName();
-
+  for (cmSourceGroup& group : this->Internal->GroupChildren) {
     // look if descenened is the one were looking for
-    if (sgName == name) {
-      return const_cast<cmSourceGroup*>(&(*iter)); // if it so return it
+    if (group.GetName() == name) {
+      return (&group); // if it so return it
     }
   }
 
   // if no child with this name was found return NULL
-  return NULL;
+  return nullptr;
 }
 
-cmSourceGroup* cmSourceGroup::MatchChildrenFiles(const char* name)
+cmSourceGroup* cmSourceGroup::MatchChildrenFiles(const std::string& name)
 {
-  // initializing iterators
-  std::vector<cmSourceGroup>::iterator iter =
-    this->Internal->GroupChildren.begin();
-  std::vector<cmSourceGroup>::iterator end =
-    this->Internal->GroupChildren.end();
-
   if (this->MatchesFiles(name)) {
     return this;
   }
-  for (; iter != end; ++iter) {
-    cmSourceGroup* result = iter->MatchChildrenFiles(name);
+  for (cmSourceGroup& group : this->Internal->GroupChildren) {
+    cmSourceGroup* result = group.MatchChildrenFiles(name);
     if (result) {
       return result;
     }
   }
-  return 0;
+  return nullptr;
 }
 
-cmSourceGroup* cmSourceGroup::MatchChildrenRegex(const char* name)
+cmSourceGroup* cmSourceGroup::MatchChildrenRegex(const std::string& name)
 {
-  // initializing iterators
-  std::vector<cmSourceGroup>::iterator iter =
-    this->Internal->GroupChildren.begin();
-  std::vector<cmSourceGroup>::iterator end =
-    this->Internal->GroupChildren.end();
-
-  for (; iter != end; ++iter) {
-    cmSourceGroup* result = iter->MatchChildrenRegex(name);
+  for (cmSourceGroup& group : this->Internal->GroupChildren) {
+    cmSourceGroup* result = group.MatchChildrenRegex(name);
     if (result) {
       return result;
     }
@@ -168,7 +134,7 @@ cmSourceGroup* cmSourceGroup::MatchChildrenRegex(const char* name)
     return this;
   }
 
-  return 0;
+  return nullptr;
 }
 
 std::vector<cmSourceGroup> const& cmSourceGroup::GetGroupChildren() const

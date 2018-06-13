@@ -1,19 +1,9 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2012-2015 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCPackWIXGenerator_h
 #define cmCPackWIXGenerator_h
 
-#include <CPack/cmCPackGenerator.h>
+#include "cmCPackGenerator.h"
 
 #include "cmWIXPatch.h"
 #include "cmWIXShortcut.h"
@@ -58,6 +48,12 @@ private:
   typedef std::map<std::string, size_t> ambiguity_map_t;
   typedef std::set<std::string> extension_set_t;
 
+  enum class DefinitionType
+  {
+    STRING,
+    PATH
+  };
+
   bool InitializeWiXConfiguration();
 
   bool PackageFilesImpl();
@@ -68,14 +64,15 @@ private:
 
   void CreateWiXProductFragmentIncludeFile();
 
-  void CopyDefinition(cmWIXSourceWriter& source, std::string const& name);
+  void CopyDefinition(cmWIXSourceWriter& source, std::string const& name,
+                      DefinitionType type = DefinitionType::STRING);
 
   void AddDefinition(cmWIXSourceWriter& source, std::string const& name,
                      std::string const& value);
 
   bool CreateWiXSourceFiles();
 
-  std::string GetProgramFilesFolderId() const;
+  std::string GetRootFolderId() const;
 
   bool GenerateMainSourceFileFromTemplate();
 
@@ -114,7 +111,7 @@ private:
 
   bool RunLightCommand(std::string const& objectFiles);
 
-  void AddDirectoryAndFileDefinitons(
+  void AddDirectoryAndFileDefinitions(
     std::string const& topdir, std::string const& directoryId,
     cmWIXDirectoriesSourceWriter& directoryDefinitions,
     cmWIXFilesSourceWriter& fileDefinitions,
@@ -162,6 +159,8 @@ private:
   std::string CPackTopLevel;
 
   cmWIXPatch* Patch;
+
+  cmWIXSourceWriter::GuidType ComponentGuidType;
 };
 
 #endif

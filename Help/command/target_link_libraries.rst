@@ -19,7 +19,8 @@ All of them have the general form::
   target_link_libraries(<target> ... <item>... ...)
 
 The named ``<target>`` must have been created in the current directory by
-a command such as :command:`add_executable` or :command:`add_library`.
+a command such as :command:`add_executable` or :command:`add_library` and
+must not be an :ref:`ALIAS target <Alias Targets>`.
 Repeated calls for the same ``<target>`` append items in the order called.
 Each ``<item>`` may be:
 
@@ -53,6 +54,11 @@ Each ``<item>`` may be:
   :ref:`usage requirement <Target Usage Requirements>`.  This has the same
   effect as passing the framework directory as an include directory.
 
+  On :ref:`Visual Studio Generators` for VS 2010 and above, library files
+  ending in ``.targets`` will be treated as MSBuild targets files and
+  imported into generated project files.  This is not supported by other
+  generators.
+
 * **A plain library name**: The generated link line will ask the linker
   to search for the library (e.g. ``foo`` becomes ``-lfoo`` or ``foo.lib``).
 
@@ -61,6 +67,12 @@ Each ``<item>`` may be:
   be treated like any other library link item for purposes of transitive
   dependencies, so they are generally safe to specify only as private link
   items that will not propagate to dependents.
+
+  Link flags specified here are inserted into the link command in the same
+  place as the link libraries. This might not be correct, depending on
+  the linker. Use the :prop_tgt:`LINK_FLAGS` target property to add link
+  flags explicitly. The flags will then be placed at the toolchain-defined
+  flag position in the link command.
 
 * A ``debug``, ``optimized``, or ``general`` keyword immediately followed
   by another ``<item>``.  The item following such a keyword will be used

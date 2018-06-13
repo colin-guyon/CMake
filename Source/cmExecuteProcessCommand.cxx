@@ -1,25 +1,22 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmExecuteProcessCommand.h"
 
+#include "cmsys/Process.h"
+#include <ctype.h> /* isspace */
+#include <sstream>
+#include <stdio.h>
+
+#include "cmAlgorithms.h"
+#include "cmMakefile.h"
+#include "cmProcessOutput.h"
 #include "cmSystemTools.h"
 
-#include <cmsys/Process.h>
-
-#include <ctype.h> /* isspace */
+class cmExecutionStatus;
 
 static bool cmExecuteProcessCommandIsWhitespace(char c)
 {
-  return (isspace((int)c) || c == '\n' || c == '\r');
+  return (isspace(static_cast<int>(c)) || c == '\n' || c == '\r');
 }
 
 void cmExecuteProcessCommandFixText(std::vector<char>& output,
@@ -31,11 +28,11 @@ void cmExecuteProcessCommandAppend(std::vector<char>& output, const char* data,
 bool cmExecuteProcessCommand::InitialPass(std::vector<std::string> const& args,
                                           cmExecutionStatus&)
 {
-  if (args.size() < 1) {
+  if (args.empty()) {
     this->SetError("called with incorrect number of arguments");
     return false;
   }
-  std::vector<std::vector<const char*> > cmds;
+  std::vector<std::vector<const char*>> cmds;
   std::string arguments;
   bool doing_command = false;
   size_t command_index = 0;
@@ -50,7 +47,9 @@ bool cmExecuteProcessCommand::InitialPass(std::vector<std::string> const& args,
   std::string output_variable;
   std::string error_variable;
   std::string result_variable;
+  std::string results_variable;
   std::string working_directory;
+  cmProcessOutput::Encoding encoding = cmProcessOutput::None;
   for (size_t i = 0; i < args.size(); ++i) {
     if (args[i] == "COMMAND") {
       doing_command = true;
@@ -78,6 +77,14 @@ bool cmExecuteProcessCommand::InitialPass(std::vector<std::string> const& args,
         result_variable = args[i];
       } else {
         this->SetError(" called with no value for RESULT_VARIABLE.");
+        return false;
+      }
+    } else if (args[i] == "RESULTS_VARIABLE") {
+      doing_command = false;
+      if (++i < args.size()) {
+        results_variable = args[i];
+      } else {
+        this->SetError(" called with no value for RESULTS_VARIABLE.");
         return false;
       }
     } else if (args[i] == "WORKING_DIRECTORY") {
@@ -132,6 +139,14 @@ bool cmExecuteProcessCommand::InitialPass(std::vector<std::string> const& args,
     } else if (args[i] == "ERROR_STRIP_TRAILING_WHITESPACE") {
       doing_command = false;
       error_strip_trailing_whitespace = true;
+    } else if (args[i] == "ENCODING") {
+      doing_command = false;
+      if (++i < args.size()) {
+        encoding = cmProcessOutput::FindEncoding(args[i]);
+      } else {
+        this->SetError(" called with no value for ENCODING.");
+        return false;
+      }
     } else if (doing_command) {
       cmds[command_index].push_back(args[i].c_str());
     } else {
@@ -142,7 +157,7 @@ bool cmExecuteProcessCommand::InitialPass(std::vector<std::string> const& args,
     }
   }
 
-  if (!this->Makefile->CanIWriteThisFile(output_file.c_str())) {
+  if (!this->Makefile->CanIWriteThisFile(output_file)) {
     std::string e = "attempted to output into a file: " + output_file +
       " into a source directory.";
     this->SetError(e);
@@ -155,14 +170,13 @@ bool cmExecuteProcessCommand::InitialPass(std::vector<std::string> const& args,
     this->SetError(" called with no COMMAND argument.");
     return false;
   }
-  for (unsigned int i = 0; i < cmds.size(); ++i) {
-    if (cmds[i].empty()) {
+  for (auto& cmd : cmds) {
+    if (cmd.empty()) {
       this->SetError(" given COMMAND argument with no value.");
       return false;
-    } else {
-      // Add the null terminating pointer to the command argument list.
-      cmds[i].push_back(0);
     }
+    // Add the null terminating pointer to the command argument list.
+    cmd.push_back(nullptr);
   }
 
   // Parse the timeout string.
@@ -178,8 +192,8 @@ bool cmExecuteProcessCommand::InitialPass(std::vector<std::string> const& args,
   cmsysProcess* cp = cmsysProcess_New();
 
   // Set the command sequence.
-  for (unsigned int i = 0; i < cmds.size(); ++i) {
-    cmsysProcess_AddCommand(cp, &*cmds[i].begin());
+  for (auto const& cmd : cmds) {
+    cmsysProcess_AddCommand(cp, &*cmd.begin());
   }
 
   // Set the process working directory.
@@ -228,25 +242,43 @@ bool cmExecuteProcessCommand::InitialPass(std::vector<std::string> const& args,
   int length;
   char* data;
   int p;
-  while ((p = cmsysProcess_WaitForData(cp, &data, &length, 0), p)) {
+  cmProcessOutput processOutput(encoding);
+  std::string strdata;
+  while ((p = cmsysProcess_WaitForData(cp, &data, &length, nullptr), p)) {
     // Put the output in the right place.
     if (p == cmsysProcess_Pipe_STDOUT && !output_quiet) {
       if (output_variable.empty()) {
-        cmSystemTools::Stdout(data, length);
+        processOutput.DecodeText(data, length, strdata, 1);
+        cmSystemTools::Stdout(strdata.c_str(), strdata.size());
       } else {
         cmExecuteProcessCommandAppend(tempOutput, data, length);
       }
     } else if (p == cmsysProcess_Pipe_STDERR && !error_quiet) {
       if (error_variable.empty()) {
-        cmSystemTools::Stderr(data, length);
+        processOutput.DecodeText(data, length, strdata, 2);
+        cmSystemTools::Stderr(strdata.c_str(), strdata.size());
       } else {
         cmExecuteProcessCommandAppend(tempError, data, length);
       }
     }
   }
+  if (!output_quiet && output_variable.empty()) {
+    processOutput.DecodeText(std::string(), strdata, 1);
+    if (!strdata.empty()) {
+      cmSystemTools::Stdout(strdata.c_str(), strdata.size());
+    }
+  }
+  if (!error_quiet && error_variable.empty()) {
+    processOutput.DecodeText(std::string(), strdata, 2);
+    if (!strdata.empty()) {
+      cmSystemTools::Stderr(strdata.c_str(), strdata.size());
+    }
+  }
 
   // All output has been read.  Wait for the process to exit.
-  cmsysProcess_WaitForExit(cp, 0);
+  cmsysProcess_WaitForExit(cp, nullptr);
+  processOutput.DecodeText(tempOutput, tempOutput);
+  processOutput.DecodeText(tempError, tempError);
 
   // Fix the text in the output strings.
   cmExecuteProcessCommandFixText(tempOutput, output_strip_trailing_whitespace);
@@ -265,7 +297,7 @@ bool cmExecuteProcessCommand::InitialPass(std::vector<std::string> const& args,
     switch (cmsysProcess_GetState(cp)) {
       case cmsysProcess_State_Exited: {
         int v = cmsysProcess_GetExitValue(cp);
-        char buf[100];
+        char buf[16];
         sprintf(buf, "%d", v);
         this->Makefile->AddDefinition(result_variable, buf);
       } break;
@@ -279,6 +311,47 @@ bool cmExecuteProcessCommand::InitialPass(std::vector<std::string> const& args,
         break;
       case cmsysProcess_State_Expired:
         this->Makefile->AddDefinition(result_variable,
+                                      "Process terminated due to timeout");
+        break;
+    }
+  }
+  // Store the result of running the processes.
+  if (!results_variable.empty()) {
+    switch (cmsysProcess_GetState(cp)) {
+      case cmsysProcess_State_Exited: {
+        std::vector<std::string> res;
+        for (size_t i = 0; i < cmds.size(); ++i) {
+          switch (cmsysProcess_GetStateByIndex(cp, static_cast<int>(i))) {
+            case kwsysProcess_StateByIndex_Exited: {
+              int exitCode =
+                cmsysProcess_GetExitValueByIndex(cp, static_cast<int>(i));
+              char buf[16];
+              sprintf(buf, "%d", exitCode);
+              res.push_back(buf);
+            } break;
+            case kwsysProcess_StateByIndex_Exception:
+              res.push_back(cmsysProcess_GetExceptionStringByIndex(
+                cp, static_cast<int>(i)));
+              break;
+            case kwsysProcess_StateByIndex_Error:
+            default:
+              res.push_back("Error getting the child return code");
+              break;
+          }
+        }
+        this->Makefile->AddDefinition(results_variable,
+                                      cmJoin(res, ";").c_str());
+      } break;
+      case cmsysProcess_State_Exception:
+        this->Makefile->AddDefinition(results_variable,
+                                      cmsysProcess_GetExceptionString(cp));
+        break;
+      case cmsysProcess_State_Error:
+        this->Makefile->AddDefinition(results_variable,
+                                      cmsysProcess_GetErrorString(cp));
+        break;
+      case cmsysProcess_State_Expired:
+        this->Makefile->AddDefinition(results_variable,
                                       "Process terminated due to timeout");
         break;
     }

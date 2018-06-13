@@ -1,32 +1,30 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCTestBuildCommand.h"
 
 #include "cmCTest.h"
 #include "cmCTestBuildHandler.h"
 #include "cmCTestGenericHandler.h"
 #include "cmGlobalGenerator.h"
+#include "cmMakefile.h"
+#include "cmSystemTools.h"
 #include "cmake.h"
+
+#include <sstream>
+#include <string.h>
+
+class cmExecutionStatus;
 
 cmCTestBuildCommand::cmCTestBuildCommand()
 {
-  this->GlobalGenerator = 0;
+  this->GlobalGenerator = nullptr;
   this->Arguments[ctb_NUMBER_ERRORS] = "NUMBER_ERRORS";
   this->Arguments[ctb_NUMBER_WARNINGS] = "NUMBER_WARNINGS";
   this->Arguments[ctb_TARGET] = "TARGET";
   this->Arguments[ctb_CONFIGURATION] = "CONFIGURATION";
   this->Arguments[ctb_FLAGS] = "FLAGS";
   this->Arguments[ctb_PROJECT_NAME] = "PROJECT_NAME";
-  this->Arguments[ctb_LAST] = 0;
+  this->Arguments[ctb_LAST] = nullptr;
   this->Last = ctb_LAST;
 }
 
@@ -34,7 +32,7 @@ cmCTestBuildCommand::~cmCTestBuildCommand()
 {
   if (this->GlobalGenerator) {
     delete this->GlobalGenerator;
-    this->GlobalGenerator = 0;
+    this->GlobalGenerator = nullptr;
   }
 }
 
@@ -43,9 +41,9 @@ cmCTestGenericHandler* cmCTestBuildCommand::InitializeHandler()
   cmCTestGenericHandler* handler = this->CTest->GetInitializedHandler("build");
   if (!handler) {
     this->SetError("internal CTest error. Cannot instantiate build handler");
-    return 0;
+    return nullptr;
   }
-  this->Handler = (cmCTestBuildHandler*)handler;
+  this->Handler = static_cast<cmCTestBuildHandler*>(handler);
 
   const char* ctestBuildCommand =
     this->Makefile->GetDefinition("CTEST_BUILD_COMMAND");
@@ -91,7 +89,7 @@ cmCTestGenericHandler* cmCTestBuildCommand::InitializeHandler()
       if (this->GlobalGenerator) {
         if (this->GlobalGenerator->GetName() != cmakeGeneratorName) {
           delete this->GlobalGenerator;
-          this->GlobalGenerator = 0;
+          this->GlobalGenerator = nullptr;
         }
       }
       if (!this->GlobalGenerator) {
@@ -104,11 +102,11 @@ cmCTestGenericHandler* cmCTestBuildCommand::InitializeHandler()
           e += "\"";
           this->Makefile->IssueMessage(cmake::FATAL_ERROR, e);
           cmSystemTools::SetFatalErrorOccured();
-          return 0;
+          return nullptr;
         }
       }
       if (strlen(cmakeBuildConfiguration) == 0) {
-        const char* config = 0;
+        const char* config = nullptr;
 #ifdef CMAKE_INTDIR
         config = CMAKE_INTDIR;
 #endif
@@ -145,7 +143,7 @@ cmCTestGenericHandler* cmCTestBuildCommand::InitializeHandler()
         "with a custom command line.";
       /* clang-format on */
       this->SetError(ostr.str());
-      return 0;
+      return nullptr;
     }
   }
 
@@ -153,6 +151,12 @@ cmCTestGenericHandler* cmCTestBuildCommand::InitializeHandler()
         this->Makefile->GetDefinition("CTEST_USE_LAUNCHERS")) {
     this->CTest->SetCTestConfiguration("UseLaunchers", useLaunchers,
                                        this->Quiet);
+  }
+
+  if (const char* labelsForSubprojects =
+        this->Makefile->GetDefinition("CTEST_LABELS_FOR_SUBPROJECTS")) {
+    this->CTest->SetCTestConfiguration("LabelsForSubprojects",
+                                       labelsForSubprojects, this->Quiet);
   }
 
   handler->SetQuiet(this->Quiet);

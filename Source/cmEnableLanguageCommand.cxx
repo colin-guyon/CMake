@@ -1,15 +1,10 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmEnableLanguageCommand.h"
+
+#include "cmMakefile.h"
+
+class cmExecutionStatus;
 
 // cmEnableLanguageCommand
 bool cmEnableLanguageCommand::InitialPass(std::vector<std::string> const& args,
@@ -17,16 +12,15 @@ bool cmEnableLanguageCommand::InitialPass(std::vector<std::string> const& args,
 {
   bool optional = false;
   std::vector<std::string> languages;
-  if (args.size() < 1) {
+  if (args.empty()) {
     this->SetError("called with incorrect number of arguments");
     return false;
   }
-  for (std::vector<std::string>::const_iterator it = args.begin();
-       it != args.end(); ++it) {
-    if ((*it) == "OPTIONAL") {
+  for (std::string const& it : args) {
+    if (it == "OPTIONAL") {
       optional = true;
     } else {
-      languages.push_back(*it);
+      languages.push_back(it);
     }
   }
 

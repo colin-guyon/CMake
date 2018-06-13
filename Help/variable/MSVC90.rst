@@ -1,6 +1,7 @@
 MSVC90
 ------
 
-``True`` when using Microsoft Visual C++ 9.0.
+Discouraged.  Use the :variable:`MSVC_VERSION` variable instead.
 
-Set to ``true`` when the compiler is version 9.0 of Microsoft Visual C++.
+``True`` when using the Microsoft Visual Studio ``v90`` toolset
+(``cl`` version 15) or another compiler that simulates it.

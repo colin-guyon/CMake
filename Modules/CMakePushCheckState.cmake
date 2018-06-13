@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # CMakePushCheckState
 # -------------------
@@ -33,20 +36,6 @@
 #    check_function_exists(...)
 #    cmake_pop_check_state()
 
-#=============================================================================
-# Copyright 2006-2011 Alexander Neundorf, <neundorf@kde.org>
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
-
-
 macro(CMAKE_RESET_CHECK_STATE)
 
    set(CMAKE_EXTRA_INCLUDE_FILES)
@@ -73,7 +62,7 @@ macro(CMAKE_PUSH_CHECK_STATE)
    set(_CMAKE_REQUIRED_FLAGS_SAVE_${_CMAKE_PUSH_CHECK_STATE_COUNTER}       ${CMAKE_REQUIRED_FLAGS})
    set(_CMAKE_REQUIRED_QUIET_SAVE_${_CMAKE_PUSH_CHECK_STATE_COUNTER}       ${CMAKE_REQUIRED_QUIET})
 
-   if (ARGC GREATER 0 AND ARGV0 STREQUAL "RESET")
+   if (${ARGC} GREATER 0 AND "${ARGV0}" STREQUAL "RESET")
       cmake_reset_check_state()
    endif()
 

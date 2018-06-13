@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # DeployQt4
 # ---------
@@ -98,19 +101,6 @@
 # the system libraries are compatible.  The executable will be fixed-up
 # at install time.  <component> is the COMPONENT used for bundle fixup
 # and plugin installation.  See documentation of FIXUP_QT4_BUNDLE.
-
-#=============================================================================
-# Copyright 2011 Mike McQuaid <mike@mikemcquaid.com>
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 # The functions defined in this file depend on the fixup_bundle function
 # (and others) found in BundleUtilities.cmake
@@ -247,7 +237,7 @@ function(install_qt4_plugin_path plugin executable copy installed_plugin_path_va
                                 set(plugins_path ".")
                         endif()
                         if(plugins_dir)
-                                set(plugins_path "${plugins_path}/${plugins_dir}")
+                                string(APPEND plugins_path "/${plugins_dir}")
                         endif()
                 endif()
 
@@ -263,13 +253,14 @@ function(install_qt4_plugin_path plugin executable copy installed_plugin_path_va
                         get_filename_component(plugin_group "${plugin_path}" NAME)
                         set(${plugin_group_var} "${plugin_group}")
                 endif()
-                set(plugins_path "${plugins_path}/${plugin_group}")
+                string(APPEND plugins_path "/${plugin_group}")
 
                 if(${copy})
                         file(MAKE_DIRECTORY "${plugins_path}")
                         file(COPY "${plugin}" DESTINATION "${plugins_path}")
                 else()
-                        if(configurations AND (CMAKE_CONFIGURATION_TYPES OR CMAKE_BUILD_TYPE))
+                        get_property(_isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+                        if(configurations AND (_isMultiConfig OR CMAKE_BUILD_TYPE))
                                 set(configurations CONFIGURATIONS ${configurations})
                         else()
                                 unset(configurations)
@@ -305,9 +296,16 @@ function(install_qt4_plugin plugin executable copy installed_plugin_path_var)
                         set(plugin_debug "${plugin_release}")
                 endif()
 
-                if(CMAKE_CONFIGURATION_TYPES OR CMAKE_BUILD_TYPE)
-                        install_qt4_plugin_path("${plugin_release}" "${executable}" "${copy}" "${installed_plugin_path_var}_release" "${plugins_dir}" "${component}" "Release|RelWithDebInfo|MinSizeRel")
+                get_property(_isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+                if(_isMultiConfig OR CMAKE_BUILD_TYPE)
+                        set(_RELEASE_CONFIGS ${CMAKE_CONFIGURATION_TYPES} "${CMAKE_BUILD_TYPE}")
+                        if (_RELEASE_CONFIGS)
+                            list(FILTER _RELEASE_CONFIGS EXCLUDE REGEX "[Dd][Ee][Bb][Uu][Gg]")
+                        endif()
+                        string(REPLACE ";" "|" _RELEASE_CONFIGS "${_RELEASE_CONFIGS}")
+                        install_qt4_plugin_path("${plugin_release}" "${executable}" "${copy}" "${installed_plugin_path_var}_release" "${plugins_dir}" "${component}" "${_RELEASE_CONFIGS}")
                         install_qt4_plugin_path("${plugin_debug}" "${executable}" "${copy}" "${installed_plugin_path_var}_debug" "${plugins_dir}" "${component}" "Debug")
+                        unset(_RELEASE_CONFIGS)
 
                         if(CMAKE_BUILD_TYPE MATCHES "^Debug$")
                                 set(${installed_plugin_path_var} ${${installed_plugin_path_var}_debug})

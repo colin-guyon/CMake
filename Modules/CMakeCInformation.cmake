@@ -1,16 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
 
-#=============================================================================
-# Copyright 2004-2011 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 # This file sets the basic flags for the C language in CMake.
 # It also loads the available platform file for the system-compiler
@@ -111,28 +101,8 @@ if(NOT CMAKE_MODULE_EXISTS)
 endif()
 
 set(CMAKE_C_FLAGS_INIT "$ENV{CFLAGS} ${CMAKE_C_FLAGS_INIT}")
-# avoid just having a space as the initial value for the cache
-if(CMAKE_C_FLAGS_INIT STREQUAL " ")
-  set(CMAKE_C_FLAGS_INIT)
-endif()
-set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS_INIT}" CACHE STRING
-     "Flags used by the compiler during all build types.")
 
-if(NOT CMAKE_NOT_USING_CONFIG_FLAGS)
-# default build type is none
-  if(NOT CMAKE_NO_BUILD_TYPE)
-    set (CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_INIT} CACHE STRING
-      "Choose the type of build, options are: None(CMAKE_CXX_FLAGS or CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel.")
-  endif()
-  set (CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG_INIT}" CACHE STRING
-    "Flags used by the compiler during debug builds.")
-  set (CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL_INIT}" CACHE STRING
-    "Flags used by the compiler during release builds for minimum size.")
-  set (CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE_INIT}" CACHE STRING
-    "Flags used by the compiler during release builds.")
-  set (CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO_INIT}" CACHE STRING
-    "Flags used by the compiler during release builds with debug info.")
-endif()
+cmake_initialize_per_config_variable(CMAKE_C_FLAGS "Flags used by the C compiler")
 
 if(CMAKE_C_STANDARD_LIBRARIES_INIT)
   set(CMAKE_C_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES_INIT}"
@@ -215,13 +185,6 @@ if(NOT CMAKE_EXECUTABLE_RPATH_LINK_C_FLAG)
   set(CMAKE_EXECUTABLE_RPATH_LINK_C_FLAG ${CMAKE_SHARED_LIBRARY_RPATH_LINK_C_FLAG})
 endif()
 
-mark_as_advanced(
-CMAKE_C_FLAGS
-CMAKE_C_FLAGS_DEBUG
-CMAKE_C_FLAGS_MINSIZEREL
-CMAKE_C_FLAGS_RELEASE
-CMAKE_C_FLAGS_RELWITHDEBINFO
-)
 set(CMAKE_C_INFORMATION_LOADED 1)
 
 

@@ -1,15 +1,5 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "QCMake.h"
 
 #include <QCoreApplication>
@@ -37,7 +27,7 @@ QCMake::QCMake(QObject* p)
   cmSystemTools::SetStdoutCallback(QCMake::stdoutCallback, this);
   cmSystemTools::SetStderrCallback(QCMake::stderrCallback, this);
 
-  this->CMakeInstance = new cmake;
+  this->CMakeInstance = new cmake(cmake::RoleProject);
   this->CMakeInstance->SetCMakeEditCommand(
     cmSystemTools::GetCMakeGUICommand());
   this->CMakeInstance->SetProgressCallback(QCMake::progressCallback, this);
@@ -49,15 +39,6 @@ QCMake::QCMake(QObject* p)
 
   std::vector<cmake::GeneratorInfo>::const_iterator it;
   for (it = generators.begin(); it != generators.end(); ++it) {
-    // Skip the generator "KDevelop3", since there is also
-    // "KDevelop3 - Unix Makefiles", which is the full and official name.
-    // The short name is actually only still there since this was the name
-    // in CMake 2.4, to keep "command line argument compatibility", but
-    // this is not necessary in the GUI.
-    if (it->name == "KDevelop3") {
-      continue;
-    }
-
     this->AvailableGenerators.push_back(*it);
   }
 }
@@ -125,6 +106,8 @@ void QCMake::setBinaryDirectory(const QString& _dir)
     if (toolset) {
       this->setToolset(QString::fromLocal8Bit(toolset));
     }
+
+    checkOpenPossible();
   }
 }
 
@@ -193,6 +176,26 @@ void QCMake::generate()
 #endif
 
   emit this->generateDone(err);
+  checkOpenPossible();
+}
+
+void QCMake::open()
+{
+#ifdef Q_OS_WIN
+  UINT lastErrorMode = SetErrorMode(0);
+#endif
+
+  InterruptFlag = 0;
+  cmSystemTools::ResetErrorOccuredFlag();
+
+  auto successful = this->CMakeInstance->Open(
+    this->BinaryDirectory.toLocal8Bit().data(), false);
+
+#ifdef Q_OS_WIN
+  SetErrorMode(lastErrorMode);
+#endif
+
+  emit this->openDone(successful);
 }
 
 void QCMake::setProperties(const QCMakePropertyList& newProps)
@@ -206,8 +209,8 @@ void QCMake::setProperties(const QCMakePropertyList& newProps)
   std::vector<std::string> cacheKeys = state->GetCacheEntryKeys();
   for (std::vector<std::string>::const_iterator it = cacheKeys.begin();
        it != cacheKeys.end(); ++it) {
-    cmState::CacheEntryType t = state->GetCacheEntryType(*it);
-    if (t == cmState::INTERNAL || t == cmState::STATIC) {
+    cmStateEnums::CacheEntryType t = state->GetCacheEntryType(*it);
+    if (t == cmStateEnums::INTERNAL || t == cmStateEnums::STATIC) {
       continue;
     }
 
@@ -229,32 +232,32 @@ void QCMake::setProperties(const QCMakePropertyList& newProps)
   }
 
   // remove some properites
-  foreach (QString s, toremove) {
+  foreach (QString const& s, toremove) {
     this->CMakeInstance->UnwatchUnusedCli(s.toLocal8Bit().data());
 
     state->RemoveCacheEntry(s.toLocal8Bit().data());
   }
 
   // add some new properites
-  foreach (QCMakeProperty s, props) {
+  foreach (QCMakeProperty const& s, props) {
     this->CMakeInstance->WatchUnusedCli(s.Key.toLocal8Bit().data());
 
     if (s.Type == QCMakeProperty::BOOL) {
       this->CMakeInstance->AddCacheEntry(
         s.Key.toLocal8Bit().data(), s.Value.toBool() ? "ON" : "OFF",
-        s.Help.toLocal8Bit().data(), cmState::BOOL);
+        s.Help.toLocal8Bit().data(), cmStateEnums::BOOL);
     } else if (s.Type == QCMakeProperty::STRING) {
       this->CMakeInstance->AddCacheEntry(
         s.Key.toLocal8Bit().data(), s.Value.toString().toLocal8Bit().data(),
-        s.Help.toLocal8Bit().data(), cmState::STRING);
+        s.Help.toLocal8Bit().data(), cmStateEnums::STRING);
     } else if (s.Type == QCMakeProperty::PATH) {
       this->CMakeInstance->AddCacheEntry(
         s.Key.toLocal8Bit().data(), s.Value.toString().toLocal8Bit().data(),
-        s.Help.toLocal8Bit().data(), cmState::PATH);
+        s.Help.toLocal8Bit().data(), cmStateEnums::PATH);
     } else if (s.Type == QCMakeProperty::FILEPATH) {
       this->CMakeInstance->AddCacheEntry(
         s.Key.toLocal8Bit().data(), s.Value.toString().toLocal8Bit().data(),
-        s.Help.toLocal8Bit().data(), cmState::FILEPATH);
+        s.Help.toLocal8Bit().data(), cmStateEnums::FILEPATH);
     }
   }
 
@@ -269,9 +272,9 @@ QCMakePropertyList QCMake::properties() const
   std::vector<std::string> cacheKeys = state->GetCacheEntryKeys();
   for (std::vector<std::string>::const_iterator i = cacheKeys.begin();
        i != cacheKeys.end(); ++i) {
-    cmState::CacheEntryType t = state->GetCacheEntryType(*i);
-    if (t == cmState::INTERNAL || t == cmState::STATIC ||
-        t == cmState::UNINITIALIZED) {
+    cmStateEnums::CacheEntryType t = state->GetCacheEntryType(*i);
+    if (t == cmStateEnums::INTERNAL || t == cmStateEnums::STATIC ||
+        t == cmStateEnums::UNINITIALIZED) {
       continue;
     }
 
@@ -283,14 +286,14 @@ QCMakePropertyList QCMake::properties() const
       QString::fromLocal8Bit(state->GetCacheEntryProperty(*i, "HELPSTRING"));
     prop.Value = QString::fromLocal8Bit(cachedValue);
     prop.Advanced = state->GetCacheEntryPropertyAsBool(*i, "ADVANCED");
-    if (t == cmState::BOOL) {
+    if (t == cmStateEnums::BOOL) {
       prop.Type = QCMakeProperty::BOOL;
       prop.Value = cmSystemTools::IsOn(cachedValue);
-    } else if (t == cmState::PATH) {
+    } else if (t == cmStateEnums::PATH) {
       prop.Type = QCMakeProperty::PATH;
-    } else if (t == cmState::FILEPATH) {
+    } else if (t == cmStateEnums::FILEPATH) {
       prop.Type = QCMakeProperty::FILEPATH;
-    } else if (t == cmState::STRING) {
+    } else if (t == cmStateEnums::STRING) {
       prop.Type = QCMakeProperty::STRING;
       const char* stringsProperty =
         state->GetCacheEntryProperty(*i, "STRINGS");
@@ -459,4 +462,11 @@ void QCMake::setWarnUninitializedMode(bool value)
 void QCMake::setWarnUnusedMode(bool value)
 {
   this->WarnUnusedMode = value;
+}
+
+void QCMake::checkOpenPossible()
+{
+  auto data = this->BinaryDirectory.toLocal8Bit().data();
+  auto possible = this->CMakeInstance->Open(data, true);
+  emit openPossible(possible);
 }

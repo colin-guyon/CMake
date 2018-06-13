@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindPike
 # --------
@@ -13,28 +16,12 @@
 #   PIKE_INCLUDE_PATH       = path to where program.h is found
 #   PIKE_EXECUTABLE         = full path to the pike binary
 
-#=============================================================================
-# Copyright 2004-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
-
-file(GLOB PIKE_POSSIBLE_INCLUDE_PATHS
-  /usr/include/pike/*
-  /usr/local/include/pike/*)
-
 find_path(PIKE_INCLUDE_PATH program.h
-  ${PIKE_POSSIBLE_INCLUDE_PATHS})
+  ${PIKE_POSSIBLE_INCLUDE_PATHS}
+  PATH_SUFFIXES include/pike8.0/pike include/pike7.8/pike include/pike7.4/pike)
 
 find_program(PIKE_EXECUTABLE
-  NAMES pike7.4
+  NAMES pike8.0 pike 7.8 pike7.4
   )
 
 mark_as_advanced(

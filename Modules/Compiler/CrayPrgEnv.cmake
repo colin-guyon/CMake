@@ -56,16 +56,17 @@ macro(__CrayPrgEnv_setup lang test_src compiler_cmd link_cmd)
     message(STATUS "Cray Programming Environment $ENV{CRAYPE_VERSION} ${lang}")
   elseif(DEFINED ENV{ASYNCPE_VERSION})
     message(STATUS "Cray XT Programming Environment $ENV{ASYNCPE_VERSION} ${lang}")
+  else()
+    message(STATUS "Cray Programming Environment (unknown version) ${lang}")
   endif()
 
   # Flags for the Cray wrappers
   set(CMAKE_STATIC_LIBRARY_LINK_${lang}_FLAGS "-static")
-  set(CMAKE_SHARED_LIBRARY_${lang}_FLAGS "")
   set(CMAKE_SHARED_LIBRARY_CREATE_${lang}_FLAGS "-shared")
   set(CMAKE_SHARED_LIBRARY_LINK_${lang}_FLAGS "-dynamic")
 
   # If the link type is not explicitly specified in the environment then
-  # the Cray wrappers assume that the code will be built staticly so
+  # the Cray wrappers assume that the code will be built statically so
   # we check the following condition(s) are NOT met
   #  Compiler flags are explicitly dynamic
   #  Env var is dynamic and compiler flags are not explicitly static

@@ -1,47 +1,51 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "QCMake.h" // include to disable MS warnings
 
 #include "CMakeSetupDialog.h"
 #include "cmAlgorithms.h"
 #include "cmDocumentation.h"
+#include "cmDocumentationEntry.h"
 #include "cmVersion.h"
 #include "cmake.h"
+#include "cmsys/CommandLineArguments.hxx"
+#include "cmsys/Encoding.hxx"
+#include "cmsys/SystemTools.hxx"
 #include <QApplication>
 #include <QDir>
 #include <QLocale>
 #include <QString>
 #include <QTextCodec>
 #include <QTranslator>
-#include <cmsys/CommandLineArguments.hxx>
-#include <cmsys/Encoding.hxx>
-#include <cmsys/SystemTools.hxx>
+#include <QtPlugin>
+#include <iostream>
 
-static const char* cmDocumentationName[][2] = { { 0,
+#include "cmSystemTools.h" // IWYU pragma: keep
+
+static const char* cmDocumentationName[][2] = { { nullptr,
                                                   "  cmake-gui - CMake GUI." },
-                                                { 0, 0 } };
+                                                { nullptr, nullptr } };
 
 static const char* cmDocumentationUsage[][2] = {
-  { 0, "  cmake-gui [options]\n"
-       "  cmake-gui [options] <path-to-source>\n"
-       "  cmake-gui [options] <path-to-existing-build>" },
-  { 0, 0 }
+  { nullptr, "  cmake-gui [options]\n"
+             "  cmake-gui [options] <path-to-source>\n"
+             "  cmake-gui [options] <path-to-existing-build>" },
+  { nullptr, nullptr }
 };
 
-static const char* cmDocumentationOptions[][2] = { { 0, 0 } };
+static const char* cmDocumentationOptions[][2] = { { nullptr, nullptr } };
 
 #if defined(Q_OS_MAC)
 static int cmOSXInstall(std::string dir);
 static void cmAddPluginPath();
+#endif
+
+#if defined(USE_QXcbIntegrationPlugin)
+Q_IMPORT_PLUGIN(QXcbIntegrationPlugin);
+#endif
+
+#if defined(USE_QWindowsIntegrationPlugin)
+Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin);
 #endif
 
 int main(int argc, char** argv)
@@ -51,6 +55,7 @@ int main(int argc, char** argv)
   int argc2 = encoding_args.argc();
   char const* const* argv2 = encoding_args.argv();
 
+  cmSystemTools::InitializeLibUV();
   cmSystemTools::FindCMakeResources(argv2[0]);
   // check docs first so that X is not need to get docs
   // do docs, if args were given
@@ -58,7 +63,7 @@ int main(int argc, char** argv)
   doc.addCMakeStandardDocSections();
   if (argc2 > 1 && doc.CheckOptions(argc2, argv2)) {
     // Construct and print requested documentation.
-    cmake hcm;
+    cmake hcm(cmake::RoleInternal);
     hcm.SetHomeDirectory("");
     hcm.SetHomeOutputDirectory("");
     hcm.AddCMakePaths();
@@ -92,20 +97,24 @@ int main(int argc, char** argv)
   cmAddPluginPath();
 #endif
 
+#if QT_VERSION >= 0x050600
+  QGuiApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+#endif
+
   QApplication app(argc, argv);
 
   setlocale(LC_NUMERIC, "C");
 
-#if defined(CMAKE_ENCODING_UTF8)
   QTextCodec* utf8_codec = QTextCodec::codecForName("UTF-8");
   QTextCodec::setCodecForLocale(utf8_codec);
-#endif
 
+#if QT_VERSION < 0x050000
   // clean out standard Qt paths for plugins, which we don't use anyway
   // when creating Mac bundles, it potentially causes problems
   foreach (QString p, QApplication::libraryPaths()) {
     QApplication::removeLibraryPath(p);
   }
+#endif
 
   // tell the cmake library where cmake is
   QDir cmExecDir(QApplication::applicationDirPath());
@@ -183,9 +192,9 @@ int main(int argc, char** argv)
 }
 
 #if defined(Q_OS_MAC)
+#include "cm_sys_stat.h"
 #include <errno.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <unistd.h>
 static bool cmOSXInstall(std::string const& dir, std::string const& tool)
 {

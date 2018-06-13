@@ -1,17 +1,16 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2013 Stephen Kelly <steveire@gmail.com>
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmTargetCompileOptionsCommand.h"
 
+#include <sstream>
+
 #include "cmAlgorithms.h"
+#include "cmListFileCache.h"
+#include "cmMakefile.h"
+#include "cmTarget.h"
+#include "cmake.h"
+
+class cmExecutionStatus;
 
 bool cmTargetCompileOptionsCommand::InitialPass(
   std::vector<std::string> const& args, cmExecutionStatus&)
@@ -19,21 +18,12 @@ bool cmTargetCompileOptionsCommand::InitialPass(
   return this->HandleArguments(args, "COMPILE_OPTIONS", PROCESS_BEFORE);
 }
 
-void cmTargetCompileOptionsCommand::HandleImportedTarget(
-  const std::string& tgt)
-{
-  std::ostringstream e;
-  e << "Cannot specify compile options for imported target \"" << tgt << "\".";
-  this->Makefile->IssueMessage(cmake::FATAL_ERROR, e.str());
-}
-
 void cmTargetCompileOptionsCommand::HandleMissingTarget(
   const std::string& name)
 {
   std::ostringstream e;
   e << "Cannot specify compile options for target \"" << name
-    << "\" "
-       "which is not built by this project.";
+    << "\" which is not built by this project.";
   this->Makefile->IssueMessage(cmake::FATAL_ERROR, e.str());
 }
 
@@ -48,5 +38,5 @@ bool cmTargetCompileOptionsCommand::HandleDirectContent(
 {
   cmListFileBacktrace lfbt = this->Makefile->GetBacktrace();
   tgt->InsertCompileOption(this->Join(content), lfbt);
-  return true;
+  return true; // Successfully handled.
 }

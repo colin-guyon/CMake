@@ -1,30 +1,28 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmMakefileTargetGenerator_h
 #define cmMakefileTargetGenerator_h
 
-#include "cmCommonTargetGenerator.h"
+#include "cmConfigure.h" // IWYU pragma: keep
 
+#include <iosfwd>
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+#include "cmCommonTargetGenerator.h"
 #include "cmLocalUnixMakefileGenerator3.h"
 #include "cmOSXBundleGenerator.h"
 
 class cmCustomCommandGenerator;
-class cmDepends;
-class cmGeneratorTarget;
 class cmGeneratedFileStream;
+class cmGeneratorTarget;
 class cmGlobalUnixMakefileGenerator3;
-class cmLocalUnixMakefileGenerator3;
-class cmMakefile;
+class cmLinkLineComputer;
+class cmOutputConverter;
 class cmSourceFile;
+class cmStateDirectory;
 
 /** \class cmMakefileTargetGenerator
  * \brief Support Routines for writing makefiles
@@ -35,7 +33,7 @@ class cmMakefileTargetGenerator : public cmCommonTargetGenerator
 public:
   // constructor to set the ivars
   cmMakefileTargetGenerator(cmGeneratorTarget* target);
-  virtual ~cmMakefileTargetGenerator();
+  ~cmMakefileTargetGenerator() override;
 
   // construct using this factory call
   static cmMakefileTargetGenerator* New(cmGeneratorTarget* tgt);
@@ -65,9 +63,6 @@ protected:
   void WriteCommonCodeRules();
   void WriteTargetLanguageFlags();
 
-  // write the provide require rules for this target
-  void WriteTargetRequiresRules();
-
   // write the clean rules for this target
   void WriteTargetCleanRules();
 
@@ -83,7 +78,7 @@ protected:
     {
     }
 
-    void operator()(cmSourceFile const& source, const char* pkgloc);
+    void operator()(cmSourceFile const& source, const char* pkgloc) override;
 
   private:
     cmMakefileTargetGenerator* Generator;
@@ -116,7 +111,6 @@ protected:
   void WriteObjectsVariable(std::string& variableName,
                             std::string& variableNameExternal,
                             bool useWatcomQuote);
-  void WriteObjectsString(std::string& buildObjs);
   void WriteObjectsStrings(std::vector<std::string>& objStrings,
                            std::string::size_type limit = std::string::npos);
 
@@ -144,16 +138,22 @@ protected:
                         std::vector<std::string>& makefile_commands,
                         std::vector<std::string>& makefile_depends);
 
+  cmLinkLineComputer* CreateLinkLineComputer(
+    cmOutputConverter* outputConverter, cmStateDirectory const& stateDir);
+
   /** Create a response file with the given set of options.  Returns
       the relative path from the target build working directory to the
       response file name.  */
   std::string CreateResponseFile(const char* name, std::string const& options,
                                  std::vector<std::string>& makefile_depends);
 
+  bool CheckUseResponseFileForObjects(std::string const& l) const;
+  bool CheckUseResponseFileForLibraries(std::string const& l) const;
+
   /** Create list of flags for link libraries. */
-  void CreateLinkLibs(std::string& linkLibs, bool relink, bool useResponseFile,
-                      std::vector<std::string>& makefile_depends,
-                      bool useWatcomQuote);
+  void CreateLinkLibs(cmLinkLineComputer* linkLineComputer,
+                      std::string& linkLibs, bool useResponseFile,
+                      std::vector<std::string>& makefile_depends);
 
   /** Create lists of object files for linking and cleaning.  */
   void CreateObjectLists(bool useLinkScript, bool useArchiveRules,
@@ -161,11 +161,12 @@ protected:
                          std::vector<std::string>& makefile_depends,
                          bool useWatcomQuote);
 
-  void AddIncludeFlags(std::string& flags, const std::string& lang);
+  /** Add commands for generate def files */
+  void GenDefFile(std::vector<std::string>& real_link_commands);
+
+  void AddIncludeFlags(std::string& flags, const std::string& lang) override;
 
   virtual void CloseFileStreams();
-  void RemoveForbiddenFlags(const char* flagVar, const std::string& linkLang,
-                            std::string& linkFlags);
   cmLocalUnixMakefileGenerator3* LocalGenerator;
   cmGlobalUnixMakefileGenerator3* GlobalGenerator;
 

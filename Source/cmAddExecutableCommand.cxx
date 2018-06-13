@@ -1,27 +1,28 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmAddExecutableCommand.h"
+
+#include <sstream>
+
+#include "cmGeneratorExpression.h"
+#include "cmGlobalGenerator.h"
+#include "cmMakefile.h"
+#include "cmStateTypes.h"
+#include "cmTarget.h"
+
+class cmExecutionStatus;
 
 // cmExecutableCommand
 bool cmAddExecutableCommand::InitialPass(std::vector<std::string> const& args,
                                          cmExecutionStatus&)
 {
-  if (args.size() < 2) {
+  if (args.empty()) {
     this->SetError("called with incorrect number of arguments");
     return false;
   }
   std::vector<std::string>::const_iterator s = args.begin();
 
-  std::string exename = *s;
+  std::string const& exename = *s;
 
   ++s;
   bool use_win32 = false;
@@ -58,37 +59,11 @@ bool cmAddExecutableCommand::InitialPass(std::vector<std::string> const& args,
     !cmGlobalGenerator::IsReservedTarget(exename);
 
   if (nameOk && !importTarget && !isAlias) {
-    nameOk = exename.find(":") == std::string::npos;
+    nameOk = exename.find(':') == std::string::npos;
   }
-  if (!nameOk) {
-    cmake::MessageType messageType = cmake::AUTHOR_WARNING;
-    std::ostringstream e;
-    bool issueMessage = false;
-    switch (this->Makefile->GetPolicyStatus(cmPolicies::CMP0037)) {
-      case cmPolicies::WARN:
-        e << cmPolicies::GetPolicyWarning(cmPolicies::CMP0037) << "\n";
-        issueMessage = true;
-      case cmPolicies::OLD:
-        break;
-      case cmPolicies::NEW:
-      case cmPolicies::REQUIRED_IF_USED:
-      case cmPolicies::REQUIRED_ALWAYS:
-        issueMessage = true;
-        messageType = cmake::FATAL_ERROR;
-    }
-    if (issueMessage) {
-      /* clang-format off */
-      e << "The target name \"" << exename <<
-          "\" is reserved or not valid for certain "
-          "CMake features, such as generator expressions, and may result "
-          "in undefined behavior.";
-      /* clang-format on */
-      this->Makefile->IssueMessage(messageType, e.str());
-
-      if (messageType == cmake::FATAL_ERROR) {
-        return false;
-      }
-    }
+  if (!nameOk &&
+      !this->Makefile->CheckCMP0037(exename, cmStateEnums::EXECUTABLE)) {
+    return false;
   }
 
   // Special modifiers are not allowed with IMPORTED signature.
@@ -124,7 +99,7 @@ bool cmAddExecutableCommand::InitialPass(std::vector<std::string> const& args,
       return false;
     }
 
-    const char* aliasedName = s->c_str();
+    std::string const& aliasedName = *s;
     if (this->Makefile->IsAlias(aliasedName)) {
       std::ostringstream e;
       e << "cannot create ALIAS target \"" << exename << "\" because target \""
@@ -137,24 +112,23 @@ bool cmAddExecutableCommand::InitialPass(std::vector<std::string> const& args,
     if (!aliasedTarget) {
       std::ostringstream e;
       e << "cannot create ALIAS target \"" << exename << "\" because target \""
-        << aliasedName << "\" does not already "
-                          "exist.";
+        << aliasedName << "\" does not already exist.";
       this->SetError(e.str());
       return false;
     }
-    cmState::TargetType type = aliasedTarget->GetType();
-    if (type != cmState::EXECUTABLE) {
+    cmStateEnums::TargetType type = aliasedTarget->GetType();
+    if (type != cmStateEnums::EXECUTABLE) {
       std::ostringstream e;
       e << "cannot create ALIAS target \"" << exename << "\" because target \""
-        << aliasedName << "\" is not an "
-                          "executable.";
+        << aliasedName << "\" is not an executable.";
       this->SetError(e.str());
       return false;
     }
-    if (aliasedTarget->IsImported()) {
+    if (aliasedTarget->IsImported() &&
+        !aliasedTarget->IsImportedGloballyVisible()) {
       std::ostringstream e;
       e << "cannot create ALIAS target \"" << exename << "\" because target \""
-        << aliasedName << "\" is IMPORTED.";
+        << aliasedName << "\" is imported but not globally visible.";
       this->SetError(e.str());
       return false;
     }
@@ -174,7 +148,7 @@ bool cmAddExecutableCommand::InitialPass(std::vector<std::string> const& args,
     }
 
     // Create the imported target.
-    this->Makefile->AddImportedTarget(exename, cmState::EXECUTABLE,
+    this->Makefile->AddImportedTarget(exename, cmStateEnums::EXECUTABLE,
                                       importGlobal);
     return true;
   }
@@ -188,15 +162,9 @@ bool cmAddExecutableCommand::InitialPass(std::vector<std::string> const& args,
     }
   }
 
-  if (s == args.end()) {
-    this->SetError(
-      "called with incorrect number of arguments, no sources provided");
-    return false;
-  }
-
   std::vector<std::string> srclists(s, args.end());
   cmTarget* tgt =
-    this->Makefile->AddExecutable(exename.c_str(), srclists, excludeFromAll);
+    this->Makefile->AddExecutable(exename, srclists, excludeFromAll);
   if (use_win32) {
     tgt->SetProperty("WIN32_EXECUTABLE", "ON");
   }

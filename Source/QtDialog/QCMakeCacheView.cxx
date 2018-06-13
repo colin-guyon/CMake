@@ -1,15 +1,5 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "QCMakeCacheView.h"
 
 #include <QApplication>
@@ -33,7 +23,7 @@ public:
   }
 
 protected:
-  bool filterAcceptsRow(int row, const QModelIndex& p) const
+  bool filterAcceptsRow(int row, const QModelIndex& p) const override
   {
     QStringList strs;
     const QAbstractItemModel* m = this->sourceModel();
@@ -57,7 +47,7 @@ protected:
     }
 
     // check all strings for a match
-    foreach (QString str, strs) {
+    foreach (QString const& str, strs) {
       if (str.contains(this->filterRegExp())) {
         return true;
       }
@@ -87,7 +77,7 @@ public:
 protected:
   bool ShowAdvanced;
 
-  bool filterAcceptsRow(int row, const QModelIndex& p) const
+  bool filterAcceptsRow(int row, const QModelIndex& p) const override
   {
     const QAbstractItemModel* m = this->sourceModel();
     QModelIndex idx = m->index(row, 0, p);
@@ -95,10 +85,7 @@ protected:
     // if there are no children
     if (!m->hasChildren(idx)) {
       bool adv = m->data(idx, QCMakeCacheModel::AdvancedRole).toBool();
-      if (!adv || (adv && this->ShowAdvanced)) {
-        return true;
-      }
-      return false;
+      return !adv || this->ShowAdvanced;
     }
 
     // check children
@@ -160,7 +147,8 @@ QModelIndex QCMakeCacheView::moveCursor(CursorAction act,
   // want home/end to go to begin/end of rows, not columns
   if (act == MoveHome) {
     return this->model()->index(0, 1);
-  } else if (act == MoveEnd) {
+  }
+  if (act == MoveEnd) {
     return this->model()->index(this->model()->rowCount() - 1, 1);
   }
   return QTreeView::moveCursor(act, mod);
@@ -248,12 +236,12 @@ void QCMakeCacheModel::setProperties(const QCMakePropertyList& props)
     qSort(newP);
     qSort(newP2);
     int row_count = 0;
-    foreach (QCMakeProperty p, newP) {
+    foreach (QCMakeProperty const& p, newP) {
       this->insertRow(row_count);
       this->setPropertyData(this->index(row_count, 0), p, true);
       row_count++;
     }
-    foreach (QCMakeProperty p, newP2) {
+    foreach (QCMakeProperty const& p, newP2) {
       this->insertRow(row_count);
       this->setPropertyData(this->index(row_count, 0), p, false);
       row_count++;
@@ -266,8 +254,11 @@ void QCMakeCacheModel::setProperties(const QCMakePropertyList& props)
 
     QStandardItem* root = this->invisibleRootItem();
 
-    foreach (QString key, newPropsTree.keys()) {
-      QCMakePropertyList props2 = newPropsTree[key];
+    for (QMap<QString, QCMakePropertyList>::const_iterator iter =
+           newPropsTree.begin();
+         iter != newPropsTree.end(); ++iter) {
+      QString const& key = iter.key();
+      QCMakePropertyList const& props2 = iter.value();
 
       QList<QStandardItem*> parentItems;
       parentItems.append(
@@ -292,8 +283,11 @@ void QCMakeCacheModel::setProperties(const QCMakePropertyList& props)
       }
     }
 
-    foreach (QString key, newPropsTree2.keys()) {
-      QCMakePropertyList props2 = newPropsTree2[key];
+    for (QMap<QString, QCMakePropertyList>::const_iterator iter =
+           newPropsTree2.begin();
+         iter != newPropsTree2.end(); ++iter) {
+      QString const& key = iter.key();
+      QCMakePropertyList const& props2 = iter.value();
 
       QStandardItem* parentItem =
         new QStandardItem(key.isEmpty() ? tr("Ungrouped Entries") : key);
@@ -405,7 +399,7 @@ void QCMakeCacheModel::breakProperties(
 {
   QMap<QString, QCMakePropertyList> tmp;
   // return a map of properties grouped by prefixes, and sorted
-  foreach (QCMakeProperty p, props) {
+  foreach (QCMakeProperty const& p, props) {
     QString prefix = QCMakeCacheModel::prefix(p.Key);
     tmp[prefix].append(p);
   }
@@ -435,7 +429,7 @@ QCMakePropertyList QCMakeCacheModel::properties() const
     return props;
   }
 
-  QList<QModelIndex> idxs;
+  QVector<QModelIndex> idxs;
   idxs.append(this->index(0, 0));
 
   // walk the entire model for property entries
@@ -460,7 +454,7 @@ QCMakePropertyList QCMakeCacheModel::properties() const
                (idxs.last().row() + 1) >= rowCount(idxs.last().parent()) ||
 #endif
                !idxs.last().sibling(idxs.last().row() + 1, 0).isValid())) {
-        idxs.removeLast();
+        idxs.remove(idxs.size() - 1);
       }
       if (!idxs.isEmpty()) {
         idxs.last() = idxs.last().sibling(idxs.last().row() + 1, 0);
@@ -538,28 +532,31 @@ void QCMakeCacheModelDelegate::setFileDialogFlag(bool f)
   this->FileDialogFlag = f;
 }
 
-QWidget* QCMakeCacheModelDelegate::createEditor(QWidget* p,
-                                                const QStyleOptionViewItem&,
-                                                const QModelIndex& idx) const
+QWidget* QCMakeCacheModelDelegate::createEditor(
+  QWidget* p, const QStyleOptionViewItem& /*option*/,
+  const QModelIndex& idx) const
 {
   QModelIndex var = idx.sibling(idx.row(), 0);
   int type = var.data(QCMakeCacheModel::TypeRole).toInt();
   if (type == QCMakeProperty::BOOL) {
-    return NULL;
-  } else if (type == QCMakeProperty::PATH) {
+    return nullptr;
+  }
+  if (type == QCMakeProperty::PATH) {
     QCMakePathEditor* editor =
       new QCMakePathEditor(p, var.data(Qt::DisplayRole).toString());
     QObject::connect(editor, SIGNAL(fileDialogExists(bool)), this,
                      SLOT(setFileDialogFlag(bool)));
     return editor;
-  } else if (type == QCMakeProperty::FILEPATH) {
+  }
+  if (type == QCMakeProperty::FILEPATH) {
     QCMakeFilePathEditor* editor =
       new QCMakeFilePathEditor(p, var.data(Qt::DisplayRole).toString());
     QObject::connect(editor, SIGNAL(fileDialogExists(bool)), this,
                      SLOT(setFileDialogFlag(bool)));
     return editor;
-  } else if (type == QCMakeProperty::STRING &&
-             var.data(QCMakeCacheModel::StringsRole).isValid()) {
+  }
+  if (type == QCMakeProperty::STRING &&
+      var.data(QCMakeCacheModel::StringsRole).isValid()) {
     QCMakeComboBox* editor = new QCMakeComboBox(
       p, var.data(QCMakeCacheModel::StringsRole).toStringList());
     editor->setFrame(false);
@@ -645,7 +642,7 @@ QSize QCMakeCacheModelDelegate::sizeHint(const QStyleOptionViewItem& option,
   QStyleOptionButton opt;
   opt.QStyleOption::operator=(option);
   sz = sz.expandedTo(
-    style->subElementRect(QStyle::SE_ViewItemCheckIndicator, &opt, NULL)
+    style->subElementRect(QStyle::SE_ViewItemCheckIndicator, &opt, nullptr)
       .size());
 
   return sz;

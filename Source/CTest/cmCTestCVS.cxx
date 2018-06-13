@@ -1,22 +1,15 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCTestCVS.h"
 
 #include "cmCTest.h"
+#include "cmProcessTools.h"
 #include "cmSystemTools.h"
 #include "cmXMLWriter.h"
 
-#include <cmsys/FStream.hxx>
-#include <cmsys/RegularExpression.hxx>
+#include "cmsys/FStream.hxx"
+#include "cmsys/RegularExpression.hxx"
+#include <utility>
 
 cmCTestCVS::cmCTestCVS(cmCTest* ct, std::ostream& log)
   : cmCTestVC(ct, log)
@@ -53,7 +46,7 @@ private:
   cmsys::RegularExpression RegexFileRemoved1;
   cmsys::RegularExpression RegexFileRemoved2;
 
-  virtual bool ProcessLine()
+  bool ProcessLine() override
   {
     if (this->RegexFileUpdated.find(this->Line)) {
       this->DoFile(PathUpdated, this->RegexFileUpdated.match(2));
@@ -99,11 +92,10 @@ bool cmCTestCVS::UpdateImpl()
   cvs_update.push_back(this->CommandLineTool.c_str());
   cvs_update.push_back("-z3");
   cvs_update.push_back("update");
-  for (std::vector<std::string>::const_iterator ai = args.begin();
-       ai != args.end(); ++ai) {
-    cvs_update.push_back(ai->c_str());
+  for (std::string const& arg : args) {
+    cvs_update.push_back(arg.c_str());
   }
-  cvs_update.push_back(0);
+  cvs_update.push_back(nullptr);
 
   UpdateParser out(this, "up-out> ");
   UpdateParser err(this, "up-err> ");
@@ -140,7 +132,7 @@ private:
   SectionType Section;
   Revision Rev;
 
-  virtual bool ProcessLine()
+  bool ProcessLine() override
   {
     if (this->Line == ("======================================="
                        "======================================")) {
@@ -216,10 +208,9 @@ std::string cmCTestCVS::ComputeBranchFlag(std::string const& dir)
     std::string flag = "-r";
     flag += tagLine.substr(1);
     return flag;
-  } else {
-    // Use the default branch.
-    return "-b";
   }
+  // Use the default branch.
+  return "-b";
 }
 
 void cmCTestCVS::LoadRevisions(std::string const& file, const char* branchFlag,
@@ -229,7 +220,9 @@ void cmCTestCVS::LoadRevisions(std::string const& file, const char* branchFlag,
 
   // Run "cvs log" to get revisions of this file on this branch.
   const char* cvs = this->CommandLineTool.c_str();
-  const char* cvs_log[] = { cvs, "log", "-N", branchFlag, file.c_str(), 0 };
+  const char* cvs_log[] = {
+    cvs, "log", "-N", branchFlag, file.c_str(), nullptr
+  };
 
   LogParser out(this, "log-out> ", revisions);
   OutputLogger err(this->Log, "log-err> ");
@@ -248,12 +241,12 @@ void cmCTestCVS::WriteXMLDirectory(cmXMLWriter& xml, std::string const& path,
 
   // Load revisions and write an entry for each file in this directory.
   std::vector<Revision> revisions;
-  for (Directory::const_iterator fi = dir.begin(); fi != dir.end(); ++fi) {
-    std::string full = path + slash + fi->first;
+  for (auto const& fi : dir) {
+    std::string full = path + slash + fi.first;
 
     // Load two real or unknown revisions.
     revisions.clear();
-    if (fi->second != PathUpdated) {
+    if (fi.second != PathUpdated) {
       // For local modifications the current rev is unknown and the
       // prior rev is the latest from cvs.
       revisions.push_back(this->Unknown);
@@ -262,8 +255,8 @@ void cmCTestCVS::WriteXMLDirectory(cmXMLWriter& xml, std::string const& path,
     revisions.resize(2, this->Unknown);
 
     // Write the entry for this file with these revisions.
-    File f(fi->second, &revisions[0], &revisions[1]);
-    this->WriteXMLEntry(xml, path, fi->first, full, f);
+    File f(fi.second, &revisions[0], &revisions[1]);
+    this->WriteXMLEntry(xml, path, fi.first, full, f);
   }
   xml.EndElement(); // Directory
 }
@@ -275,10 +268,8 @@ bool cmCTestCVS::WriteXMLUpdates(cmXMLWriter& xml)
              "    "
                << std::flush);
 
-  for (std::map<std::string, Directory>::const_iterator di =
-         this->Dirs.begin();
-       di != this->Dirs.end(); ++di) {
-    this->WriteXMLDirectory(xml, di->first, di->second);
+  for (auto const& d : this->Dirs) {
+    this->WriteXMLDirectory(xml, d.first, d.second);
   }
 
   cmCTestLog(this->CTest, HANDLER_OUTPUT, std::endl);

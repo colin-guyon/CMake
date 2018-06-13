@@ -1,37 +1,27 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmVariableRequiresCommand.h"
 
+#include "cmMakefile.h"
 #include "cmState.h"
+#include "cmSystemTools.h"
+
+class cmExecutionStatus;
 
 // cmLibraryCommand
 bool cmVariableRequiresCommand::InitialPass(
   std::vector<std::string> const& args, cmExecutionStatus&)
 {
-  if (this->Disallowed(
-        cmPolicies::CMP0035,
-        "The variable_requires command should not be called; see CMP0035.")) {
-    return true;
-  }
   if (args.size() < 3) {
     this->SetError("called with incorrect number of arguments");
     return false;
   }
 
-  std::string testVariable = args[0];
+  std::string const& testVariable = args[0];
   if (!this->Makefile->IsOn(testVariable)) {
     return true;
   }
-  std::string resultVariable = args[1];
+  std::string const& resultVariable = args[1];
   bool requirementsMet = true;
   std::string notSet;
   bool hasAdvanced = false;

@@ -1,20 +1,17 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCTestBuildAndTestHandler_h
 #define cmCTestBuildAndTestHandler_h
 
+#include "cmConfigure.h" // IWYU pragma: keep
+
 #include "cmCTestGenericHandler.h"
-#include "cmListFileCache.h"
+#include "cmDuration.h"
+
+#include <sstream>
+#include <stddef.h>
+#include <string>
+#include <vector>
 
 class cmake;
 
@@ -25,17 +22,17 @@ class cmake;
 class cmCTestBuildAndTestHandler : public cmCTestGenericHandler
 {
 public:
-  cmTypeMacro(cmCTestBuildAndTestHandler, cmCTestGenericHandler);
+  typedef cmCTestGenericHandler Superclass;
 
   /*
    * The main entry point for this class
    */
-  int ProcessHandler();
+  int ProcessHandler() override;
 
   //! Set all the build and test arguments
-  virtual int ProcessCommandLineArguments(
+  int ProcessCommandLineArguments(
     const std::string& currentArg, size_t& idx,
-    const std::vector<std::string>& allArgs);
+    const std::vector<std::string>& allArgs) override;
 
   /*
    * Get the output variable
@@ -44,13 +41,13 @@ public:
 
   cmCTestBuildAndTestHandler();
 
-  virtual void Initialize();
+  void Initialize() override;
 
 protected:
   ///! Run CMake and build a test and then run it as a single test.
   int RunCMakeAndTest(std::string* output);
   int RunCMake(std::string* outstring, std::ostringstream& out,
-               std::string& cmakeOutString, std::string& cwd, cmake* cm);
+               std::string& cmakeOutString, cmake* cm);
 
   std::string Output;
 
@@ -71,7 +68,7 @@ protected:
   std::vector<std::string> TestCommandArgs;
   std::vector<std::string> BuildTargets;
   bool BuildNoCMake;
-  double Timeout;
+  cmDuration Timeout;
 };
 
 #endif

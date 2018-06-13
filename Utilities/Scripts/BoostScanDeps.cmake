@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 # Scan the Boost headers and determine the library dependencies.  Note
 # that this script only scans one Boost version at once; invoke once
 # for each Boost release.  Note that this does require the headers for
@@ -21,19 +24,6 @@
 
 # Written by Roger Leigh <rleigh@codelibre.net>
 
-#=============================================================================
-# Copyright 2014-2015 University of Dundee
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
-
 # Determine header dependencies on libraries using the embedded dependency information.
 #
 # component - the component to check (uses all headers from boost/${component})
@@ -49,29 +39,40 @@ function(_Boost_FIND_COMPONENT_DEPENDENCIES component includedir _ret_libs)
 
   # Start by finding all headers for the component; header
   # dependencies via #include will be solved by future passes
+  file(GLOB_RECURSE _boost_mpi_python_headers
+    RELATIVE "${includedir}"
+    "${includedir}/boost/mpi/python/*")
+  list(INSERT _boost_mpi_python_headers 0 "boost/mpi/python.hpp")
+
+  file(GLOB_RECURSE _boost_python_numpy_headers
+    RELATIVE "${includedir}"
+    "${includedir}/boost/python/numpy/*")
+  list(INSERT _boost_python_numpy_headers 0 "boost/python/numpy.hpp")
 
   # Special-case since it is part of mpi; look only in boost/mpi/python*
   if(component STREQUAL "mpi_python")
     set(_boost_DEPS "python")
     set(library_component TRUE)
-    file(GLOB_RECURSE _boost_unprocessed_headers
-         RELATIVE "${includedir}"
-         "${includedir}/boost/mpi/python/*")
-    list(INSERT _boost_unprocessed_headers 0 "${includedir}/boost/mpi/python.hpp")
+    set(_boost_unprocessed_headers ${_boost_mpi_python_headers})
+  # Special-case since it is part of python; look only in boost/python/numpy*
+  elseif(component STREQUAL "numpy")
+    set(_boost_DEPS "python")
+    set(library_component TRUE)
+    set(_boost_unprocessed_headers ${_boost_python_numpy_headers})
   # Special-case since it is a serialization variant; look in boost/serialization
   elseif(component STREQUAL "wserialization")
     set(library_component TRUE)
     file(GLOB_RECURSE _boost_unprocessed_headers
          RELATIVE "${includedir}"
          "${includedir}/boost/serialization/*")
-    list(INSERT _boost_unprocessed_headers 0 "${includedir}/boost/serialization.hpp")
+    list(INSERT _boost_unprocessed_headers 0 "boost/serialization.hpp")
   # Not really a library in its own right, but treat it as one
   elseif(component STREQUAL "math")
     set(library_component TRUE)
     file(GLOB_RECURSE _boost_unprocessed_headers
          RELATIVE "${includedir}"
          "${includedir}/boost/math/*")
-    list(INSERT _boost_unprocessed_headers 0 "${includedir}/boost/math.hpp")
+    list(INSERT _boost_unprocessed_headers 0 "boost/math.hpp")
   # Single test header
   elseif(component STREQUAL "unit_test_framework")
     set(library_component TRUE)
@@ -89,7 +90,8 @@ function(_Boost_FIND_COMPONENT_DEPENDENCIES component includedir _ret_libs)
     file(GLOB_RECURSE _boost_unprocessed_headers
          RELATIVE "${includedir}"
          "${includedir}/boost/${component}/*")
-    list(INSERT _boost_unprocessed_headers 0 "${includedir}/boost/${component}.hpp")
+    list(INSERT _boost_unprocessed_headers 0 "boost/${component}.hpp")
+    list(REMOVE_ITEM _boost_unprocessed_headers ${_boost_mpi_python_headers} ${_boost_python_numpy_headers})
   endif()
 
   while(_boost_unprocessed_headers)
@@ -112,6 +114,8 @@ function(_Boost_FIND_COMPONENT_DEPENDENCIES component includedir _ret_libs)
 
         foreach(line ${_boost_header_deps})
           string(REGEX REPLACE "^[ \t]*#[ \t]*define[ \t][ \t]*BOOST_LIB_NAME[ \t][ \t]*boost_([^ \t][^ \t]*).*" "\\1" _boost_component_match "${line}")
+          string(REPLACE "python3" "python" _boost_component_match "${_boost_component_match}")
+          string(REPLACE "numpy3" "numpy" _boost_component_match "${_boost_component_match}")
           list(FIND _boost_DEPS "${_boost_component_match}" _boost_dep_found)
           if(_boost_component_match STREQUAL "bzip2" OR
              _boost_component_match STREQUAL "zlib")
@@ -127,6 +131,12 @@ function(_Boost_FIND_COMPONENT_DEPENDENCIES component includedir _ret_libs)
               _boost_component_match STREQUAL "python"))
             # Optional python dependency; skip to avoid making it a
             # hard dependency (handle as special-case for mpi_python).
+            continue()
+          endif()
+          if(component STREQUAL "python" AND
+             boost_component_match STREQUAL "numpy")
+            # Optional python dependency; skip to avoid making it a
+            # hard dependency (handle as special-case for numpy).
             continue()
           endif()
           if (_boost_dep_found EQUAL -1 AND
@@ -177,6 +187,11 @@ endforeach()
 if(IS_DIRECTORY "${BOOST_DIR}/boost/mpi" AND
    IS_DIRECTORY "${BOOST_DIR}/boost/python")
  list(APPEND boost_components "mpi_python")
+endif()
+# Special-case numpy, since it's a part of python
+if(IS_DIRECTORY "${BOOST_DIR}/boost/python" AND
+   IS_DIRECTORY "${BOOST_DIR}/boost/python/numpy")
+ list(APPEND boost_components "numpy")
 endif()
 # Special-case wserialization, which is a variant of serialization
 if(IS_DIRECTORY "${BOOST_DIR}/boost/serialization")

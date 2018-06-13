@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindThreads
 # -----------
@@ -36,20 +39,6 @@
 # Please note that the compiler flag can only be used with the imported
 # target. Use of both the imported target as well as this switch is highly
 # recommended for new code.
-
-#=============================================================================
-# Copyright 2002-2009 Kitware, Inc.
-# Copyright 2011-2015 Rolf Eike Beer <eike@sf-mail.de>
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 include (CheckLibraryExists)
 include (CheckSymbolExists)
@@ -97,23 +86,16 @@ macro(_check_pthreads_flag)
         set(_threads_src ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/FindThreads/CheckForPthreads.cxx)
         configure_file(${CMAKE_CURRENT_LIST_DIR}/CheckForPthreads.c "${_threads_src}" COPYONLY)
       endif()
-      try_run(THREADS_PTHREAD_ARG THREADS_HAVE_PTHREAD_ARG
+      try_compile(THREADS_HAVE_PTHREAD_ARG
         ${CMAKE_BINARY_DIR}
         ${_threads_src}
         CMAKE_FLAGS -DLINK_LIBRARIES:STRING=-pthread
-        COMPILE_OUTPUT_VARIABLE OUTPUT)
+        OUTPUT_VARIABLE OUTPUT)
       unset(_threads_src)
 
       if(THREADS_HAVE_PTHREAD_ARG)
-        if(THREADS_PTHREAD_ARG STREQUAL "2")
-          set(Threads_FOUND TRUE)
-          message(STATUS "Check if compiler accepts -pthread - yes")
-        else()
-          message(STATUS "Check if compiler accepts -pthread - no")
-          file(APPEND
-            ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeError.log
-            "Determining if compiler accepts -pthread returned ${THREADS_PTHREAD_ARG} instead of 2. The compiler had the following output:\n${OUTPUT}\n\n")
-        endif()
+        set(Threads_FOUND TRUE)
+        message(STATUS "Check if compiler accepts -pthread - yes")
       else()
         message(STATUS "Check if compiler accepts -pthread - no")
         file(APPEND

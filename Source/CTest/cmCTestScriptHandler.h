@@ -1,26 +1,22 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCTestScriptHandler_h
 #define cmCTestScriptHandler_h
 
+#include "cmConfigure.h" // IWYU pragma: keep
+
 #include "cmCTestGenericHandler.h"
+#include "cmDuration.h"
 
-#include "cmListFileCache.h"
+#include <chrono>
+#include <string>
+#include <vector>
 
-class cmMakefile;
-class cmGlobalGenerator;
-class cmake;
+class cmCTest;
 class cmCTestCommand;
+class cmGlobalGenerator;
+class cmMakefile;
+class cmake;
 
 /** \class cmCTestScriptHandler
  * \brief A class that handles ctest -S invocations
@@ -61,7 +57,7 @@ class cmCTestCommand;
 class cmCTestScriptHandler : public cmCTestGenericHandler
 {
 public:
-  cmTypeMacro(cmCTestScriptHandler, cmCTestGenericHandler);
+  typedef cmCTestGenericHandler Superclass;
 
   /**
    * Add a script to run, and if is should run in the current process
@@ -71,7 +67,7 @@ public:
   /**
    * Run a dashboard using a specified confiuration script
    */
-  int ProcessHandler();
+  int ProcessHandler() override;
 
   /*
    * Run a script
@@ -99,17 +95,20 @@ public:
   /**
    * Return the time remaianing that the script is allowed to run in
    * seconds if the user has set the variable CTEST_TIME_LIMIT. If that has
-   * not been set it returns 1e7 seconds
+   * not been set it returns a very large value.
    */
-  double GetRemainingTimeAllowed();
+  cmDuration GetRemainingTimeAllowed();
 
   cmCTestScriptHandler();
-  ~cmCTestScriptHandler();
+  ~cmCTestScriptHandler() override;
 
-  void Initialize();
+  void Initialize() override;
 
   void CreateCMake();
   cmake* GetCMake() { return this->CMake; }
+
+  void SetRunCurrentScript(bool value);
+
 private:
   // reads in a script
   int ReadInScript(const std::string& total_script_arg);
@@ -132,13 +131,15 @@ private:
   int RunConfigurationDashboard();
 
   // Add ctest command
-  void AddCTestCommand(cmCTestCommand* command);
+  void AddCTestCommand(std::string const& name, cmCTestCommand* command);
 
   // Try to remove the binary directory once
   static bool TryToRemoveBinaryDirectoryOnce(const std::string& directoryPath);
 
   std::vector<std::string> ConfigurationScripts;
   std::vector<bool> ScriptProcessScope;
+
+  bool ShouldRunCurrentScript;
 
   bool Backup;
   bool EmptyBinDir;
@@ -162,7 +163,7 @@ private:
   double ContinuousDuration;
 
   // what time in seconds did this script start running
-  double ScriptStartTime;
+  std::chrono::steady_clock::time_point ScriptStartTime;
 
   cmMakefile* Makefile;
   cmGlobalGenerator* GlobalGenerator;

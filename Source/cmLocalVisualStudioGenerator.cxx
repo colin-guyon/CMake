@@ -1,17 +1,9 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmLocalVisualStudioGenerator.h"
 
 #include "cmCustomCommandGenerator.h"
+#include "cmGeneratorTarget.h"
 #include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
 #include "cmSourceFile.h"
@@ -40,56 +32,66 @@ void cmLocalVisualStudioGenerator::ComputeObjectFilenames(
   std::map<cmSourceFile const*, std::string>& mapping,
   cmGeneratorTarget const* gt)
 {
+  char const* custom_ext = gt->GetCustomObjectExtension();
   std::string dir_max = this->ComputeLongestObjectDirectory(gt);
 
   // Count the number of object files with each name.  Note that
   // windows file names are not case sensitive.
   std::map<std::string, int> counts;
 
-  for (std::map<cmSourceFile const*, std::string>::iterator si =
-         mapping.begin();
-       si != mapping.end(); ++si) {
-    cmSourceFile const* sf = si->first;
+  for (auto const& si : mapping) {
+    cmSourceFile const* sf = si.first;
     std::string objectNameLower = cmSystemTools::LowerCase(
       cmSystemTools::GetFilenameWithoutLastExtension(sf->GetFullPath()));
-    objectNameLower += this->GlobalGenerator->GetLanguageOutputExtension(*sf);
+    if (custom_ext) {
+      objectNameLower += custom_ext;
+    } else {
+      objectNameLower +=
+        this->GlobalGenerator->GetLanguageOutputExtension(*sf);
+    }
     counts[objectNameLower] += 1;
   }
 
   // For all source files producing duplicate names we need unique
   // object name computation.
 
-  for (std::map<cmSourceFile const*, std::string>::iterator si =
-         mapping.begin();
-       si != mapping.end(); ++si) {
-    cmSourceFile const* sf = si->first;
+  for (auto& si : mapping) {
+    cmSourceFile const* sf = si.first;
     std::string objectName =
       cmSystemTools::GetFilenameWithoutLastExtension(sf->GetFullPath());
-    objectName += this->GlobalGenerator->GetLanguageOutputExtension(*sf);
+    if (custom_ext) {
+      objectName += custom_ext;
+    } else {
+      objectName += this->GlobalGenerator->GetLanguageOutputExtension(*sf);
+    }
     if (counts[cmSystemTools::LowerCase(objectName)] > 1) {
       const_cast<cmGeneratorTarget*>(gt)->AddExplicitObjectName(sf);
-      objectName = this->GetObjectFileNameWithoutTarget(*sf, dir_max);
+      bool keptSourceExtension;
+      objectName = this->GetObjectFileNameWithoutTarget(
+        *sf, dir_max, &keptSourceExtension, custom_ext);
     }
-    si->second = objectName;
+    si.second = objectName;
   }
 }
 
-cmsys::auto_ptr<cmCustomCommand>
+std::unique_ptr<cmCustomCommand>
 cmLocalVisualStudioGenerator::MaybeCreateImplibDir(cmGeneratorTarget* target,
                                                    const std::string& config,
                                                    bool isFortran)
 {
-  cmsys::auto_ptr<cmCustomCommand> pcc;
+  std::unique_ptr<cmCustomCommand> pcc;
 
   // If an executable exports symbols then VS wants to create an
   // import library but forgets to create the output directory.
   // The Intel Fortran plugin always forgets to the directory.
-  if (target->GetType() != cmState::EXECUTABLE &&
-      !(isFortran && target->GetType() == cmState::SHARED_LIBRARY)) {
+  if (target->GetType() != cmStateEnums::EXECUTABLE &&
+      !(isFortran && target->GetType() == cmStateEnums::SHARED_LIBRARY)) {
     return pcc;
   }
-  std::string outDir = target->GetDirectory(config, false);
-  std::string impDir = target->GetDirectory(config, true);
+  std::string outDir =
+    target->GetDirectory(config, cmStateEnums::RuntimeBinaryArtifact);
+  std::string impDir =
+    target->GetDirectory(config, cmStateEnums::ImportLibraryArtifact);
   if (impDir == outDir) {
     return pcc;
   }
@@ -127,10 +129,9 @@ std::string cmLocalVisualStudioGenerator::ConstructScript(
 {
   bool useLocal = this->CustomCommandUseLocal();
   std::string workingDirectory = ccg.GetWorkingDirectory();
-  RelativeRoot relativeRoot = workingDirectory.empty() ? START_OUTPUT : NONE;
 
   // Avoid leading or trailing newlines.
-  std::string newline = "";
+  std::string newline;
 
   // Line to check for error between commands.
   std::string check_error = newline_text;
@@ -156,7 +157,8 @@ std::string cmLocalVisualStudioGenerator::ConstructScript(
     script += newline;
     newline = newline_text;
     script += "cd ";
-    script += this->Convert(workingDirectory, FULL, SHELL);
+    script += this->ConvertToOutputFormat(
+      cmSystemTools::CollapseFullPath(workingDirectory), SHELL);
     script += check_error;
 
     // Change the working drive.
@@ -185,12 +187,16 @@ std::string cmLocalVisualStudioGenerator::ConstructScript(
 
   // Write each command on a single line.
   for (unsigned int c = 0; c < ccg.GetNumberOfCommands(); ++c) {
+    // Add this command line.
+    std::string cmd = ccg.GetCommand(c);
+
+    if (cmd.empty()) {
+      continue;
+    }
+
     // Start a new line.
     script += newline;
     newline = newline_text;
-
-    // Add this command line.
-    std::string cmd = ccg.GetCommand(c);
 
     // Use "call " before any invocations of .bat or .cmd files
     // invoked as custom commands.
@@ -203,7 +209,13 @@ std::string cmLocalVisualStudioGenerator::ConstructScript(
       }
     }
 
-    script += this->Convert(cmd.c_str(), relativeRoot, SHELL);
+    if (workingDirectory.empty()) {
+      script += this->ConvertToOutputFormat(
+        this->ConvertToRelativePath(this->GetCurrentBinaryDirectory(), cmd),
+        cmOutputConverter::SHELL);
+    } else {
+      script += this->ConvertToOutputFormat(cmd.c_str(), SHELL);
+    }
     ccg.AppendArguments(c, script);
 
     // After each custom command, check for an error result.

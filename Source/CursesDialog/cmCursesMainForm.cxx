@@ -1,29 +1,25 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCursesMainForm.h"
 
-#include "../cmSystemTools.h"
-#include "../cmVersion.h"
-#include "../cmake.h"
 #include "cmAlgorithms.h"
-#include "cmCursesBoolWidget.h"
 #include "cmCursesCacheEntryComposite.h"
 #include "cmCursesDummyWidget.h"
-#include "cmCursesFilePathWidget.h"
+#include "cmCursesForm.h"
 #include "cmCursesLabelWidget.h"
 #include "cmCursesLongMessageForm.h"
-#include "cmCursesPathWidget.h"
+#include "cmCursesStandardIncludes.h"
 #include "cmCursesStringWidget.h"
+#include "cmCursesWidget.h"
 #include "cmState.h"
+#include "cmStateTypes.h"
+#include "cmSystemTools.h"
+#include "cmVersion.h"
+#include "cmake.h"
+
+#include <algorithm>
+#include <stdio.h>
+#include <string.h>
 
 inline int ctrl(int z)
 {
@@ -36,8 +32,8 @@ cmCursesMainForm::cmCursesMainForm(std::vector<std::string> const& args,
   , InitialWidth(initWidth)
 {
   this->NumberOfPages = 0;
-  this->Fields = 0;
-  this->Entries = 0;
+  this->Fields = nullptr;
+  this->Entries = nullptr;
   this->AdvancedMode = false;
   this->NumberOfVisibleEntries = 0;
   this->OkToGenerate = false;
@@ -45,7 +41,7 @@ cmCursesMainForm::cmCursesMainForm(std::vector<std::string> const& args,
     "Welcome to ccmake, curses based user interface for CMake.");
   this->HelpMessage.push_back("");
   this->HelpMessage.push_back(s_ConstHelpMessage);
-  this->CMakeInstance = new cmake;
+  this->CMakeInstance = new cmake(cmake::RoleProject);
   this->CMakeInstance->SetCMakeEditCommand(
     cmSystemTools::GetCMakeCursesCommand());
 
@@ -64,7 +60,7 @@ cmCursesMainForm::~cmCursesMainForm()
   if (this->Form) {
     unpost_form(this->Form);
     free_form(this->Form);
-    this->Form = 0;
+    this->Form = nullptr;
   }
   delete[] this->Fields;
 
@@ -75,7 +71,7 @@ cmCursesMainForm::~cmCursesMainForm()
   delete this->Entries;
   if (this->CMakeInstance) {
     delete this->CMakeInstance;
-    this->CMakeInstance = 0;
+    this->CMakeInstance = nullptr;
   }
 }
 
@@ -112,10 +108,10 @@ void cmCursesMainForm::InitializeUI()
 
   for (std::vector<std::string>::const_iterator it = cacheKeys.begin();
        it != cacheKeys.end(); ++it) {
-    cmState::CacheEntryType t =
+    cmStateEnums::CacheEntryType t =
       this->CMakeInstance->GetState()->GetCacheEntryType(*it);
-    if (t != cmState::INTERNAL && t != cmState::STATIC &&
-        t != cmState::UNINITIALIZED) {
+    if (t != cmStateEnums::INTERNAL && t != cmStateEnums::STATIC &&
+        t != cmStateEnums::UNINITIALIZED) {
       ++count;
     }
   }
@@ -136,10 +132,10 @@ void cmCursesMainForm::InitializeUI()
     for (std::vector<std::string>::const_iterator it = cacheKeys.begin();
          it != cacheKeys.end(); ++it) {
       std::string key = *it;
-      cmState::CacheEntryType t =
+      cmStateEnums::CacheEntryType t =
         this->CMakeInstance->GetState()->GetCacheEntryType(*it);
-      if (t == cmState::INTERNAL || t == cmState::STATIC ||
-          t == cmState::UNINITIALIZED) {
+      if (t == cmStateEnums::INTERNAL || t == cmStateEnums::STATIC ||
+          t == cmStateEnums::UNINITIALIZED) {
         continue;
       }
 
@@ -154,10 +150,10 @@ void cmCursesMainForm::InitializeUI()
     for (std::vector<std::string>::const_iterator it = cacheKeys.begin();
          it != cacheKeys.end(); ++it) {
       std::string key = *it;
-      cmState::CacheEntryType t =
+      cmStateEnums::CacheEntryType t =
         this->CMakeInstance->GetState()->GetCacheEntryType(*it);
-      if (t == cmState::INTERNAL || t == cmState::STATIC ||
-          t == cmState::UNINITIALIZED) {
+      if (t == cmStateEnums::INTERNAL || t == cmStateEnums::STATIC ||
+          t == cmStateEnums::UNINITIALIZED) {
         continue;
       }
 
@@ -185,7 +181,7 @@ void cmCursesMainForm::RePost()
   if (this->Form) {
     unpost_form(this->Form);
     free_form(this->Form);
-    this->Form = 0;
+    this->Form = nullptr;
   }
   delete[] this->Fields;
   if (this->AdvancedMode) {
@@ -215,7 +211,7 @@ void cmCursesMainForm::RePost()
   this->Fields = new FIELD*[3 * this->NumberOfVisibleEntries + 1];
   size_t cc;
   for (cc = 0; cc < 3 * this->NumberOfVisibleEntries + 1; cc++) {
-    this->Fields[cc] = 0;
+    this->Fields[cc] = nullptr;
   }
 
   // Assign fields
@@ -244,7 +240,7 @@ void cmCursesMainForm::RePost()
     this->NumberOfVisibleEntries = 1;
   }
   // Has to be null terminated.
-  this->Fields[3 * this->NumberOfVisibleEntries] = 0;
+  this->Fields[3 * this->NumberOfVisibleEntries] = nullptr;
 }
 
 void cmCursesMainForm::Render(int left, int top, int width, int height)
@@ -255,15 +251,16 @@ void cmCursesMainForm::Render(int left, int top, int width, int height)
     cmCursesWidget* cw =
       reinterpret_cast<cmCursesWidget*>(field_userptr(currentField));
     // If in edit mode, get out of it
-    if (cw->GetType() == cmState::STRING || cw->GetType() == cmState::PATH ||
-        cw->GetType() == cmState::FILEPATH) {
+    if (cw->GetType() == cmStateEnums::STRING ||
+        cw->GetType() == cmStateEnums::PATH ||
+        cw->GetType() == cmStateEnums::FILEPATH) {
       cmCursesStringWidget* sw = static_cast<cmCursesStringWidget*>(cw);
       sw->SetInEdit(false);
     }
     // Delete the previous form
     unpost_form(this->Form);
     free_form(this->Form);
-    this->Form = 0;
+    this->Form = nullptr;
   }
 
   // Wrong window size
@@ -345,67 +342,60 @@ void cmCursesMainForm::PrintKeys(int process /* = 0 */)
   }
 
   // Give the current widget (if it exists), a chance to print keys
-  cmCursesWidget* cw = 0;
+  cmCursesWidget* cw = nullptr;
   if (this->Form) {
     FIELD* currentField = current_field(this->Form);
     cw = reinterpret_cast<cmCursesWidget*>(field_userptr(currentField));
   }
 
-  if (cw) {
-    cw->PrintKeys();
-  }
-
-  //    {
-  //    }
-  //  else
-  //    {
-  char firstLine[512] = "";
-  char secondLine[512] = "";
-  char thirdLine[512] = "";
-  if (process) {
-    const char* clearLine =
-      "                                                                    ";
-    strcpy(firstLine, clearLine);
-    strcpy(secondLine, clearLine);
-    strcpy(thirdLine, clearLine);
-  } else {
-    if (this->OkToGenerate) {
-      sprintf(firstLine,
-              "Press [c] to configure       Press [g] to generate and exit");
-    } else {
-      sprintf(firstLine,
-              "Press [c] to configure                                   ");
-    }
-    {
-      const char* toggleKeyInstruction =
-        "Press [t] to toggle advanced mode (Currently %s)";
-      sprintf(thirdLine, toggleKeyInstruction,
-              this->AdvancedMode ? "On" : "Off");
-    }
-    sprintf(secondLine, "Press [h] for help           "
-                        "Press [q] to quit without generating");
-  }
-
-  curses_move(y - 4, 0);
   char fmt_s[] = "%s";
-  char fmt[512] = "Press [enter] to edit option";
-  if (process) {
-    strcpy(fmt, "                           ");
+  if (cw == nullptr || !cw->PrintKeys()) {
+    char firstLine[512] = "";
+    char secondLine[512] = "";
+    char thirdLine[512] = "";
+    if (process) {
+      memset(firstLine, ' ', 68);
+      memset(secondLine, ' ', 68);
+      memset(thirdLine, ' ', 68);
+    } else {
+      if (this->OkToGenerate) {
+        sprintf(firstLine,
+                "Press [c] to configure       Press [g] to generate and exit");
+      } else {
+        sprintf(firstLine,
+                "Press [c] to configure                                     ");
+      }
+      {
+        const char* toggleKeyInstruction =
+          "Press [t] to toggle advanced mode (Currently %s)";
+        sprintf(thirdLine, toggleKeyInstruction,
+                this->AdvancedMode ? "On" : "Off");
+      }
+      sprintf(secondLine, "Press [h] for help           "
+                          "Press [q] to quit without generating");
+    }
+
+    curses_move(y - 4, 0);
+    char fmt[512] =
+      "Press [enter] to edit option Press [d] to delete an entry";
+    if (process) {
+      memset(fmt, ' ', 27);
+    }
+    printw(fmt_s, fmt);
+    curses_move(y - 3, 0);
+    printw(fmt_s, firstLine);
+    curses_move(y - 2, 0);
+    printw(fmt_s, secondLine);
+    curses_move(y - 1, 0);
+    printw(fmt_s, thirdLine);
   }
-  printw(fmt_s, fmt);
-  curses_move(y - 3, 0);
-  printw(fmt_s, firstLine);
-  curses_move(y - 2, 0);
-  printw(fmt_s, secondLine);
-  curses_move(y - 1, 0);
-  printw(fmt_s, thirdLine);
 
   if (cw) {
-    sprintf(firstLine, "Page %d of %d", cw->GetPage(), this->NumberOfPages);
-    curses_move(0, 65 - static_cast<unsigned int>(strlen(firstLine)) - 1);
-    printw(fmt_s, firstLine);
+    char pageLine[512] = "";
+    sprintf(pageLine, "Page %d of %d", cw->GetPage(), this->NumberOfPages);
+    curses_move(0, 65 - static_cast<unsigned int>(strlen(pageLine)) - 1);
+    printw(fmt_s, pageLine);
   }
-  //    }
 
   pos_form_cursor(this->Form);
 }
@@ -434,7 +424,7 @@ void cmCursesMainForm::UpdateStatusBar(const char* message)
   // Get the key of the current entry
   FIELD* cur = current_field(this->Form);
   int findex = field_index(cur);
-  cmCursesWidget* lbl = 0;
+  cmCursesWidget* lbl = nullptr;
   if (findex >= 0) {
     lbl = reinterpret_cast<cmCursesWidget*>(
       field_userptr(this->Fields[findex - 2]));
@@ -465,41 +455,27 @@ void cmCursesMainForm::UpdateStatusBar(const char* message)
   // Join the key, help string and pad with spaces
   // (or truncate) as necessary
   char bar[cmCursesMainForm::MAX_WIDTH];
-  size_t i, curFieldLen = strlen(curField);
+  size_t curFieldLen = strlen(curField);
   size_t helpLen = strlen(help);
 
-  size_t width;
-  if (x < cmCursesMainForm::MAX_WIDTH) {
-    width = x;
-  } else {
-    width = cmCursesMainForm::MAX_WIDTH;
-  }
+  size_t width = std::min<size_t>(x, cmCursesMainForm::MAX_WIDTH);
 
   if (message) {
     curField = message;
     curFieldLen = strlen(message);
+    strncpy(bar, curField, width);
     if (curFieldLen < width) {
-      strcpy(bar, curField);
-      for (i = curFieldLen; i < width; ++i) {
-        bar[i] = ' ';
-      }
-    } else {
-      strncpy(bar, curField, width);
+      memset(bar + curFieldLen, ' ', width - curFieldLen);
     }
   } else {
-    if (curFieldLen >= width) {
-      strncpy(bar, curField, width);
-    } else {
-      strcpy(bar, curField);
+    strncpy(bar, curField, width);
+    if (curFieldLen < width) {
       bar[curFieldLen] = ':';
       bar[curFieldLen + 1] = ' ';
-      if (curFieldLen + helpLen + 2 >= width) {
-        strncpy(bar + curFieldLen + 2, help, width - curFieldLen - 2);
-      } else {
-        strcpy(bar + curFieldLen + 2, help);
-        for (i = curFieldLen + helpLen + 2; i < width; ++i) {
-          bar[i] = ' ';
-        }
+      strncpy(bar + curFieldLen + 2, help, width - curFieldLen - 2);
+      if (curFieldLen + helpLen + 2 < width) {
+        memset(bar + curFieldLen + helpLen + 2, ' ',
+               width - (curFieldLen + helpLen + 2));
       }
     }
   }
@@ -512,9 +488,7 @@ void cmCursesMainForm::UpdateStatusBar(const char* message)
   char vertmp[128];
   sprintf(vertmp, "CMake Version %s", cmVersion::GetCMakeVersion());
   size_t sideSpace = (width - strlen(vertmp));
-  for (i = 0; i < sideSpace; i++) {
-    version[i] = ' ';
-  }
+  memset(version, ' ', sideSpace);
   sprintf(version + sideSpace, "%s", vertmp);
   version[width] = '\0';
 
@@ -538,7 +512,7 @@ void cmCursesMainForm::UpdateProgress(const char* msg, float prog, void* vp)
   char tmp[1024];
   const char* cmsg = tmp;
   if (prog >= 0) {
-    sprintf(tmp, "%s %i%%", msg, (int)(100 * prog));
+    sprintf(tmp, "%s %i%%", msg, static_cast<int>(100 * prog));
   } else {
     cmsg = msg;
   }
@@ -566,7 +540,7 @@ int cmCursesMainForm::Configure(int noconfigure)
   this->FillCacheManagerFromUI();
   this->CMakeInstance->SaveCache(
     this->CMakeInstance->GetHomeOutputDirectory());
-  this->LoadCache(0);
+  this->LoadCache(nullptr);
 
   // Get rid of previous errors
   this->Errors = std::vector<std::string>();
@@ -583,10 +557,9 @@ int cmCursesMainForm::Configure(int noconfigure)
   } else {
     retVal = this->CMakeInstance->Configure();
   }
-  this->CMakeInstance->SetProgressCallback(0, 0);
+  this->CMakeInstance->SetProgressCallback(nullptr, nullptr);
 
-  keypad(stdscr, TRUE); /* Use key symbols as
-                           KEY_DOWN*/
+  keypad(stdscr, true); /* Use key symbols as KEY_DOWN */
 
   if (retVal != 0 || !this->Errors.empty()) {
     // see if there was an error
@@ -638,9 +611,8 @@ int cmCursesMainForm::Generate()
   // run the generate process
   int retVal = this->CMakeInstance->Generate();
 
-  this->CMakeInstance->SetProgressCallback(0, 0);
-  keypad(stdscr, TRUE); /* Use key symbols as
-                           KEY_DOWN*/
+  this->CMakeInstance->SetProgressCallback(nullptr, nullptr);
+  keypad(stdscr, true); /* Use key symbols as KEY_DOWN */
 
   if (retVal != 0 || !this->Errors.empty()) {
     // see if there was an error
@@ -675,7 +647,7 @@ int cmCursesMainForm::Generate()
   return 0;
 }
 
-void cmCursesMainForm::AddError(const char* message, const char*)
+void cmCursesMainForm::AddError(const char* message, const char* /*unused*/)
 {
   this->Errors.push_back(message);
 }
@@ -710,7 +682,7 @@ void cmCursesMainForm::FillCacheManagerFromUI()
       std::string newValue = (*this->Entries)[i]->Entry->GetValue();
       std::string fixedOldValue;
       std::string fixedNewValue;
-      cmState::CacheEntryType t =
+      cmStateEnums::CacheEntryType t =
         this->CMakeInstance->GetState()->GetCacheEntryType(cacheKey);
       this->FixValue(t, oldValue, fixedOldValue);
       this->FixValue(t, newValue, fixedNewValue);
@@ -726,14 +698,14 @@ void cmCursesMainForm::FillCacheManagerFromUI()
   }
 }
 
-void cmCursesMainForm::FixValue(cmState::CacheEntryType type,
+void cmCursesMainForm::FixValue(cmStateEnums::CacheEntryType type,
                                 const std::string& in, std::string& out) const
 {
   out = in.substr(0, in.find_last_not_of(' ') + 1);
-  if (type == cmState::PATH || type == cmState::FILEPATH) {
+  if (type == cmStateEnums::PATH || type == cmStateEnums::FILEPATH) {
     cmSystemTools::ConvertToUnixSlashes(out);
   }
-  if (type == cmState::BOOL) {
+  if (type == cmStateEnums::BOOL) {
     if (cmSystemTools::IsOff(out.c_str())) {
       out = "OFF";
     } else {
@@ -741,8 +713,6 @@ void cmCursesMainForm::FixValue(cmState::CacheEntryType type,
     }
   }
 }
-
-#include <unistd.h>
 
 void cmCursesMainForm::HandleInput()
 {
@@ -777,9 +747,8 @@ void cmCursesMainForm::HandleInput()
       // quit
       if (key == 'q') {
         break;
-      } else {
-        continue;
       }
+      continue;
     }
 
     currentField = current_field(this->Form);
@@ -837,7 +806,9 @@ void cmCursesMainForm::HandleInput()
       // therefore, the label field for the prev. entry is index-5
       // and the label field for the next entry is index+1
       // (index always corresponds to the value field)
-      else if (key == KEY_DOWN || key == ctrl('n')) {
+      // scroll down with arrow down, ctrl+n (emacs binding), or j (vim
+      // binding)
+      if (key == KEY_DOWN || key == ctrl('n') || key == 'j') {
         FIELD* cur = current_field(this->Form);
         size_t findex = field_index(cur);
         if (findex == 3 * this->NumberOfVisibleEntries - 1) {
@@ -854,7 +825,8 @@ void cmCursesMainForm::HandleInput()
       // therefore, the label field for the prev. entry is index-5
       // and the label field for the next entry is index+1
       // (index always corresponds to the value field)
-      else if (key == KEY_UP || key == ctrl('p')) {
+      // scroll down with arrow up, ctrl+p (emacs binding), or k (vim binding)
+      else if (key == KEY_UP || key == ctrl('p') || key == 'k') {
         FIELD* cur = current_field(this->Form);
         int findex = field_index(cur);
         if (findex == 2) {
@@ -888,7 +860,7 @@ void cmCursesMainForm::HandleInput()
         cmCursesWidget* lbl = reinterpret_cast<cmCursesWidget*>(
           field_userptr(this->Fields[findex - 2]));
         const char* curField = lbl->GetValue();
-        const char* helpString = 0;
+        const char* helpString = nullptr;
 
         const char* existingValue =
           this->CMakeInstance->GetState()->GetCacheEntryValue(curField);
@@ -973,7 +945,7 @@ void cmCursesMainForm::HandleInput()
         // (findex always corresponds to the value field)
         FIELD* nextCur;
         if (findex == 2) {
-          nextCur = 0;
+          nextCur = nullptr;
         } else if (findex == 3 * this->NumberOfVisibleEntries - 1) {
           nextCur = this->Fields[findex - 5];
         } else {
@@ -1003,7 +975,7 @@ void cmCursesMainForm::HandleInput()
 
           if (nextCur) {
             // make the next or prev. current field after deletion
-            nextCur = 0;
+            nextCur = nullptr;
             std::vector<cmCursesCacheEntryComposite*>::iterator it;
             for (it = this->Entries->begin(); it != this->Entries->end();
                  ++it) {
@@ -1025,7 +997,7 @@ void cmCursesMainForm::HandleInput()
   }
 }
 
-int cmCursesMainForm::LoadCache(const char*)
+int cmCursesMainForm::LoadCache(const char* /*unused*/)
 
 {
   int r = this->CMakeInstance->LoadCache();
@@ -1052,7 +1024,7 @@ void cmCursesMainForm::JumpToCacheEntry(const char* astr)
   int findex = start_index;
   for (;;) {
     if (!str.empty()) {
-      cmCursesWidget* lbl = 0;
+      cmCursesWidget* lbl = nullptr;
       if (findex >= 0) {
         lbl = reinterpret_cast<cmCursesWidget*>(
           field_userptr(this->Fields[findex - 2]));
@@ -1061,7 +1033,7 @@ void cmCursesMainForm::JumpToCacheEntry(const char* astr)
         const char* curField = lbl->GetValue();
         if (curField) {
           std::string cfld = cmSystemTools::LowerCase(curField);
-          if (cfld.find(str) != cfld.npos && findex != start_index) {
+          if (cfld.find(str) != std::string::npos && findex != start_index) {
             break;
           }
         }
@@ -1122,16 +1094,17 @@ const char* cmCursesMainForm::s_ConstHelpMessage =
   "Navigation: "
   "You can use the arrow keys and page up, down to navigate the options. "
   "Alternatively, you can use the following keys: \n"
-  " C-n : next option\n"
-  " C-p : previous options\n"
+  " C-n or j : next option\n"
+  " C-p or k : previous options\n"
   " C-d : down one page\n"
   " C-u : up one page\n\n"
   "Editing options: "
   "To change an option  press enter or return. If the current options is a "
-  "boolean, this will toggle it's value. "
-  "Otherwise, ccmake will enter edit mode. In this mode you can edit an "
-  "option using arrow keys and backspace. Alternatively, you can use the "
-  "following keys:\n"
+  "boolean, this will toggle its value. "
+  "Otherwise, ccmake will enter edit mode. Alternatively, you can toggle "
+  "a bool variable by pressing space, and enter edit mode with i."
+  "In this mode you can edit an option using arrow keys and backspace. "
+  "Alternatively, you can use the following keys:\n"
   " C-b : back one character\n"
   " C-f : forward one character\n"
   " C-a : go to the beginning of the field\n"
@@ -1140,7 +1113,6 @@ const char* cmCursesMainForm::s_ConstHelpMessage =
   " C-k : kill the rest of the field\n"
   " Esc : Restore field (discard last changes)\n"
   " Enter : Leave edit mode\n"
-  "You can also delete an option by pressing 'd'\n\n"
   "Commands:\n"
   " q : quit ccmake without generating build files\n"
   " h : help, shows this screen\n"
@@ -1148,6 +1120,7 @@ const char* cmCursesMainForm::s_ConstHelpMessage =
   " g : generate build files and exit, only available when there are no "
   "new options and no errors have been detected during last configuration.\n"
   " l : shows last errors\n"
+  " d : delete an option\n"
   " t : toggles advanced mode. In normal mode, only the most important "
   "options are shown. In advanced mode, all options are shown. We recommend "
   "using normal mode unless you are an expert.\n"

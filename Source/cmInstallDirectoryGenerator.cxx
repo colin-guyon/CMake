@@ -1,18 +1,14 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmInstallDirectoryGenerator.h"
 
 #include "cmGeneratorExpression.h"
+#include "cmInstallType.h"
 #include "cmLocalGenerator.h"
+#include "cmMakefile.h"
+#include "cmSystemTools.h"
+
+#include <memory> // IWYU pragma: keep
 
 cmInstallDirectoryGenerator::cmInstallDirectoryGenerator(
   std::vector<std::string> const& dirs, const char* dest,
@@ -22,7 +18,7 @@ cmInstallDirectoryGenerator::cmInstallDirectoryGenerator(
   bool optional)
   : cmInstallGenerator(dest, configurations, component, message,
                        exclude_from_all)
-  , LocalGenerator(0)
+  , LocalGenerator(nullptr)
   , Directories(dirs)
   , FilePermissions(file_permissions)
   , DirPermissions(dir_permissions)
@@ -53,7 +49,7 @@ void cmInstallDirectoryGenerator::Compute(cmLocalGenerator* lg)
 }
 
 void cmInstallDirectoryGenerator::GenerateScriptActions(std::ostream& os,
-                                                        Indent const& indent)
+                                                        Indent indent)
 {
   if (this->ActionsPerConfig) {
     this->cmInstallGenerator::GenerateScriptActions(os, indent);
@@ -63,25 +59,33 @@ void cmInstallDirectoryGenerator::GenerateScriptActions(std::ostream& os,
 }
 
 void cmInstallDirectoryGenerator::GenerateScriptForConfig(
-  std::ostream& os, const std::string& config, Indent const& indent)
+  std::ostream& os, const std::string& config, Indent indent)
 {
   std::vector<std::string> dirs;
   cmGeneratorExpression ge;
-  for (std::vector<std::string>::const_iterator i = this->Directories.begin();
-       i != this->Directories.end(); ++i) {
-    cmsys::auto_ptr<cmCompiledGeneratorExpression> cge = ge.Parse(*i);
+  for (std::string const& d : this->Directories) {
+    std::unique_ptr<cmCompiledGeneratorExpression> cge = ge.Parse(d);
     cmSystemTools::ExpandListArgument(
       cge->Evaluate(this->LocalGenerator, config), dirs);
   }
+
+  // Make sure all dirs have absolute paths.
+  cmMakefile const& mf = *this->LocalGenerator->GetMakefile();
+  for (std::string& d : dirs) {
+    if (!cmSystemTools::FileIsFullPath(d)) {
+      d = std::string(mf.GetCurrentSourceDirectory()) + "/" + d;
+    }
+  }
+
   this->AddDirectoryInstallRule(os, config, indent, dirs);
 }
 
 void cmInstallDirectoryGenerator::AddDirectoryInstallRule(
-  std::ostream& os, const std::string& config, Indent const& indent,
+  std::ostream& os, const std::string& config, Indent indent,
   std::vector<std::string> const& dirs)
 {
   // Write code to install the directories.
-  const char* no_rename = 0;
+  const char* no_rename = nullptr;
   this->AddInstallRule(os, this->GetDestination(config),
                        cmInstallType_DIRECTORY, dirs, this->Optional,
                        this->FilePermissions.c_str(),

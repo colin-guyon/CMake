@@ -1,15 +1,5 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2015 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmWIXShortcut.h"
 
 #include "cmWIXFilesSourceWriter.h"
@@ -57,10 +47,9 @@ bool cmWIXShortcuts::EmitShortcuts(
       return false;
   }
 
-  for (shortcut_id_map_t::const_iterator j = id_map.begin(); j != id_map.end();
-       ++j) {
-    std::string const& id = j->first;
-    shortcut_list_t const& shortcutList = j->second;
+  for (auto const& j : id_map) {
+    std::string const& id = j.first;
+    shortcut_list_t const& shortcutList = j.second;
 
     for (size_t shortcutListIndex = 0; shortcutListIndex < shortcutList.size();
          ++shortcutListIndex) {
@@ -78,9 +67,8 @@ bool cmWIXShortcuts::EmitShortcuts(
 
 void cmWIXShortcuts::AddShortcutTypes(std::set<Type>& types)
 {
-  for (shortcut_type_map_t::const_iterator i = this->Shortcuts.begin();
-       i != this->Shortcuts.end(); ++i) {
-    types.insert(i->first);
+  for (auto const& shortcut : this->Shortcuts) {
+    types.insert(shortcut.first);
   }
 }
 
@@ -106,9 +94,9 @@ void cmWIXShortcuts::CreateFromProperty(std::string const& propertyName,
   std::vector<std::string> list;
   installedFile.GetPropertyAsList(propertyName, list);
 
-  for (size_t i = 0; i < list.size(); ++i) {
+  for (std::string const& label : list) {
     cmWIXShortcut shortcut;
-    shortcut.label = list[i];
+    shortcut.label = label;
     shortcut.workingDirectoryId = directoryId;
     insert(type, id, shortcut);
   }

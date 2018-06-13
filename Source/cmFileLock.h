@@ -1,19 +1,11 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2014 Ruslan Baratov
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmFileLock_h
 #define cmFileLock_h
 
-#include "cmStandardIncludes.h"
+#include "cmConfigure.h" // IWYU pragma: keep
+
+#include <string>
 
 #if defined(_WIN32)
 #include <windows.h> // HANDLE
@@ -29,6 +21,8 @@ class cmFileLockResult;
   */
 class cmFileLock
 {
+  CM_DISABLE_COPY(cmFileLock)
+
 public:
   cmFileLock();
   ~cmFileLock();
@@ -52,9 +46,6 @@ public:
   bool IsLocked(const std::string& filename) const;
 
 private:
-  cmFileLock(const cmFileLock&);
-  cmFileLock& operator=(const cmFileLock&);
-
   cmFileLockResult OpenFile();
   cmFileLockResult LockWithoutTimeout();
   cmFileLockResult LockWithTimeout(unsigned long timeoutSec);

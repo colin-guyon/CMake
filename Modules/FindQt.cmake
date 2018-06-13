@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindQt
 # ------
@@ -29,19 +32,6 @@
 #   DESIRED_QT_VERSION OPTION is created
 #   QT4_INSTALLED is set to TRUE if qt4 is found.
 #   QT3_INSTALLED is set to TRUE if qt3 is found.
-
-#=============================================================================
-# Copyright 2001-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 # look for signs of qt3 installations
 file(GLOB GLOB_TEMP_VAR /usr/lib*/qt-3*/bin/qmake /usr/lib*/qt3*/bin/qmake)
@@ -115,13 +105,11 @@ find_file( QT4_QGLOBAL_H_FILE qglobal.h
   "[HKEY_CURRENT_USER\\Software\\Trolltech\\Versions\\4.0.0;InstallDir]/include/Qt"
   ${qt_headers}/Qt
   $ENV{QTDIR}/include/Qt
-  /usr/local/qt/include/Qt
-  /usr/local/include/Qt
   /usr/lib/qt/include/Qt
-  /usr/include/Qt
   /usr/share/qt4/include/Qt
   /usr/local/include/X11/qt4/Qt
-  C:/Progra~1/qt/include/Qt )
+  C:/Progra~1/qt/include/Qt
+  PATH_SUFFIXES qt/include/Qt include/Qt)
 
 if(QT4_QGLOBAL_H_FILE)
   set(QT4_INSTALLED TRUE)
@@ -135,14 +123,10 @@ find_file( QT3_QGLOBAL_H_FILE qglobal.h
   C:/Qt/3.3.3Educational/include
   $ENV{QTDIR}/include
   /usr/include/qt3/Qt
-  /usr/local/qt/include
-  /usr/local/include
-  /usr/lib/qt/include
-  /usr/include
   /usr/share/qt3/include
   /usr/local/include/X11/qt3
   C:/Progra~1/qt/include
-  /usr/include/qt3 )
+  PATH_SUFFIXES qt/include include/qt3)
 
 if(QT3_QGLOBAL_H_FILE)
   set(QT3_INSTALLED TRUE)

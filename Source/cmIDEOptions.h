@@ -1,20 +1,15 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmIDEOptions_h
 #define cmIDEOptions_h
 
-#include "cmStandardIncludes.h"
+#include "cmConfigure.h" // IWYU pragma: keep
 
-#include "cmIDEFlagTable.h"
+#include <map>
+#include <string>
+#include <vector>
+
+struct cmIDEFlagTable;
 
 /** \class cmIDEOptions
  * \brief Superclass for IDE option processing
@@ -25,18 +20,26 @@ public:
   cmIDEOptions();
   virtual ~cmIDEOptions();
 
-  // Store definitions and flags.
+  // Store definitions, includes and flags.
   void AddDefine(const std::string& define);
   void AddDefines(const char* defines);
   void AddDefines(const std::vector<std::string>& defines);
-  void AddFlag(const char* flag, const char* value);
-  void AddFlag(const char* flag, std::vector<std::string> const& value);
+  std::vector<std::string> const& GetDefines() const;
+
+  void AddInclude(const std::string& includes);
+  void AddIncludes(const char* includes);
+  void AddIncludes(const std::vector<std::string>& includes);
+  std::vector<std::string> const& GetIncludes() const;
+
+  void AddFlag(std::string const& flag, std::string const& value);
+  void AddFlag(std::string const& flag, std::vector<std::string> const& value);
   void AppendFlag(std::string const& flag, std::string const& value);
   void AppendFlag(std::string const& flag,
                   std::vector<std::string> const& value);
-  void RemoveFlag(const char* flag);
+  void AppendFlagString(std::string const& flag, std::string const& value);
+  void RemoveFlag(std::string const& flag);
   bool HasFlag(std::string const& flag) const;
-  const char* GetFlag(const char* flag);
+  const char* GetFlag(std::string const& flag) const;
 
 protected:
   // create a map of xml tags to the values they should have in the output
@@ -62,17 +65,29 @@ protected:
       this->derived::operator=(r);
       return *this;
     }
+    FlagValue& append_with_space(std::string const& r)
+    {
+      this->resize(1);
+      std::string& l = this->operator[](0);
+      if (!l.empty()) {
+        l += " ";
+      }
+      l += r;
+      return *this;
+    }
   };
   std::map<std::string, FlagValue> FlagMap;
 
   // Preprocessor definitions.
   std::vector<std::string> Defines;
 
-  // Unrecognized flags that get no special handling.
-  std::string FlagString;
+  // Include directories.
+  std::vector<std::string> Includes;
 
   bool DoingDefine;
   bool AllowDefine;
+  bool DoingInclude;
+  bool AllowInclude;
   bool AllowSlash;
   cmIDEFlagTable const* DoingFollowing;
   enum

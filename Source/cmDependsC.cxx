@@ -1,27 +1,18 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmDependsC.h"
+
+#include "cmsys/FStream.hxx"
+#include <utility>
 
 #include "cmAlgorithms.h"
 #include "cmFileTimeComparison.h"
 #include "cmLocalGenerator.h"
 #include "cmMakefile.h"
 #include "cmSystemTools.h"
-#include <cmsys/FStream.hxx>
-
-#include <ctype.h> // isspace
 
 #define INCLUDE_REGEX_LINE                                                    \
-  "^[ \t]*#[ \t]*(include|import)[ \t]*[<\"]([^\">]+)([\">])"
+  "^[ \t]*[#%][ \t]*(include|import)[ \t]*[<\"]([^\">]+)([\">])"
 
 #define INCLUDE_REGEX_LINE_MARKER "#IncludeRegexLine: "
 #define INCLUDE_REGEX_SCAN_MARKER "#IncludeRegexScan: "
@@ -29,7 +20,7 @@
 #define INCLUDE_REGEX_TRANSFORM_MARKER "#IncludeRegexTransform: "
 
 cmDependsC::cmDependsC()
-  : ValidDeps(0)
+  : ValidDeps(nullptr)
 {
 }
 
@@ -105,7 +96,7 @@ bool cmDependsC::WriteDependencies(const std::set<std::string>& sources,
   std::set<std::string> dependencies;
   bool haveDeps = false;
 
-  if (this->ValidDeps != 0) {
+  if (this->ValidDeps != nullptr) {
     std::map<std::string, DependencyVector>::const_iterator tmpIt =
       this->ValidDeps->find(obj);
     if (tmpIt != this->ValidDeps->end()) {
@@ -116,15 +107,14 @@ bool cmDependsC::WriteDependencies(const std::set<std::string>& sources,
 
   if (!haveDeps) {
     // Walk the dependency graph starting with the source file.
-    int srcFiles = (int)sources.size();
+    int srcFiles = static_cast<int>(sources.size());
     this->Encountered.clear();
 
-    for (std::set<std::string>::const_iterator srcIt = sources.begin();
-         srcIt != sources.end(); ++srcIt) {
+    for (std::string const& src : sources) {
       UnscannedEntry root;
-      root.FileName = *srcIt;
+      root.FileName = src;
       this->Unscanned.push(root);
-      this->Encountered.insert(*srcIt);
+      this->Encountered.insert(src);
     }
 
     std::set<std::string> scanned;
@@ -141,14 +131,12 @@ bool cmDependsC::WriteDependencies(const std::set<std::string>& sources,
 
       // If not a full path, find the file in the include path.
       std::string fullName;
-      if ((srcFiles > 0) ||
-          cmSystemTools::FileIsFullPath(current.FileName.c_str())) {
-        if (cmSystemTools::FileExists(current.FileName.c_str(), true)) {
+      if ((srcFiles > 0) || cmSystemTools::FileIsFullPath(current.FileName)) {
+        if (cmSystemTools::FileExists(current.FileName, true)) {
           fullName = current.FileName;
         }
       } else if (!current.QuotedLocation.empty() &&
-                 cmSystemTools::FileExists(current.QuotedLocation.c_str(),
-                                           true)) {
+                 cmSystemTools::FileExists(current.QuotedLocation, true)) {
         // The include statement producing this entry was a double-quote
         // include and the included file is present in the directory of
         // the source containing the include statement.
@@ -158,23 +146,22 @@ bool cmDependsC::WriteDependencies(const std::set<std::string>& sources,
           this->HeaderLocationCache.find(current.FileName);
         if (headerLocationIt != this->HeaderLocationCache.end()) {
           fullName = headerLocationIt->second;
-        } else
-          for (std::vector<std::string>::const_iterator i =
-                 this->IncludePath.begin();
-               i != this->IncludePath.end(); ++i) {
+        } else {
+          for (std::string const& i : this->IncludePath) {
             // Construct the name of the file as if it were in the current
             // include directory.  Avoid using a leading "./".
 
             tempPathStr =
-              cmSystemTools::CollapseCombinedPath(*i, current.FileName);
+              cmSystemTools::CollapseCombinedPath(i, current.FileName);
 
             // Look for the file in this location.
-            if (cmSystemTools::FileExists(tempPathStr.c_str(), true)) {
+            if (cmSystemTools::FileExists(tempPathStr, true)) {
               fullName = tempPathStr;
               HeaderLocationCache[current.FileName] = fullName;
               break;
             }
           }
+        }
       }
 
       // Complain if the file cannot be found and matches the complain
@@ -197,13 +184,11 @@ bool cmDependsC::WriteDependencies(const std::set<std::string>& sources,
         if (fileIt != this->FileCache.end()) {
           fileIt->second->Used = true;
           dependencies.insert(fullName);
-          for (std::vector<UnscannedEntry>::const_iterator incIt =
-                 fileIt->second->UnscannedEntries.begin();
-               incIt != fileIt->second->UnscannedEntries.end(); ++incIt) {
-            if (this->Encountered.find(incIt->FileName) ==
+          for (UnscannedEntry const& inc : fileIt->second->UnscannedEntries) {
+            if (this->Encountered.find(inc.FileName) ==
                 this->Encountered.end()) {
-              this->Encountered.insert(incIt->FileName);
-              this->Unscanned.push(*incIt);
+              this->Encountered.insert(inc.FileName);
+              this->Unscanned.push(inc);
             }
           }
         } else {
@@ -237,20 +222,17 @@ bool cmDependsC::WriteDependencies(const std::set<std::string>& sources,
   // written by the original local generator for this directory
   // convert the dependencies to paths relative to the home output
   // directory.  We must do the same here.
-  std::string obj_i =
-    this->LocalGenerator->Convert(obj, cmOutputConverter::HOME_OUTPUT);
-  std::string obj_m = this->LocalGenerator->ConvertToOutputFormat(
-    obj_i, cmOutputConverter::MAKERULE);
+  std::string binDir = this->LocalGenerator->GetBinaryDirectory();
+  std::string obj_i = this->LocalGenerator->ConvertToRelativePath(binDir, obj);
+  std::string obj_m = cmSystemTools::ConvertToOutputPath(obj_i);
   internalDepends << obj_i << std::endl;
 
-  for (std::set<std::string>::const_iterator i = dependencies.begin();
-       i != dependencies.end(); ++i) {
+  for (std::string const& dep : dependencies) {
     makeDepends << obj_m << ": "
-                << this->LocalGenerator->Convert(
-                     *i, cmOutputConverter::HOME_OUTPUT,
-                     cmOutputConverter::MAKERULE)
+                << cmSystemTools::ConvertToOutputPath(
+                     this->LocalGenerator->ConvertToRelativePath(binDir, dep))
                 << std::endl;
-    internalDepends << " " << *i << std::endl;
+    internalDepends << " " << dep << std::endl;
   }
   makeDepends << std::endl;
 
@@ -268,31 +250,31 @@ void cmDependsC::ReadCacheFile()
   }
 
   std::string line;
-  cmIncludeLines* cacheEntry = 0;
+  cmIncludeLines* cacheEntry = nullptr;
   bool haveFileName = false;
 
   while (cmSystemTools::GetLineFromStream(fin, line)) {
     if (line.empty()) {
-      cacheEntry = 0;
+      cacheEntry = nullptr;
       haveFileName = false;
       continue;
     }
     // the first line after an empty line is the name of the parsed file
-    if (haveFileName == false) {
+    if (!haveFileName) {
       haveFileName = true;
       int newer = 0;
       cmFileTimeComparison comp;
       bool res = comp.FileTimeCompare(this->CacheFileName.c_str(),
                                       line.c_str(), &newer);
 
-      if ((res == true) && (newer == 1)) // cache is newer than the parsed file
+      if (res && newer == 1) // cache is newer than the parsed file
       {
         cacheEntry = new cmIncludeLines;
         this->FileCache[line] = cacheEntry;
       }
       // file doesn't exist, check that the regular expressions
       // haven't changed
-      else if (res == false) {
+      else if (!res) {
         if (line.find(INCLUDE_REGEX_LINE_MARKER) == 0) {
           if (line != this->IncludeRegexLineString) {
             return;
@@ -311,14 +293,14 @@ void cmDependsC::ReadCacheFile()
           }
         }
       }
-    } else if (cacheEntry != 0) {
+    } else if (cacheEntry != nullptr) {
       UnscannedEntry entry;
       entry.FileName = line;
       if (cmSystemTools::GetLineFromStream(fin, line)) {
         if (line != "-") {
           entry.QuotedLocation = line;
         }
-        cacheEntry->UnscannedEntries.push_back(entry);
+        cacheEntry->UnscannedEntries.push_back(std::move(entry));
       }
     }
   }
@@ -339,20 +321,16 @@ void cmDependsC::WriteCacheFile() const
   cacheOut << this->IncludeRegexComplainString << "\n\n";
   cacheOut << this->IncludeRegexTransformString << "\n\n";
 
-  for (std::map<std::string, cmIncludeLines*>::const_iterator fileIt =
-         this->FileCache.begin();
-       fileIt != this->FileCache.end(); ++fileIt) {
-    if (fileIt->second->Used) {
-      cacheOut << fileIt->first.c_str() << std::endl;
+  for (auto const& fileIt : this->FileCache) {
+    if (fileIt.second->Used) {
+      cacheOut << fileIt.first << std::endl;
 
-      for (std::vector<UnscannedEntry>::const_iterator incIt =
-             fileIt->second->UnscannedEntries.begin();
-           incIt != fileIt->second->UnscannedEntries.end(); ++incIt) {
-        cacheOut << incIt->FileName.c_str() << std::endl;
-        if (incIt->QuotedLocation.empty()) {
+      for (UnscannedEntry const& inc : fileIt.second->UnscannedEntries) {
+        cacheOut << inc.FileName << std::endl;
+        if (inc.QuotedLocation.empty()) {
           cacheOut << "-" << std::endl;
         } else {
-          cacheOut << incIt->QuotedLocation.c_str() << std::endl;
+          cacheOut << inc.QuotedLocation << std::endl;
         }
       }
       cacheOut << std::endl;
@@ -382,7 +360,7 @@ void cmDependsC::Scan(std::istream& is, const char* directory,
       entry.FileName = this->IncludeRegexLine.match(2);
       cmSystemTools::ConvertToUnixSlashes(entry.FileName);
       if (this->IncludeRegexLine.match(3) == "\"" &&
-          !cmSystemTools::FileIsFullPath(entry.FileName.c_str())) {
+          !cmSystemTools::FileIsFullPath(entry.FileName)) {
         // This was a double-quoted include with a relative path.  We
         // must check for the file in the directory containing the
         // file we are scanning.
@@ -420,21 +398,19 @@ void cmDependsC::SetupTransforms()
   if (const char* xform = mf->GetDefinition("CMAKE_INCLUDE_TRANSFORMS")) {
     cmSystemTools::ExpandListArgument(xform, transformRules, true);
   }
-  for (std::vector<std::string>::const_iterator tri = transformRules.begin();
-       tri != transformRules.end(); ++tri) {
-    this->ParseTransform(*tri);
+  for (std::string const& tr : transformRules) {
+    this->ParseTransform(tr);
   }
 
   this->IncludeRegexTransformString = INCLUDE_REGEX_TRANSFORM_MARKER;
   if (!this->TransformRules.empty()) {
     // Construct the regular expression to match lines to be
     // transformed.
-    std::string xform = "^([ \t]*#[ \t]*(include|import)[ \t]*)(";
+    std::string xform = "^([ \t]*[#%][ \t]*(include|import)[ \t]*)(";
     const char* sep = "";
-    for (TransformRulesType::const_iterator tri = this->TransformRules.begin();
-         tri != this->TransformRules.end(); ++tri) {
+    for (auto const& tr : this->TransformRules) {
       xform += sep;
-      xform += tri->first;
+      xform += tr.first;
       sep = "|";
     }
     xform += ")[ \t]*\\(([^),]*)\\)";
@@ -443,12 +419,11 @@ void cmDependsC::SetupTransforms()
     // Build a string that encodes all transformation rules and will
     // change when rules are changed.
     this->IncludeRegexTransformString += xform;
-    for (TransformRulesType::const_iterator tri = this->TransformRules.begin();
-         tri != this->TransformRules.end(); ++tri) {
+    for (auto const& tr : this->TransformRules) {
       this->IncludeRegexTransformString += " ";
-      this->IncludeRegexTransformString += tri->first;
+      this->IncludeRegexTransformString += tr.first;
       this->IncludeRegexTransformString += "(%)=";
-      this->IncludeRegexTransformString += tri->second;
+      this->IncludeRegexTransformString += tr.second;
     }
   }
 }
@@ -458,11 +433,11 @@ void cmDependsC::ParseTransform(std::string const& xform)
   // A transform rule is of the form SOME_MACRO(%)=value-with-%
   // We can simply separate with "(%)=".
   std::string::size_type pos = xform.find("(%)=");
-  if (pos == xform.npos || pos == 0) {
+  if (pos == std::string::npos || pos == 0) {
     return;
   }
   std::string name = xform.substr(0, pos);
-  std::string value = xform.substr(pos + 4, xform.npos);
+  std::string value = xform.substr(pos + 4);
   this->TransformRules[name] = value;
 }
 

@@ -1,21 +1,12 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCTestMemCheckHandler_h
 #define cmCTestMemCheckHandler_h
 
+#include "cmConfigure.h" // IWYU pragma: keep
+
 #include "cmCTestTestHandler.h"
 
-#include "cmListFileCache.h"
 #include <string>
 #include <vector>
 
@@ -31,18 +22,20 @@ class cmCTestMemCheckHandler : public cmCTestTestHandler
   friend class cmCTestRunTest;
 
 public:
-  cmTypeMacro(cmCTestMemCheckHandler, cmCTestTestHandler);
+  typedef cmCTestTestHandler Superclass;
 
-  void PopulateCustomVectors(cmMakefile* mf);
+  void PopulateCustomVectors(cmMakefile* mf) override;
 
   cmCTestMemCheckHandler();
 
-  void Initialize();
+  void Initialize() override;
+
+  int GetDefectCount();
 
 protected:
-  virtual int PreProcessHandler();
-  virtual int PostProcessHandler();
-  virtual void GenerateTestCommand(std::vector<std::string>& args, int test);
+  int PreProcessHandler() override;
+  int PostProcessHandler() override;
+  void GenerateTestCommand(std::vector<std::string>& args, int test) override;
 
 private:
   enum
@@ -53,6 +46,7 @@ private:
     BOUNDS_CHECKER,
     // checkers after here do not use the standard error list
     ADDRESS_SANITIZER,
+    LEAK_SANITIZER,
     THREAD_SANITIZER,
     MEMORY_SANITIZER,
     UB_SANITIZER
@@ -113,6 +107,7 @@ private:
   std::vector<std::string> ResultStringsLong;
   std::vector<int> GlobalResults;
   bool LogWithPID; // does log file add pid
+  int DefectCount;
 
   std::vector<int>::size_type FindOrAddWarning(const std::string& warning);
   // initialize the ResultStrings and ResultStringsLong for
@@ -125,7 +120,7 @@ private:
   /**
    * Generate the Dart compatible output
    */
-  void GenerateDartOutput(cmXMLWriter& xml);
+  void GenerateDartOutput(cmXMLWriter& xml) override;
 
   std::vector<std::string> CustomPreMemCheck;
   std::vector<std::string> CustomPostMemCheck;

@@ -1,6 +1,9 @@
+// Component: CMake
+
 function Component()
 {
-    // default constructor
+    // Do not show component selection page
+    installer.setDefaultPageVisible(QInstaller.ComponentSelection, false);
 }
 
 Component.prototype.createOperations = function()
@@ -8,15 +11,15 @@ Component.prototype.createOperations = function()
     // Create shortcut
     if (installer.value("os") === "win") {
 
-@_CPACK_IFW_SHORTCUT_OPTIONAL@
+%_CPACK_IFW_SHORTCUT_OPTIONAL%
 
         component.addOperation("CreateShortcut",
-                               installer.value("TargetDir") + "/@CMAKE_DOC_DIR@/cmake.org.html",
-                               installer.value("StartMenuDir") + "/CMake Web Site.lnk");
+                               "@TargetDir@/%CMAKE_DOC_DIR%/cmake.org.html",
+                               "@StartMenuDir@/CMake Web Site.lnk");
 
         component.addOperation("CreateShortcut",
-                               installer.value("TargetDir") + "/cmake-maintenance.exe",
-                               installer.value("StartMenuDir") + "/CMake Maintenance Tool.lnk");
+                               "@TargetDir@/cmake-maintenance.exe",
+                               "@StartMenuDir@/CMake Maintenance Tool.lnk");
     }
 
     // Call default implementation

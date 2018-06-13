@@ -1,28 +1,16 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCPackSTGZGenerator.h"
 
+#include "cmsys/FStream.hxx"
+#include <sstream>
+#include <stdio.h>
+#include <string>
+
+#include "cmCPackGenerator.h"
 #include "cmCPackLog.h"
-#include "cmGlobalGenerator.h"
-#include "cmMakefile.h"
 #include "cmSystemTools.h"
-#include "cmake.h"
-
-#include <cmsys/FStream.hxx>
-
-#include <sys/types.h>
-// include sys/stat.h after sys/types.h
-#include <sys/stat.h>
+#include "cm_sys_stat.h"
 
 cmCPackSTGZGenerator::cmCPackSTGZGenerator()
 {
@@ -59,9 +47,8 @@ int cmCPackSTGZGenerator::PackageFiles()
    * have generated several packages (component packaging)
    * so we must iterate over generated packages.
    */
-  for (std::vector<std::string>::iterator it = packageFileNames.begin();
-       it != packageFileNames.end(); ++it) {
-    retval &= cmSystemTools::SetPermissions((*it).c_str(),
+  for (std::string const& pfn : packageFileNames) {
+    retval &= cmSystemTools::SetPermissions(pfn.c_str(),
 #if defined(_MSC_VER) || defined(__MINGW32__)
                                             S_IREAD | S_IWRITE | S_IEXEC
 #else

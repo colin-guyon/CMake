@@ -1,18 +1,17 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmMacroCommand.h"
 
+#include <sstream>
+#include <stdio.h>
+#include <utility>
+
 #include "cmAlgorithms.h"
-#include "cmake.h"
+#include "cmExecutionStatus.h"
+#include "cmMakefile.h"
+#include "cmPolicies.h"
+#include "cmState.h"
+#include "cmSystemTools.h"
 
 // define the class for macro commands
 class cmMacroHelperCommand : public cmCommand
@@ -21,20 +20,12 @@ public:
   cmMacroHelperCommand() {}
 
   ///! clean up any memory allocated by the macro
-  ~cmMacroHelperCommand() {}
-
-  /**
-   * This is used to avoid including this command
-   * in documentation. This is mainly used by
-   * cmMacroHelperCommand and cmFunctionHelperCommand
-   * which cannot provide appropriate documentation.
-   */
-  virtual bool ShouldAppearInDocumentation() const { return false; }
+  ~cmMacroHelperCommand() override {}
 
   /**
    * This is a virtual constructor for the command.
    */
-  virtual cmCommand* Clone()
+  cmCommand* Clone() override
   {
     cmMacroHelperCommand* newC = new cmMacroHelperCommand;
     // we must copy when we clone
@@ -46,28 +37,17 @@ public:
   }
 
   /**
-   * This determines if the command is invoked when in script mode.
-   */
-  virtual bool IsScriptable() const { return true; }
-
-  /**
    * This is called when the command is first encountered in
    * the CMakeLists.txt file.
    */
-  virtual bool InvokeInitialPass(const std::vector<cmListFileArgument>& args,
-                                 cmExecutionStatus&);
+  bool InvokeInitialPass(const std::vector<cmListFileArgument>& args,
+                         cmExecutionStatus&) override;
 
-  virtual bool InitialPass(std::vector<std::string> const&, cmExecutionStatus&)
+  bool InitialPass(std::vector<std::string> const&,
+                   cmExecutionStatus&) override
   {
     return false;
   }
-
-  /**
-   * The name of the command as specified in CMakeList.txt.
-   */
-  virtual std::string GetName() const { return this->Args[0]; }
-
-  cmTypeMacro(cmMacroHelperCommand, cmCommand);
 
   std::vector<std::string> Args;
   std::vector<cmListFileFunction> Functions;
@@ -119,20 +99,18 @@ bool cmMacroHelperCommand::InvokeInitialPass(
   // Invoke all the functions that were collected in the block.
   cmListFileFunction newLFF;
   // for each function
-  for (unsigned int c = 0; c < this->Functions.size(); ++c) {
+  for (cmListFileFunction const& func : this->Functions) {
     // Replace the formal arguments and then invoke the command.
     newLFF.Arguments.clear();
-    newLFF.Arguments.reserve(this->Functions[c].Arguments.size());
-    newLFF.Name = this->Functions[c].Name;
-    newLFF.Line = this->Functions[c].Line;
+    newLFF.Arguments.reserve(func.Arguments.size());
+    newLFF.Name = func.Name;
+    newLFF.Line = func.Line;
 
     // for each argument of the current function
-    for (std::vector<cmListFileArgument>::iterator k =
-           this->Functions[c].Arguments.begin();
-         k != this->Functions[c].Arguments.end(); ++k) {
+    for (cmListFileArgument const& k : func.Arguments) {
       cmListFileArgument arg;
-      arg.Value = k->Value;
-      if (k->Delim != cmListFileArgument::Bracket) {
+      arg.Value = k.Value;
+      if (k.Delim != cmListFileArgument::Bracket) {
         // replace formal arguments
         for (unsigned int j = 0; j < variables.size(); ++j) {
           cmSystemTools::ReplaceString(arg.Value, variables[j],
@@ -152,9 +130,9 @@ bool cmMacroHelperCommand::InvokeInitialPass(
           }
         }
       }
-      arg.Delim = k->Delim;
-      arg.Line = k->Line;
-      newLFF.Arguments.push_back(arg);
+      arg.Delim = k.Delim;
+      arg.Line = k.Line;
+      newLFF.Arguments.push_back(std::move(arg));
     }
     cmExecutionStatus status;
     if (!this->Makefile->ExecuteCommand(newLFF, status) ||
@@ -162,15 +140,15 @@ bool cmMacroHelperCommand::InvokeInitialPass(
       // The error message should have already included the call stack
       // so we do not need to report an error here.
       macroScope.Quiet();
-      inStatus.SetNestedError(true);
+      inStatus.SetNestedError();
       return false;
     }
     if (status.GetReturnInvoked()) {
-      inStatus.SetReturnInvoked(true);
+      inStatus.SetReturnInvoked();
       return true;
     }
     if (status.GetBreakInvoked()) {
-      inStatus.SetBreakInvoked(true);
+      inStatus.SetBreakInvoked();
       return true;
     }
   }
@@ -195,17 +173,13 @@ bool cmMacroFunctionBlocker::IsFunctionBlocked(const cmListFileFunction& lff,
       f->Functions = this->Functions;
       f->FilePath = this->GetStartingContext().FilePath;
       mf.RecordPolicies(f->Policies);
-      std::string newName = "_" + this->Args[0];
-      mf.GetState()->RenameCommand(this->Args[0], newName);
-      mf.GetState()->AddCommand(f);
-
+      mf.GetState()->AddScriptedCommand(this->Args[0], f);
       // remove the function blocker now that the macro is defined
       mf.RemoveFunctionBlocker(this, lff);
       return true;
-    } else {
-      // decrement for each nested macro that ends
-      this->Depth--;
     }
+    // decrement for each nested macro that ends
+    this->Depth--;
   }
 
   // if it wasn't an endmacro and we are not executing then we must be
@@ -235,7 +209,7 @@ bool cmMacroFunctionBlocker::ShouldRemove(const cmListFileFunction& lff,
 bool cmMacroCommand::InitialPass(std::vector<std::string> const& args,
                                  cmExecutionStatus&)
 {
-  if (args.size() < 1) {
+  if (args.empty()) {
     this->SetError("called with incorrect number of arguments");
     return false;
   }

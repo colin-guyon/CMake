@@ -1,21 +1,22 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmIncludeCommand.h"
+
+#include <sstream>
+
+#include "cmGlobalGenerator.h"
+#include "cmMakefile.h"
+#include "cmPolicies.h"
+#include "cmSystemTools.h"
+#include "cmake.h"
+
+class cmExecutionStatus;
 
 // cmIncludeCommand
 bool cmIncludeCommand::InitialPass(std::vector<std::string> const& args,
                                    cmExecutionStatus&)
 {
-  if (args.size() < 1 || args.size() > 4) {
+  if (args.empty() || args.size() > 4) {
     this->SetError("called with wrong number of arguments.  "
                    "include() only takes one file.");
     return false;
@@ -62,13 +63,13 @@ bool cmIncludeCommand::InitialPass(std::vector<std::string> const& args,
     return true;
   }
 
-  if (!cmSystemTools::FileIsFullPath(fname.c_str())) {
+  if (!cmSystemTools::FileIsFullPath(fname)) {
     // Not a path. Maybe module.
     std::string module = fname;
     module += ".cmake";
     std::string mfile = this->Makefile->GetModulesFile(module.c_str());
     if (!mfile.empty()) {
-      fname = mfile.c_str();
+      fname = mfile;
     }
   }
 
@@ -77,7 +78,7 @@ bool cmIncludeCommand::InitialPass(std::vector<std::string> const& args,
 
   cmGlobalGenerator* gg = this->Makefile->GetGlobalGenerator();
   if (gg->IsExportedTargetsFile(fname_abs)) {
-    const char* modal = 0;
+    const char* modal = nullptr;
     std::ostringstream e;
     cmake::MessageType messageType = cmake::AUTHOR_WARNING;
 
@@ -110,8 +111,8 @@ bool cmIncludeCommand::InitialPass(std::vector<std::string> const& args,
   }
 
   std::string listFile = cmSystemTools::CollapseFullPath(
-    fname.c_str(), this->Makefile->GetCurrentSourceDirectory());
-  if (optional && !cmSystemTools::FileExists(listFile.c_str())) {
+    fname, this->Makefile->GetCurrentSourceDirectory());
+  if (optional && !cmSystemTools::FileExists(listFile)) {
     if (!resultVarName.empty()) {
       this->Makefile->AddDefinition(resultVarName, "NOTFOUND");
     }

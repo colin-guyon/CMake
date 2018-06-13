@@ -1,29 +1,22 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCPackPackageMakerGenerator.h"
+
+#include "cmsys/FStream.hxx"
+#include "cmsys/RegularExpression.hxx"
+#include <assert.h>
+#include <map>
+#include <sstream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string>
 
 #include "cmCPackComponentGroup.h"
 #include "cmCPackLog.h"
+#include "cmDuration.h"
 #include "cmGeneratedFileStream.h"
-#include "cmGlobalGenerator.h"
-#include "cmMakefile.h"
 #include "cmSystemTools.h"
-#include "cmake.h"
-
-#include <cmsys/FStream.hxx>
-#include <cmsys/Glob.hxx>
-#include <cmsys/SystemTools.hxx>
-
-#include <assert.h>
+#include "cmXMLWriter.h"
 
 static inline unsigned int getVersion(unsigned int major, unsigned int minor)
 {
@@ -44,21 +37,6 @@ cmCPackPackageMakerGenerator::~cmCPackPackageMakerGenerator()
 bool cmCPackPackageMakerGenerator::SupportsComponentInstallation() const
 {
   return this->PackageCompatibilityVersion >= getVersion(10, 4);
-}
-
-int cmCPackPackageMakerGenerator::CopyInstallScript(const std::string& resdir,
-                                                    const std::string& script,
-                                                    const std::string& name)
-{
-  std::string dst = resdir;
-  dst += "/";
-  dst += name;
-  cmSystemTools::CopyFileAlways(script.c_str(), dst.c_str());
-  cmSystemTools::SetPermissions(dst.c_str(), 0777);
-  cmCPackLogger(cmCPackLog::LOG_VERBOSE, "copy script : "
-                  << script << "\ninto " << dst.c_str() << std::endl);
-
-  return 1;
 }
 
 int cmCPackPackageMakerGenerator::PackageFiles()
@@ -116,7 +94,7 @@ int cmCPackPackageMakerGenerator::PackageFiles()
       if (!cmsys::SystemTools::MakeDirectory(preflightDirName.c_str())) {
         cmCPackLogger(cmCPackLog::LOG_ERROR,
                       "Problem creating installer directory: "
-                        << preflightDirName.c_str() << std::endl);
+                        << preflightDirName << std::endl);
         return 0;
       }
     }
@@ -124,7 +102,7 @@ int cmCPackPackageMakerGenerator::PackageFiles()
       if (!cmsys::SystemTools::MakeDirectory(postflightDirName.c_str())) {
         cmCPackLogger(cmCPackLog::LOG_ERROR,
                       "Problem creating installer directory: "
-                        << postflightDirName.c_str() << std::endl);
+                        << postflightDirName << std::endl);
         return 0;
       }
     }
@@ -132,13 +110,13 @@ int cmCPackPackageMakerGenerator::PackageFiles()
     // then copy them into the resource directory and make
     // them executable
     if (preflight) {
-      this->CopyInstallScript(resDir.c_str(), preflight, "preflight");
+      this->CopyInstallScript(resDir, preflight, "preflight");
     }
     if (postflight) {
-      this->CopyInstallScript(resDir.c_str(), postflight, "postflight");
+      this->CopyInstallScript(resDir, postflight, "postflight");
     }
     if (postupgrade) {
-      this->CopyInstallScript(resDir.c_str(), postupgrade, "postupgrade");
+      this->CopyInstallScript(resDir, postupgrade, "postupgrade");
     }
   } else if (postflight) {
     // create a postflight component to house the script
@@ -152,7 +130,7 @@ int cmCPackPackageMakerGenerator::PackageFiles()
     if (!cmsys::SystemTools::MakeDirectory(packageDir.c_str())) {
       cmCPackLogger(cmCPackLog::LOG_ERROR,
                     "Problem creating component packages directory: "
-                      << packageDir.c_str() << std::endl);
+                      << packageDir << std::endl);
       return 0;
     }
 
@@ -162,7 +140,7 @@ int cmCPackPackageMakerGenerator::PackageFiles()
       cmCPackLogger(
         cmCPackLog::LOG_ERROR,
         "Problem creating component PostFlight Packages directory: "
-          << packageFileDir.c_str() << std::endl);
+          << packageFileDir << std::endl);
       return 0;
     }
     std::string packageFile =
@@ -174,7 +152,7 @@ int cmCPackPackageMakerGenerator::PackageFiles()
 
     // copy postflight script into resource directory of .pkg
     std::string resourceDir = packageFile + "/Contents/Resources";
-    this->CopyInstallScript(resourceDir.c_str(), postflight, "postflight");
+    this->CopyInstallScript(resourceDir, postflight, "postflight");
   }
 
   if (!this->Components.empty()) {
@@ -184,7 +162,7 @@ int cmCPackPackageMakerGenerator::PackageFiles()
     if (!cmsys::SystemTools::MakeDirectory(basePackageDir.c_str())) {
       cmCPackLogger(cmCPackLog::LOG_ERROR,
                     "Problem creating component packages directory: "
-                      << basePackageDir.c_str() << std::endl);
+                      << basePackageDir << std::endl);
       return 0;
     }
 
@@ -268,9 +246,9 @@ int cmCPackPackageMakerGenerator::PackageFiles()
   this->SetOption("CPACK_MODULE_VERSION_SUFFIX", "");
 
   // Copy or create all of the resource files we need.
-  if (!this->CopyCreateResourceFile("License", resDir.c_str()) ||
-      !this->CopyCreateResourceFile("ReadMe", resDir.c_str()) ||
-      !this->CopyCreateResourceFile("Welcome", resDir.c_str()) ||
+  if (!this->CopyCreateResourceFile("License", resDir) ||
+      !this->CopyCreateResourceFile("ReadMe", resDir) ||
+      !this->CopyCreateResourceFile("Welcome", resDir) ||
       !this->CopyResourcePlistFile("Info.plist") ||
       !this->CopyResourcePlistFile("Description.plist")) {
     cmCPackLogger(cmCPackLog::LOG_ERROR, "Problem copying the resource files"
@@ -298,8 +276,9 @@ int cmCPackPackageMakerGenerator::PackageFiles()
     if (this->PackageMakerVersion > 2.0) {
       pkgCmd << " -v";
     }
-    if (!RunPackageMaker(pkgCmd.str().c_str(), packageDirFileName.c_str()))
+    if (!RunPackageMaker(pkgCmd.str().c_str(), packageDirFileName.c_str())) {
       return 0;
+    }
   } else {
     // We have built the package in place. Generate the
     // distribution.dist file to describe it for the installer.
@@ -310,16 +289,16 @@ int cmCPackPackageMakerGenerator::PackageFiles()
   tmpFile += "/hdiutilOutput.log";
   std::ostringstream dmgCmd;
   dmgCmd << "\"" << this->GetOption("CPACK_INSTALLER_PROGRAM_DISK_IMAGE")
-         << "\" create -ov -format UDZO -srcfolder \"" << packageDirFileName
-         << "\" \"" << packageFileNames[0] << "\"";
+         << "\" create -ov -fs HFS+ -format UDZO -srcfolder \""
+         << packageDirFileName << "\" \"" << packageFileNames[0] << "\"";
   std::string output;
   int retVal = 1;
   int numTries = 10;
   bool res = false;
   while (numTries > 0) {
-    res =
-      cmSystemTools::RunSingleCommand(dmgCmd.str().c_str(), &output, &output,
-                                      &retVal, 0, this->GeneratorVerbose, 0);
+    res = cmSystemTools::RunSingleCommand(
+      dmgCmd.str().c_str(), &output, &output, &retVal, nullptr,
+      this->GeneratorVerbose, cmDuration::zero());
     if (res && !retVal) {
       numTries = -1;
       break;
@@ -329,12 +308,12 @@ int cmCPackPackageMakerGenerator::PackageFiles()
   }
   if (!res || retVal) {
     cmGeneratedFileStream ofs(tmpFile.c_str());
-    ofs << "# Run command: " << dmgCmd.str().c_str() << std::endl
+    ofs << "# Run command: " << dmgCmd.str() << std::endl
         << "# Output:" << std::endl
-        << output.c_str() << std::endl;
+        << output << std::endl;
     cmCPackLogger(cmCPackLog::LOG_ERROR, "Problem running hdiutil command: "
-                    << dmgCmd.str().c_str() << std::endl
-                    << "Please check " << tmpFile.c_str() << " for errors"
+                    << dmgCmd.str() << std::endl
+                    << "Please check " << tmpFile << " for errors"
                     << std::endl);
     return 0;
   }
@@ -344,8 +323,6 @@ int cmCPackPackageMakerGenerator::PackageFiles()
 
 int cmCPackPackageMakerGenerator::InitializeInternal()
 {
-  cmCPackLogger(cmCPackLog::LOG_DEBUG,
-                "cmCPackPackageMakerGenerator::Initialize()" << std::endl);
   this->SetOptionIfNotSet("CPACK_PACKAGING_INSTALL_PREFIX", "/usr");
 
   // Starting with Xcode 4.3, PackageMaker is a separate app, and you
@@ -388,7 +365,7 @@ int cmCPackPackageMakerGenerator::InitializeInternal()
   }
 
   // Get path to the real PackageMaker, not a symlink:
-  pkgPath = cmSystemTools::GetRealPath(pkgPath.c_str());
+  pkgPath = cmSystemTools::GetRealPath(pkgPath);
   // Up from there to find the version.plist file in the "Contents" dir:
   std::string contents_dir;
   contents_dir = cmSystemTools::GetFilenamePath(pkgPath);
@@ -399,7 +376,7 @@ int cmCPackPackageMakerGenerator::InitializeInternal()
   if (!cmSystemTools::FileExists(versionFile.c_str())) {
     cmCPackLogger(cmCPackLog::LOG_ERROR,
                   "Cannot find PackageMaker compiler version file: "
-                    << versionFile.c_str() << std::endl);
+                    << versionFile << std::endl);
     return 0;
   }
 
@@ -433,7 +410,7 @@ int cmCPackPackageMakerGenerator::InitializeInternal()
   if (!cmSystemTools::GetLineFromStream(ifs, line) || !rexVersion.find(line)) {
     cmCPackLogger(cmCPackLog::LOG_ERROR,
                   "Problem reading the PackageMaker compiler version file: "
-                    << versionFile.c_str() << std::endl);
+                    << versionFile << std::endl);
     return 0;
   }
   this->PackageMakerVersion = atof(rexVersion.match(1).c_str());
@@ -481,80 +458,6 @@ int cmCPackPackageMakerGenerator::InitializeInternal()
   return this->Superclass::InitializeInternal();
 }
 
-bool cmCPackPackageMakerGenerator::CopyCreateResourceFile(
-  const std::string& name, const std::string& dirName)
-{
-  std::string uname = cmSystemTools::UpperCase(name);
-  std::string cpackVar = "CPACK_RESOURCE_FILE_" + uname;
-  const char* inFileName = this->GetOption(cpackVar.c_str());
-  if (!inFileName) {
-    cmCPackLogger(cmCPackLog::LOG_ERROR, "CPack option: "
-                    << cpackVar.c_str()
-                    << " not specified. It should point to "
-                    << (!name.empty() ? name : "<empty>") << ".rtf, " << name
-                    << ".html, or " << name << ".txt file" << std::endl);
-    return false;
-  }
-  if (!cmSystemTools::FileExists(inFileName)) {
-    cmCPackLogger(cmCPackLog::LOG_ERROR, "Cannot find "
-                    << (!name.empty() ? name : "<empty>")
-                    << " resource file: " << inFileName << std::endl);
-    return false;
-  }
-  std::string ext = cmSystemTools::GetFilenameLastExtension(inFileName);
-  if (ext != ".rtfd" && ext != ".rtf" && ext != ".html" && ext != ".txt") {
-    cmCPackLogger(
-      cmCPackLog::LOG_ERROR, "Bad file extension specified: "
-        << ext
-        << ". Currently only .rtfd, .rtf, .html, and .txt files allowed."
-        << std::endl);
-    return false;
-  }
-
-  std::string destFileName = dirName;
-  destFileName += '/';
-  destFileName += name + ext;
-
-  // Set this so that distribution.dist gets the right name (without
-  // the path).
-  this->SetOption(("CPACK_RESOURCE_FILE_" + uname + "_NOPATH").c_str(),
-                  (name + ext).c_str());
-
-  cmCPackLogger(cmCPackLog::LOG_VERBOSE, "Configure file: "
-                  << (inFileName ? inFileName : "(NULL)") << " to "
-                  << destFileName.c_str() << std::endl);
-  this->ConfigureFile(inFileName, destFileName.c_str());
-  return true;
-}
-
-bool cmCPackPackageMakerGenerator::CopyResourcePlistFile(
-  const std::string& name, const char* outName)
-{
-  if (!outName) {
-    outName = name.c_str();
-  }
-
-  std::string inFName = "CPack.";
-  inFName += name;
-  inFName += ".in";
-  std::string inFileName = this->FindTemplate(inFName.c_str());
-  if (inFileName.empty()) {
-    cmCPackLogger(cmCPackLog::LOG_ERROR,
-                  "Cannot find input file: " << inFName << std::endl);
-    return false;
-  }
-
-  std::string destFileName = this->GetOption("CPACK_TOPLEVEL_DIRECTORY");
-  destFileName += "/";
-  destFileName += outName;
-
-  cmCPackLogger(cmCPackLog::LOG_VERBOSE,
-                "Configure file: " << inFileName.c_str() << " to "
-                                   << destFileName.c_str() << std::endl);
-  this->ConfigureFile(inFileName.c_str(), destFileName.c_str());
-  return true;
-}
-
 bool cmCPackPackageMakerGenerator::RunPackageMaker(const char* command,
                                                    const char* packageFile)
 {
@@ -565,18 +468,19 @@ bool cmCPackPackageMakerGenerator::RunPackageMaker(const char* command,
   std::string output;
   int retVal = 1;
   bool res = cmSystemTools::RunSingleCommand(
-    command, &output, &output, &retVal, 0, this->GeneratorVerbose, 0);
+    command, &output, &output, &retVal, nullptr, this->GeneratorVerbose,
+    cmDuration::zero());
   cmCPackLogger(cmCPackLog::LOG_VERBOSE, "Done running package maker"
                   << std::endl);
   if (!res || retVal) {
     cmGeneratedFileStream ofs(tmpFile.c_str());
     ofs << "# Run command: " << command << std::endl
         << "# Output:" << std::endl
-        << output.c_str() << std::endl;
+        << output << std::endl;
     cmCPackLogger(
       cmCPackLog::LOG_ERROR, "Problem running PackageMaker command: "
         << command << std::endl
-        << "Please check " << tmpFile.c_str() << " for errors" << std::endl);
+        << "Please check " << tmpFile << " for errors" << std::endl);
     return false;
   }
   // sometimes the command finishes but the directory is not yet
@@ -597,21 +501,6 @@ bool cmCPackPackageMakerGenerator::RunPackageMaker(const char* command,
   return true;
 }
 
-std::string cmCPackPackageMakerGenerator::GetPackageName(
-  const cmCPackComponent& component)
-{
-  if (component.ArchiveFile.empty()) {
-    std::string packagesDir = this->GetOption("CPACK_TEMPORARY_DIRECTORY");
-    packagesDir += ".dummy";
-    std::ostringstream out;
-    out << cmSystemTools::GetFilenameWithoutLastExtension(packagesDir) << "-"
-        << component.Name << ".pkg";
-    return out.str();
-  } else {
-    return component.ArchiveFile + ".pkg";
-  }
-}
-
 bool cmCPackPackageMakerGenerator::GenerateComponentPackage(
   const char* packageFile, const char* packageDir,
   const cmCPackComponent& component)
@@ -629,21 +518,22 @@ bool cmCPackPackageMakerGenerator::GenerateComponentPackage(
     std::string descriptionFile = this->GetOption("CPACK_TOPLEVEL_DIRECTORY");
     descriptionFile += '/' + component.Name + "-Description.plist";
     cmsys::ofstream out(descriptionFile.c_str());
-    out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" << std::endl
-        << "<!DOCTYPE plist PUBLIC \"-//Apple Computer//DTD PLIST 1.0//EN\""
-        << "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">" << std::endl
-        << "<plist version=\"1.4\">" << std::endl
-        << "<dict>" << std::endl
-        << "  <key>IFPkgDescriptionTitle</key>" << std::endl
-        << "  <string>" << component.DisplayName << "</string>" << std::endl
-        << "  <key>IFPkgDescriptionVersion</key>" << std::endl
-        << "  <string>" << this->GetOption("CPACK_PACKAGE_VERSION")
-        << "</string>" << std::endl
-        << "  <key>IFPkgDescriptionDescription</key>" << std::endl
-        << "  <string>" + this->EscapeForXML(component.Description)
-        << "</string>" << std::endl
-        << "</dict>" << std::endl
-        << "</plist>" << std::endl;
+    cmXMLWriter xout(out);
+    xout.StartDocument();
+    xout.Doctype("plist PUBLIC \"-//Apple Computer//DTD PLIST 1.0//EN\""
+                 "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"");
+    xout.StartElement("plist");
+    xout.Attribute("version", "1.4");
+    xout.StartElement("dict");
+    xout.Element("key", "IFPkgDescriptionTitle");
+    xout.Element("string", component.DisplayName);
+    xout.Element("key", "IFPkgDescriptionVersion");
+    xout.Element("string", this->GetOption("CPACK_PACKAGE_VERSION"));
+    xout.Element("key", "IFPkgDescriptionDescription");
+    xout.Element("string", component.Description);
+    xout.EndElement(); // dict
+    xout.EndElement(); // plist
+    xout.EndDocument();
     out.close();
 
     // Create the Info.plist file for this component
@@ -685,220 +575,4 @@ bool cmCPackPackageMakerGenerator::GenerateComponentPackage(
 
   // Run PackageMaker
   return RunPackageMaker(pkgCmd.str().c_str(), packageFile);
-}
-
-void cmCPackPackageMakerGenerator::WriteDistributionFile(
-  const char* metapackageFile)
-{
-  std::string distributionTemplate =
-    this->FindTemplate("CPack.distribution.dist.in");
-  if (distributionTemplate.empty()) {
-    cmCPackLogger(cmCPackLog::LOG_ERROR, "Cannot find input file: "
-                    << distributionTemplate << std::endl);
-    return;
-  }
-
-  std::string distributionFile = metapackageFile;
-  distributionFile += "/Contents/distribution.dist";
-
-  // Create the choice outline, which provides a tree-based view of
-  // the components in their groups.
-  std::ostringstream choiceOut;
-  choiceOut << "<choices-outline>" << std::endl;
-
-  // Emit the outline for the groups
-  std::map<std::string, cmCPackComponentGroup>::iterator groupIt;
-  for (groupIt = this->ComponentGroups.begin();
-       groupIt != this->ComponentGroups.end(); ++groupIt) {
-    if (groupIt->second.ParentGroup == 0) {
-      CreateChoiceOutline(groupIt->second, choiceOut);
-    }
-  }
-
-  // Emit the outline for the non-grouped components
-  std::map<std::string, cmCPackComponent>::iterator compIt;
-  for (compIt = this->Components.begin(); compIt != this->Components.end();
-       ++compIt) {
-    if (!compIt->second.Group) {
-      choiceOut << "<line choice=\"" << compIt->first << "Choice\"></line>"
-                << std::endl;
-    }
-  }
-  if (!this->PostFlightComponent.Name.empty()) {
-    choiceOut << "<line choice=\"" << PostFlightComponent.Name
-              << "Choice\"></line>" << std::endl;
-  }
-  choiceOut << "</choices-outline>" << std::endl;
-
-  // Create the actual choices
-  for (groupIt = this->ComponentGroups.begin();
-       groupIt != this->ComponentGroups.end(); ++groupIt) {
-    CreateChoice(groupIt->second, choiceOut);
-  }
-  for (compIt = this->Components.begin(); compIt != this->Components.end();
-       ++compIt) {
-    CreateChoice(compIt->second, choiceOut);
-  }
-
-  if (!this->PostFlightComponent.Name.empty()) {
-    CreateChoice(PostFlightComponent, choiceOut);
-  }
-
-  this->SetOption("CPACK_PACKAGEMAKER_CHOICES", choiceOut.str().c_str());
-
-  // Create the distribution.dist file in the metapackage to turn it
-  // into a distribution package.
-  this->ConfigureFile(distributionTemplate.c_str(), distributionFile.c_str());
-}
-
-void cmCPackPackageMakerGenerator::CreateChoiceOutline(
-  const cmCPackComponentGroup& group, std::ostringstream& out)
-{
-  out << "<line choice=\"" << group.Name << "Choice\">" << std::endl;
-  std::vector<cmCPackComponentGroup*>::const_iterator groupIt;
-  for (groupIt = group.Subgroups.begin(); groupIt != group.Subgroups.end();
-       ++groupIt) {
-    CreateChoiceOutline(**groupIt, out);
-  }
-
-  std::vector<cmCPackComponent*>::const_iterator compIt;
-  for (compIt = group.Components.begin(); compIt != group.Components.end();
-       ++compIt) {
-    out << "  <line choice=\"" << (*compIt)->Name << "Choice\"></line>"
-        << std::endl;
-  }
-  out << "</line>" << std::endl;
-}
-
-void cmCPackPackageMakerGenerator::CreateChoice(
-  const cmCPackComponentGroup& group, std::ostringstream& out)
-{
-  out << "<choice id=\"" << group.Name << "Choice\" "
-      << "title=\"" << group.DisplayName << "\" "
-      << "start_selected=\"true\" "
-      << "start_enabled=\"true\" "
-      << "start_visible=\"true\" ";
-  if (!group.Description.empty()) {
-    out << "description=\"" << EscapeForXML(group.Description) << "\"";
-  }
-  out << "></choice>" << std::endl;
-}
-
-void cmCPackPackageMakerGenerator::CreateChoice(
-  const cmCPackComponent& component, std::ostringstream& out)
-{
-  std::string packageId = "com.";
-  packageId += this->GetOption("CPACK_PACKAGE_VENDOR");
-  packageId += '.';
-  packageId += this->GetOption("CPACK_PACKAGE_NAME");
-  packageId += '.';
-  packageId += component.Name;
-
-  out << "<choice id=\"" << component.Name << "Choice\" "
-      << "title=\"" << component.DisplayName << "\" "
-      << "start_selected=\""
-      << (component.IsDisabledByDefault && !component.IsRequired ? "false"
-                                                                 : "true")
-      << "\" "
-      << "start_enabled=\"" << (component.IsRequired ? "false" : "true")
-      << "\" "
-      << "start_visible=\"" << (component.IsHidden ? "false" : "true")
-      << "\" ";
-  if (!component.Description.empty()) {
-    out << "description=\"" << EscapeForXML(component.Description) << "\" ";
-  }
-  if (!component.Dependencies.empty() ||
-      !component.ReverseDependencies.empty()) {
-    // The "selected" expression is evaluated each time any choice is
-    // selected, for all choices *except* the one that the user
-    // selected. A component is marked selected if it has been
-    // selected (my.choice.selected in Javascript) and all of the
-    // components it depends on have been selected (transitively) or
-    // if any of the components that depend on it have been selected
-    // (transitively). Assume that we have components A, B, C, D, and
-    // E, where each component depends on the previous component (B
-    // depends on A, C depends on B, D depends on C, and E depends on
-    // D). The expression we build for the component C will be
-    //   my.choice.selected && B && A || D || E
-    // This way, selecting C will automatically select everything it depends
-    // on (B and A), while selecting something that depends on C--either D
-    // or E--will automatically cause C to get selected.
-    out << "selected=\"my.choice.selected";
-    std::set<const cmCPackComponent*> visited;
-    AddDependencyAttributes(component, visited, out);
-    visited.clear();
-    AddReverseDependencyAttributes(component, visited, out);
-    out << "\"";
-  }
-  out << ">" << std::endl;
-  out << "  <pkg-ref id=\"" << packageId << "\"></pkg-ref>" << std::endl;
-  out << "</choice>" << std::endl;
-
-  // Create a description of the package associated with this
-  // component.
-  std::string relativePackageLocation = "Contents/Packages/";
-  relativePackageLocation += this->GetPackageName(component);
-
-  // Determine the installed size of the package.
-  std::string dirName = this->GetOption("CPACK_TEMPORARY_DIRECTORY");
-  dirName += '/';
-  dirName += component.Name;
-  dirName += this->GetOption("CPACK_PACKAGING_INSTALL_PREFIX");
-  unsigned long installedSize =
-    component.GetInstalledSizeInKbytes(dirName.c_str());
-
-  out << "<pkg-ref id=\"" << packageId << "\" "
-      << "version=\"" << this->GetOption("CPACK_PACKAGE_VERSION") << "\" "
-      << "installKBytes=\"" << installedSize << "\" "
-      << "auth=\"Admin\" onConclusion=\"None\">";
-  if (component.IsDownloaded) {
-    out << this->GetOption("CPACK_DOWNLOAD_SITE")
-        << this->GetPackageName(component);
-  } else {
-    out << "file:./" << relativePackageLocation;
-  }
-  out << "</pkg-ref>" << std::endl;
-}
-
-void cmCPackPackageMakerGenerator::AddDependencyAttributes(
-  const cmCPackComponent& component,
-  std::set<const cmCPackComponent*>& visited, std::ostringstream& out)
-{
-  if (visited.find(&component) != visited.end()) {
-    return;
-  }
-  visited.insert(&component);
-
-  std::vector<cmCPackComponent*>::const_iterator dependIt;
-  for (dependIt = component.Dependencies.begin();
-       dependIt != component.Dependencies.end(); ++dependIt) {
-    out << " &amp;&amp; choices['" << (*dependIt)->Name << "Choice'].selected";
-    AddDependencyAttributes(**dependIt, visited, out);
-  }
-}
-
-void cmCPackPackageMakerGenerator::AddReverseDependencyAttributes(
-  const cmCPackComponent& component,
-  std::set<const cmCPackComponent*>& visited, std::ostringstream& out)
-{
-  if (visited.find(&component) != visited.end()) {
-    return;
-  }
-  visited.insert(&component);
-
-  std::vector<cmCPackComponent*>::const_iterator dependIt;
-  for (dependIt = component.ReverseDependencies.begin();
-       dependIt != component.ReverseDependencies.end(); ++dependIt) {
-    out << " || choices['" << (*dependIt)->Name << "Choice'].selected";
-    AddReverseDependencyAttributes(**dependIt, visited, out);
-  }
-}
-
-std::string cmCPackPackageMakerGenerator::EscapeForXML(std::string str)
-{
-  cmSystemTools::ReplaceString(str, "&", "&amp;");
-  cmSystemTools::ReplaceString(str, "<", "&lt;");
-  cmSystemTools::ReplaceString(str, ">", "&gt;");
-  cmSystemTools::ReplaceString(str, "\"", "&quot;");
-  return str;
 }

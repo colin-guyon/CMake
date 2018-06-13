@@ -13,11 +13,15 @@ Perform the :ref:`CTest Test Step` as a :ref:`Dashboard Client`.
              [INCLUDE <include-regex>]
              [EXCLUDE_LABEL <label-exclude-regex>]
              [INCLUDE_LABEL <label-include-regex>]
+             [EXCLUDE_FIXTURE <regex>]
+             [EXCLUDE_FIXTURE_SETUP <regex>]
+             [EXCLUDE_FIXTURE_CLEANUP <regex>]
              [PARALLEL_LEVEL <level>]
              [TEST_LOAD <threshold>]
              [SCHEDULE_RANDOM <ON|OFF>]
              [STOP_TIME <time-of-day>]
              [RETURN_VALUE <result-var>]
+             [CAPTURE_CMAKE_ERROR <result-var>]
              [QUIET]
              )
 
@@ -31,9 +35,11 @@ The options are:
   :variable:`CTEST_BINARY_DIRECTORY` variable is used.
 
 ``APPEND``
-  Mark results for append to those previously submitted to a
+  Mark ``Test.xml`` for append to results previously submitted to a
   dashboard server since the last :command:`ctest_start` call.
   Append semantics are defined by the dashboard server in use.
+  This does *not* cause results to be appended to a ``.xml`` file
+  produced by a previous call to this command.
 
 ``START <start-number>``
   Specify the beginning of a range of test numbers.
@@ -58,6 +64,20 @@ The options are:
   Specify a regular expression matching test labels to include.
   Tests not matching this expression are excluded.
 
+``EXCLUDE_FIXTURE <regex>``
+  If a test in the set of tests to be executed requires a particular fixture,
+  that fixture's setup and cleanup tests would normally be added to the test
+  set automatically. This option prevents adding setup or cleanup tests for
+  fixtures matching the ``<regex>``. Note that all other fixture behavior is
+  retained, including test dependencies and skipping tests that have fixture
+  setup tests that fail.
+
+``EXCLUDE_FIXTURE_SETUP <regex>``
+  Same as ``EXCLUDE_FIXTURE`` except only matching setup tests are excluded.
+
+``EXCLUDE_FIXTURE_CLEANUP <regex>``
+  Same as ``EXCLUDE_FIXTURE`` except only matching cleanup tests are excluded.
+
 ``PARALLEL_LEVEL <level>``
   Specify a positive number representing the number of tests to
   be run in parallel.
@@ -79,6 +99,10 @@ The options are:
 ``RETURN_VALUE <result-var>``
   Store in the ``<result-var>`` variable ``0`` if all tests passed.
   Store non-zero if anything went wrong.
+
+``CAPTURE_CMAKE_ERROR <result-var>``
+  Store in the ``<result-var>`` variable -1 if there are any errors running
+  the command and prevent ctest from returning non-zero if an error occurs.
 
 ``QUIET``
   Suppress any CTest-specific non-error messages that would have otherwise

@@ -1,14 +1,5 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmGlobalVisualStudio7Generator_h
 #define cmGlobalVisualStudio7Generator_h
 
@@ -35,11 +26,11 @@ public:
   std::string const& GetPlatformName() const;
 
   ///! Create a local generator appropriate to this Global Generator
-  virtual cmLocalGenerator* CreateLocalGenerator(cmMakefile* mf);
+  cmLocalGenerator* CreateLocalGenerator(cmMakefile* mf) override;
 
-  virtual bool SetSystemName(std::string const& s, cmMakefile* mf);
+  bool SetSystemName(std::string const& s, cmMakefile* mf) override;
 
-  virtual bool SetGeneratorPlatform(std::string const& p, cmMakefile* mf);
+  bool SetGeneratorPlatform(std::string const& p, cmMakefile* mf) override;
 
   /**
    * Utilized by the generator factory to determine if this generator
@@ -48,22 +39,30 @@ public:
   static bool SupportsToolset() { return false; }
 
   /**
+   * Utilized by the generator factory to determine if this generator
+   * supports platforms.
+   */
+  static bool SupportsPlatform() { return false; }
+
+  /**
    * Try to determine system information such as shared library
    * extension, pthreads, byte order etc.
    */
-  virtual void EnableLanguage(std::vector<std::string> const& languages,
-                              cmMakefile*, bool optional);
+  void EnableLanguage(std::vector<std::string> const& languages, cmMakefile*,
+                      bool optional) override;
 
   /**
    * Try running cmake and building a file. This is used for dynamically
    * loaded commands, not as part of the usual build process.
    */
-  virtual void GenerateBuildCommand(
-    std::vector<std::string>& makeCommand, const std::string& makeProgram,
-    const std::string& projectName, const std::string& projectDir,
-    const std::string& targetName, const std::string& config, bool fast,
-    bool verbose,
-    std::vector<std::string> const& makeOptions = std::vector<std::string>());
+  void GenerateBuildCommand(std::vector<std::string>& makeCommand,
+                            const std::string& makeProgram,
+                            const std::string& projectName,
+                            const std::string& projectDir,
+                            const std::string& targetName,
+                            const std::string& config, bool fast, bool verbose,
+                            std::vector<std::string> const& makeOptions =
+                              std::vector<std::string>()) override;
 
   /**
    * Generate the DSW workspace file.
@@ -74,13 +73,13 @@ public:
   std::string GetGUID(std::string const& name);
 
   /** Append the subdirectory for the given configuration.  */
-  virtual void AppendDirectoryForConfig(const std::string& prefix,
-                                        const std::string& config,
-                                        const std::string& suffix,
-                                        std::string& dir);
+  void AppendDirectoryForConfig(const std::string& prefix,
+                                const std::string& config,
+                                const std::string& suffix,
+                                std::string& dir) override;
 
   ///! What is the configurations directory variable called?
-  virtual const char* GetCMakeCFGIntDir() const
+  const char* GetCMakeCFGIntDir() const override
   {
     return "$(ConfigurationName)";
   }
@@ -94,10 +93,11 @@ public:
 
   const char* GetIntelProjectVersion();
 
-  virtual void FindMakeProgram(cmMakefile*);
+  bool FindMakeProgram(cmMakefile* mf) override;
 
   /** Is the Microsoft Assembler enabled?  */
   bool IsMasmEnabled() const { return this->MasmEnabled; }
+  bool IsNasmEnabled() const { return this->NasmEnabled; }
 
   // Encoding for Visual Studio files
   virtual std::string Encoding();
@@ -105,7 +105,7 @@ public:
   cmIDEFlagTable const* ExtraFlagTable;
 
 protected:
-  virtual void Generate();
+  void Generate() override;
   virtual const char* GetIDEVersion() = 0;
 
   std::string const& GetDevEnvCommand();
@@ -123,15 +123,15 @@ protected:
                                    const char* path,
                                    cmGeneratorTarget const* t) = 0;
   virtual void WriteProjectConfigurations(
-    std::ostream& fout, const std::string& name, cmState::TargetType type,
-    std::vector<std::string> const& configs,
+    std::ostream& fout, const std::string& name,
+    cmGeneratorTarget const& target, std::vector<std::string> const& configs,
     const std::set<std::string>& configsPartOfDefaultBuild,
     const std::string& platformMapping = "") = 0;
   virtual void WriteSLNGlobalSections(std::ostream& fout,
                                       cmLocalGenerator* root);
   virtual void WriteSLNFooter(std::ostream& fout);
   virtual void WriteSLNHeader(std::ostream& fout) = 0;
-  virtual std::string WriteUtilityDepend(const cmGeneratorTarget* target);
+  std::string WriteUtilityDepend(const cmGeneratorTarget* target) override;
 
   virtual void WriteTargetsToSolution(
     std::ostream& fout, cmLocalGenerator* root,
@@ -158,7 +158,7 @@ protected:
 
   virtual void WriteFolders(std::ostream& fout);
   virtual void WriteFoldersContent(std::ostream& fout);
-  std::map<std::string, std::set<std::string> > VisualStudioFolders;
+  std::map<std::string, std::set<std::string>> VisualStudioFolders;
 
   // Set during OutputSLNFile with the name of the current project.
   // There is one SLN file per project.
@@ -166,12 +166,13 @@ protected:
   std::string GeneratorPlatform;
   std::string DefaultPlatformName;
   bool MasmEnabled;
+  bool NasmEnabled;
 
 private:
   char* IntelProjectVersion;
   std::string DevEnvCommand;
   bool DevEnvCommandInitialized;
-  virtual std::string GetVSMakeProgram() { return this->GetDevEnvCommand(); }
+  std::string GetVSMakeProgram() override { return this->GetDevEnvCommand(); }
 };
 
 #define CMAKE_CHECK_BUILD_SYSTEM_TARGET "ZERO_CHECK"

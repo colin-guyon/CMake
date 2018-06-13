@@ -1,6 +1,7 @@
 MSVC11
 ------
 
-``True`` when using Microsoft Visual C++ 11.0
+Discouraged.  Use the :variable:`MSVC_VERSION` variable instead.
 
-Set to ``true`` when the compiler is version 11.0 of Microsoft Visual C++.
+``True`` when using the Microsoft Visual Studio ``v110`` toolset
+(``cl`` version 17) or another compiler that simulates it.

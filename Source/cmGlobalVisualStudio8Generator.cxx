@@ -1,19 +1,10 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-#include "windows.h" // this must be first to define GetCurrentDirectory
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmGlobalVisualStudio8Generator.h"
 
+#include "cmDocumentationEntry.h"
 #include "cmGeneratedFileStream.h"
+#include "cmGeneratorTarget.h"
 #include "cmLocalVisualStudio7Generator.h"
 #include "cmMakefile.h"
 #include "cmSourceFile.h"
@@ -25,8 +16,8 @@ static const char vs8generatorName[] = "Visual Studio 8 2005";
 class cmGlobalVisualStudio8Generator::Factory : public cmGlobalGeneratorFactory
 {
 public:
-  virtual cmGlobalGenerator* CreateGlobalGenerator(const std::string& name,
-                                                   cmake* cm) const
+  cmGlobalGenerator* CreateGlobalGenerator(const std::string& name,
+                                           cmake* cm) const override
   {
     if (strncmp(name.c_str(), vs8generatorName,
                 sizeof(vs8generatorName) - 1) != 0) {
@@ -60,14 +51,14 @@ public:
     return ret;
   }
 
-  virtual void GetDocumentation(cmDocumentationEntry& entry) const
+  void GetDocumentation(cmDocumentationEntry& entry) const override
   {
     entry.Name = std::string(vs8generatorName) + " [arch]";
-    entry.Brief = "Generates Visual Studio 2005 project files.  "
+    entry.Brief = "Deprecated.  Generates Visual Studio 2005 project files.  "
                   "Optional [arch] can be \"Win64\".";
   }
 
-  virtual void GetGenerators(std::vector<std::string>& names) const
+  void GetGenerators(std::vector<std::string>& names) const override
   {
     names.push_back(vs8generatorName);
     names.push_back(vs8generatorName + std::string(" Win64"));
@@ -75,14 +66,13 @@ public:
     parser.ParseVersion("8.0");
     const std::vector<std::string>& availablePlatforms =
       parser.GetAvailablePlatforms();
-    for (std::vector<std::string>::const_iterator i =
-           availablePlatforms.begin();
-         i != availablePlatforms.end(); ++i) {
-      names.push_back("Visual Studio 8 2005 " + *i);
+    for (std::string const& i : availablePlatforms) {
+      names.push_back("Visual Studio 8 2005 " + i);
     }
   }
 
-  virtual bool SupportsToolset() const { return false; }
+  bool SupportsToolset() const override { return false; }
+  bool SupportsPlatform() const override { return true; }
 };
 
 cmGlobalGeneratorFactory* cmGlobalVisualStudio8Generator::NewFactory()
@@ -125,9 +115,8 @@ std::string cmGlobalVisualStudio8Generator::FindDevEnvCommand()
 void cmGlobalVisualStudio8Generator::EnableLanguage(
   std::vector<std::string> const& lang, cmMakefile* mf, bool optional)
 {
-  for (std::vector<std::string>::const_iterator it = lang.begin();
-       it != lang.end(); ++it) {
-    if (*it == "ASM_MASM") {
+  for (std::string const& it : lang) {
+    if (it == "ASM_MASM") {
       this->MasmEnabled = true;
     }
   }
@@ -154,18 +143,16 @@ bool cmGlobalVisualStudio8Generator::SetGeneratorPlatform(std::string const& p,
   }
 }
 
-// ouput standard header for dsw file
+// output standard header for dsw file
 void cmGlobalVisualStudio8Generator::WriteSLNHeader(std::ostream& fout)
 {
   fout << "Microsoft Visual Studio Solution File, Format Version 9.00\n";
   fout << "# Visual Studio 2005\n";
 }
 
-void cmGlobalVisualStudio8Generator::GetDocumentation(
-  cmDocumentationEntry& entry)
+std::string cmGlobalVisualStudio8Generator::GetGenerateStampList()
 {
-  entry.Name = cmGlobalVisualStudio8Generator::GetActualName();
-  entry.Brief = "Generates Visual Studio 8 2005 project files.";
+  return "generate.stamp.list";
 }
 
 void cmGlobalVisualStudio8Generator::Configure()
@@ -235,9 +222,9 @@ bool cmGlobalVisualStudio8Generator::AddCheckTarget()
   }
 
   cmCustomCommandLines noCommandLines;
-  cmTarget* tgt =
-    mf->AddUtilityCommand(CMAKE_CHECK_BUILD_SYSTEM_TARGET, false,
-                          no_working_directory, no_depends, noCommandLines);
+  cmTarget* tgt = mf->AddUtilityCommand(
+    CMAKE_CHECK_BUILD_SYSTEM_TARGET, cmMakefile::TargetOrigin::Generator,
+    false, no_working_directory, no_depends, noCommandLines);
 
   cmGeneratorTarget* gt = new cmGeneratorTarget(tgt, lg);
   lg->AddGeneratorTarget(gt);
@@ -251,7 +238,7 @@ bool cmGlobalVisualStudio8Generator::AddCheckTarget()
   // Create a list of all stamp files for this project.
   std::vector<std::string> stamps;
   std::string stampList = cmake::GetCMakeFilesDirectoryPostSlash();
-  stampList += "generate.stamp.list";
+  stampList += cmGlobalVisualStudio8Generator::GetGenerateStampList();
   {
     std::string stampListFile =
       generators[0]->GetMakefile()->GetCurrentBinaryDirectory();
@@ -259,10 +246,8 @@ bool cmGlobalVisualStudio8Generator::AddCheckTarget()
     stampListFile += stampList;
     std::string stampFile;
     cmGeneratedFileStream fout(stampListFile.c_str());
-    for (std::vector<cmLocalGenerator*>::const_iterator gi =
-           generators.begin();
-         gi != generators.end(); ++gi) {
-      stampFile = (*gi)->GetMakefile()->GetCurrentBinaryDirectory();
+    for (cmLocalGenerator const* gi : generators) {
+      stampFile = gi->GetMakefile()->GetCurrentBinaryDirectory();
       stampFile += "/";
       stampFile += cmake::GetCMakeFilesDirectoryPostSlash();
       stampFile += "generate.stamp";
@@ -301,7 +286,9 @@ bool cmGlobalVisualStudio8Generator::AddCheckTarget()
     commandLine.push_back("--check-stamp-list");
     commandLine.push_back(stampList.c_str());
     commandLine.push_back("--vs-solution-file");
-    commandLine.push_back("\"$(SolutionPath)\"");
+    std::string const sln = std::string(lg->GetBinaryDirectory()) + "/" +
+      lg->GetProjectName() + ".sln";
+    commandLine.push_back(sln);
     cmCustomCommandLines commandLines;
     commandLines.push_back(commandLine);
 
@@ -309,11 +296,11 @@ bool cmGlobalVisualStudio8Generator::AddCheckTarget()
     // file as the main dependency because it would get
     // overwritten by the CreateVCProjBuildRule.
     // (this could be avoided with per-target source files)
-    std::string no_main_dependency = "";
+    std::string no_main_dependency;
     std::vector<std::string> no_byproducts;
     if (cmSourceFile* file = mf->AddCustomCommandToOutput(
           stamps, no_byproducts, listFiles, no_main_dependency, commandLines,
-          "Checking Build System", no_working_directory, true)) {
+          "Checking Build System", no_working_directory, true, false)) {
       gt->AddSource(file->GetFullPath());
     } else {
       cmSystemTools::Error("Error adding rule for ", stamps[0].c_str());
@@ -328,13 +315,12 @@ void cmGlobalVisualStudio8Generator::AddExtraIDETargets()
   cmGlobalVisualStudio7Generator::AddExtraIDETargets();
   if (this->AddCheckTarget()) {
     for (unsigned int i = 0; i < this->LocalGenerators.size(); ++i) {
-      std::vector<cmGeneratorTarget*> tgts =
+      const std::vector<cmGeneratorTarget*>& tgts =
         this->LocalGenerators[i]->GetGeneratorTargets();
       // All targets depend on the build-system check target.
-      for (std::vector<cmGeneratorTarget*>::iterator ti = tgts.begin();
-           ti != tgts.end(); ++ti) {
-        if ((*ti)->GetName() != CMAKE_CHECK_BUILD_SYSTEM_TARGET) {
-          (*ti)->Target->AddUtility(CMAKE_CHECK_BUILD_SYSTEM_TARGET);
+      for (cmGeneratorTarget const* ti : tgts) {
+        if (ti->GetName() != CMAKE_CHECK_BUILD_SYSTEM_TARGET) {
+          ti->Target->AddUtility(CMAKE_CHECK_BUILD_SYSTEM_TARGET);
         }
       }
     }
@@ -345,40 +331,49 @@ void cmGlobalVisualStudio8Generator::WriteSolutionConfigurations(
   std::ostream& fout, std::vector<std::string> const& configs)
 {
   fout << "\tGlobalSection(SolutionConfigurationPlatforms) = preSolution\n";
-  for (std::vector<std::string>::const_iterator i = configs.begin();
-       i != configs.end(); ++i) {
-    fout << "\t\t" << *i << "|" << this->GetPlatformName() << " = " << *i
-         << "|" << this->GetPlatformName() << "\n";
+  for (std::string const& i : configs) {
+    fout << "\t\t" << i << "|" << this->GetPlatformName() << " = " << i << "|"
+         << this->GetPlatformName() << "\n";
   }
   fout << "\tEndGlobalSection\n";
 }
 
 void cmGlobalVisualStudio8Generator::WriteProjectConfigurations(
-  std::ostream& fout, const std::string& name, cmState::TargetType type,
+  std::ostream& fout, const std::string& name, cmGeneratorTarget const& target,
   std::vector<std::string> const& configs,
   const std::set<std::string>& configsPartOfDefaultBuild,
   std::string const& platformMapping)
 {
   std::string guid = this->GetGUID(name);
-  for (std::vector<std::string>::const_iterator i = configs.begin();
-       i != configs.end(); ++i) {
-    fout << "\t\t{" << guid << "}." << *i << "|" << this->GetPlatformName()
-         << ".ActiveCfg = " << *i << "|"
+  for (std::string const& i : configs) {
+    std::vector<std::string> mapConfig;
+    const char* dstConfig = i.c_str();
+    if (target.GetProperty("EXTERNAL_MSPROJECT")) {
+      if (const char* m = target.GetProperty("MAP_IMPORTED_CONFIG_" +
+                                             cmSystemTools::UpperCase(i))) {
+        cmSystemTools::ExpandListArgument(m, mapConfig);
+        if (!mapConfig.empty()) {
+          dstConfig = mapConfig[0].c_str();
+        }
+      }
+    }
+    fout << "\t\t{" << guid << "}." << i << "|" << this->GetPlatformName()
+         << ".ActiveCfg = " << dstConfig << "|"
          << (!platformMapping.empty() ? platformMapping
                                       : this->GetPlatformName())
          << "\n";
     std::set<std::string>::const_iterator ci =
-      configsPartOfDefaultBuild.find(*i);
+      configsPartOfDefaultBuild.find(i);
     if (!(ci == configsPartOfDefaultBuild.end())) {
-      fout << "\t\t{" << guid << "}." << *i << "|" << this->GetPlatformName()
-           << ".Build.0 = " << *i << "|"
+      fout << "\t\t{" << guid << "}." << i << "|" << this->GetPlatformName()
+           << ".Build.0 = " << dstConfig << "|"
            << (!platformMapping.empty() ? platformMapping
                                         : this->GetPlatformName())
            << "\n";
     }
-    if (this->NeedsDeploy(type)) {
-      fout << "\t\t{" << guid << "}." << *i << "|" << this->GetPlatformName()
-           << ".Deploy.0 = " << *i << "|"
+    if (this->NeedsDeploy(target.GetType())) {
+      fout << "\t\t{" << guid << "}." << i << "|" << this->GetPlatformName()
+           << ".Deploy.0 = " << dstConfig << "|"
            << (!platformMapping.empty() ? platformMapping
                                         : this->GetPlatformName())
            << "\n";
@@ -387,10 +382,10 @@ void cmGlobalVisualStudio8Generator::WriteProjectConfigurations(
 }
 
 bool cmGlobalVisualStudio8Generator::NeedsDeploy(
-  cmState::TargetType type) const
+  cmStateEnums::TargetType type) const
 {
   bool needsDeploy =
-    (type == cmState::EXECUTABLE || type == cmState::SHARED_LIBRARY);
+    (type == cmStateEnums::EXECUTABLE || type == cmStateEnums::SHARED_LIBRARY);
   return this->TargetsWindowsCE() && needsDeploy;
 }
 
@@ -407,12 +402,11 @@ void cmGlobalVisualStudio8Generator::WriteProjectDepends(
 {
   TargetDependSet const& unordered = this->GetTargetDirectDepends(gt);
   OrderedTargetDependSet depends(unordered, std::string());
-  for (OrderedTargetDependSet::const_iterator i = depends.begin();
-       i != depends.end(); ++i) {
-    if ((*i)->GetType() == cmState::INTERFACE_LIBRARY) {
+  for (cmTargetDepend const& i : depends) {
+    if (i->GetType() == cmStateEnums::INTERFACE_LIBRARY) {
       continue;
     }
-    std::string guid = this->GetGUID((*i)->GetName().c_str());
+    std::string guid = this->GetGUID(i->GetName());
     fout << "\t\t{" << guid << "} = {" << guid << "}\n";
   }
 }
@@ -421,12 +415,10 @@ bool cmGlobalVisualStudio8Generator::NeedLinkLibraryDependencies(
   cmGeneratorTarget* target)
 {
   // Look for utility dependencies that magically link.
-  for (std::set<std::string>::const_iterator ui =
-         target->GetUtilities().begin();
-       ui != target->GetUtilities().end(); ++ui) {
+  for (std::string const& ui : target->GetUtilities()) {
     if (cmGeneratorTarget* depTarget =
-          target->GetLocalGenerator()->FindGeneratorTargetToUse(ui->c_str())) {
-      if (depTarget->GetType() != cmState::INTERFACE_LIBRARY &&
+          target->GetLocalGenerator()->FindGeneratorTargetToUse(ui)) {
+      if (depTarget->GetType() != cmStateEnums::INTERFACE_LIBRARY &&
           depTarget->GetProperty("EXTERNAL_MSPROJECT")) {
         // This utility dependency names an external .vcproj target.
         // We use LinkLibraryDependencies="true" to link to it without

@@ -1,18 +1,13 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmSourceFileLocation_h
 #define cmSourceFileLocation_h
 
-#include "cmStandardIncludes.h"
+#include "cmConfigure.h" // IWYU pragma: keep
+
+#include <string>
+
+#include "cmSourceFileLocationKind.h"
 
 class cmMakefile;
 
@@ -33,10 +28,11 @@ public:
    * Construct for a source file created in a given cmMakefile
    * instance with an initial name.
    */
-  cmSourceFileLocation(cmMakefile const* mf, const std::string& name);
+  cmSourceFileLocation(
+    cmMakefile const* mf, const std::string& name,
+    cmSourceFileLocationKind kind = cmSourceFileLocationKind::Ambiguous);
   cmSourceFileLocation();
   cmSourceFileLocation(const cmSourceFileLocation& loc);
-  cmSourceFileLocation& operator=(const cmSourceFileLocation& loc);
 
   /**
    * Return whether the given source file location could refers to the
@@ -46,12 +42,12 @@ public:
   bool Matches(cmSourceFileLocation const& loc);
 
   /**
-   * Explicity state that the source file is located in the source tree.
+   * Explicitly state that the source file is located in the source tree.
    */
   void DirectoryUseSource();
 
   /**
-   * Explicity state that the source file is located in the build tree.
+   * Explicitly state that the source file is located in the build tree.
    */
   void DirectoryUseBinary();
 
@@ -86,7 +82,7 @@ public:
    */
   cmMakefile const* GetMakefile() const { return this->Makefile; }
 private:
-  cmMakefile const* Makefile;
+  cmMakefile const* const Makefile;
   bool AmbiguousDirectory;
   bool AmbiguousExtension;
   std::string Directory;
@@ -97,6 +93,8 @@ private:
   // Update the location with additional knowledge.
   void Update(cmSourceFileLocation const& loc);
   void UpdateExtension(const std::string& name);
+
+  cmSourceFileLocation& operator=(const cmSourceFileLocation& loc) = delete;
 };
 
 #endif

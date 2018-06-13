@@ -1,21 +1,14 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmLocalVisualStudio10Generator.h"
 
+#include "cmGeneratorTarget.h"
 #include "cmGlobalVisualStudio10Generator.h"
 #include "cmMakefile.h"
 #include "cmVisualStudio10TargetGenerator.h"
 #include "cmXMLParser.h"
-#include <cm_expat.h>
+
+#include "cm_expat.h"
 
 class cmVS10XMLParser : public cmXMLParser
 {
@@ -24,7 +17,12 @@ public:
   virtual void CharacterDataHandler(const char* data, int length)
   {
     if (this->DoGUID) {
-      this->GUID.assign(data + 1, length - 2);
+      if (data[0] == '{') {
+        // remove surrounding curly brackets
+        this->GUID.assign(data + 1, length - 2);
+      } else {
+        this->GUID.assign(data, length);
+      }
       this->DoGUID = false;
     }
   }
@@ -66,20 +64,18 @@ cmLocalVisualStudio10Generator::~cmLocalVisualStudio10Generator()
 
 void cmLocalVisualStudio10Generator::Generate()
 {
-
-  std::vector<cmGeneratorTarget*> tgts = this->GetGeneratorTargets();
-  for (std::vector<cmGeneratorTarget*>::iterator l = tgts.begin();
-       l != tgts.end(); ++l) {
-    if ((*l)->GetType() == cmState::INTERFACE_LIBRARY) {
+  const std::vector<cmGeneratorTarget*>& tgts = this->GetGeneratorTargets();
+  for (cmGeneratorTarget* l : tgts) {
+    if (l->GetType() == cmStateEnums::INTERFACE_LIBRARY) {
       continue;
     }
     if (static_cast<cmGlobalVisualStudioGenerator*>(this->GlobalGenerator)
-          ->TargetIsFortranOnly(*l)) {
-      this->CreateSingleVCProj((*l)->GetName().c_str(), *l);
+          ->TargetIsFortranOnly(l)) {
+      this->CreateSingleVCProj(l->GetName(), l);
     } else {
       cmVisualStudio10TargetGenerator tg(
-        *l, static_cast<cmGlobalVisualStudio10Generator*>(
-              this->GetGlobalGenerator()));
+        l, static_cast<cmGlobalVisualStudio10Generator*>(
+             this->GetGlobalGenerator()));
       tg.Generate();
     }
   }
@@ -102,7 +98,7 @@ void cmLocalVisualStudio10Generator::ReadAndStoreExternalGUID(
   // save the GUID in the cache
   this->GlobalGenerator->GetCMakeInstance()->AddCacheEntry(
     guidStoreName.c_str(), parser.GUID.c_str(), "Stored GUID",
-    cmState::INTERNAL);
+    cmStateEnums::INTERNAL);
 }
 
 const char* cmLocalVisualStudio10Generator::ReportErrorLabel() const

@@ -1,20 +1,10 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2013 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmWIXPatchParser.h"
 
-#include <CPack/cmCPackGenerator.h>
+#include "cmCPackGenerator.h"
 
-#include <cm_expat.h>
+#include "cm_expat.h"
 
 cmWIXPatchNode::Type cmWIXPatchText::type()
 {
@@ -32,8 +22,8 @@ cmWIXPatchNode::~cmWIXPatchNode()
 
 cmWIXPatchElement::~cmWIXPatchElement()
 {
-  for (child_list_t::iterator i = children.begin(); i != children.end(); ++i) {
-    delete *i;
+  for (cmWIXPatchNode* child : children) {
+    delete child;
   }
 }
 
@@ -82,21 +72,35 @@ void cmWIXPatchParser::StartElement(const std::string& name, const char** atts)
 
 void cmWIXPatchParser::StartFragment(const char** attributes)
 {
+  cmWIXPatchElement* new_element = nullptr;
+  /* find the id of for fragment */
   for (size_t i = 0; attributes[i]; i += 2) {
-    std::string key = attributes[i];
-    std::string value = attributes[i + 1];
+    const std::string key = attributes[i];
+    const std::string value = attributes[i + 1];
 
     if (key == "Id") {
       if (Fragments.find(value) != Fragments.end()) {
-        std::stringstream tmp;
+        std::ostringstream tmp;
         tmp << "Invalid reuse of 'CPackWixFragment' 'Id': " << value;
         ReportValidationError(tmp.str());
       }
 
-      ElementStack.push_back(&Fragments[value]);
-    } else {
-      ReportValidationError(
-        "The only allowed 'CPackWixFragment' attribute is 'Id'");
+      new_element = &Fragments[value];
+      ElementStack.push_back(new_element);
+    }
+  }
+
+  /* add any additional attributes for the fragment */
+  if (!new_element) {
+    ReportValidationError("No 'Id' specified for 'CPackWixFragment' element");
+  } else {
+    for (size_t i = 0; attributes[i]; i += 2) {
+      const std::string key = attributes[i];
+      const std::string value = attributes[i + 1];
+
+      if (key != "Id") {
+        new_element->attributes[key] = value;
+      }
     }
   }
 }

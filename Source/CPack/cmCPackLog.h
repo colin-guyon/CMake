@@ -1,46 +1,28 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc.
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCPackLog_h
 #define cmCPackLog_h
 
-#include "cmObject.h"
+#include "cmConfigure.h" // IWYU pragma: keep
+
+#include <ostream>
+#include <string.h>
+#include <string>
 
 #define cmCPack_Log(ctSelf, logType, msg)                                     \
   do {                                                                        \
     std::ostringstream cmCPackLog_msg;                                        \
     cmCPackLog_msg << msg;                                                    \
     (ctSelf)->Log(logType, __FILE__, __LINE__, cmCPackLog_msg.str().c_str()); \
-  } while (0)
-
-#ifdef cerr
-#undef cerr
-#endif
-#define cerr no_cerr_use_cmCPack_Log
-
-#ifdef cout
-#undef cout
-#endif
-#define cout no_cout_use_cmCPack_Log
+  } while (false)
 
 /** \class cmCPackLog
  * \brief A container for CPack generators
  *
  */
-class cmCPackLog : public cmObject
+class cmCPackLog
 {
 public:
-  cmTypeMacro(cmCPackLog, cmObject);
-
   cmCPackLog();
   ~cmCPackLog();
 
@@ -103,12 +85,12 @@ public:
 
   //! Set the various prefixes for the logging. SetPrefix sets the generic
   // prefix that overwrittes missing ones.
-  void SetPrefix(std::string pfx) { this->Prefix = pfx; }
-  void SetOutputPrefix(std::string pfx) { this->OutputPrefix = pfx; }
-  void SetVerbosePrefix(std::string pfx) { this->VerbosePrefix = pfx; }
-  void SetDebugPrefix(std::string pfx) { this->DebugPrefix = pfx; }
-  void SetWarningPrefix(std::string pfx) { this->WarningPrefix = pfx; }
-  void SetErrorPrefix(std::string pfx) { this->ErrorPrefix = pfx; }
+  void SetPrefix(std::string const& pfx) { this->Prefix = pfx; }
+  void SetOutputPrefix(std::string const& pfx) { this->OutputPrefix = pfx; }
+  void SetVerbosePrefix(std::string const& pfx) { this->VerbosePrefix = pfx; }
+  void SetDebugPrefix(std::string const& pfx) { this->DebugPrefix = pfx; }
+  void SetWarningPrefix(std::string const& pfx) { this->WarningPrefix = pfx; }
+  void SetErrorPrefix(std::string const& pfx) { this->ErrorPrefix = pfx; }
 
 private:
   bool Verbose;

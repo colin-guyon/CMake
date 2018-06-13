@@ -1,27 +1,23 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmLocalVisualStudioGenerator_h
 #define cmLocalVisualStudioGenerator_h
 
-#include "cmLocalGenerator.h"
+#include "cmConfigure.h" // IWYU pragma: keep
+
+#include <map>
+#include <memory> // IWYU pragma: keep
+#include <string>
 
 #include "cmGlobalVisualStudioGenerator.h"
+#include "cmLocalGenerator.h"
 
-#include <cmsys/auto_ptr.hxx>
-
-class cmSourceFile;
-class cmSourceGroup;
 class cmCustomCommand;
 class cmCustomCommandGenerator;
+class cmGeneratorTarget;
+class cmGlobalGenerator;
+class cmMakefile;
+class cmSourceFile;
 
 /** \class cmLocalVisualStudioGenerator
  * \brief Base class for Visual Studio generators.
@@ -48,18 +44,16 @@ public:
   virtual std::string ComputeLongestObjectDirectory(
     cmGeneratorTarget const*) const = 0;
 
-  virtual void AddCMakeListsRules() = 0;
-
-  virtual void ComputeObjectFilenames(
+  void ComputeObjectFilenames(
     std::map<cmSourceFile const*, std::string>& mapping,
-    cmGeneratorTarget const* = 0);
+    cmGeneratorTarget const* = 0) override;
 
 protected:
   virtual const char* ReportErrorLabel() const;
   virtual bool CustomCommandUseLocal() const { return false; }
 
   /** Construct a custom command to make exe import lib dir.  */
-  cmsys::auto_ptr<cmCustomCommand> MaybeCreateImplibDir(
+  std::unique_ptr<cmCustomCommand> MaybeCreateImplibDir(
     cmGeneratorTarget* target, const std::string& config, bool isFortran);
 };
 

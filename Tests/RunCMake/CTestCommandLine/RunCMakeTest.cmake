@@ -102,7 +102,7 @@ function(run_TestLoad name load)
   add_test(TestLoad1 \"${CMAKE_COMMAND}\" -E echo \"test of --test-load\")
   add_test(TestLoad2 \"${CMAKE_COMMAND}\" -E echo \"test of --test-load\")
 ")
-  run_cmake_command(${name} ${CMAKE_CTEST_COMMAND} -j2 --test-load ${load} --test-timeout 5)
+  run_cmake_command(${name} ${CMAKE_CTEST_COMMAND} -j2 --test-load ${load})
 endfunction()
 
 # Tests for the --test-load feature of ctest
@@ -135,6 +135,7 @@ function(run_TestOutputSize)
 ")
   run_cmake_command(TestOutputSize
     ${CMAKE_CTEST_COMMAND} -M Experimental -T Test
+                           --no-compress-output
                            --test-output-size-passed 10
                            --test-output-size-failed 12
     )

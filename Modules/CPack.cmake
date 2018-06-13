@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # CPack
 # -----
@@ -65,7 +68,7 @@
 #
 # .. variable:: CPACK_PACKAGE_VENDOR
 #
-#  The name of the package vendor. (e.g., "Kitware").
+#  The name of the package vendor. (e.g., "Kitware"). Default is "Humanity".
 #
 # .. variable:: CPACK_PACKAGE_DIRECTORY
 #
@@ -77,15 +80,15 @@
 #
 # .. variable:: CPACK_PACKAGE_VERSION_MAJOR
 #
-#  Package major Version
+#  Package major Version. Default value is 0.
 #
 # .. variable:: CPACK_PACKAGE_VERSION_MINOR
 #
-#  Package minor Version
+#  Package minor Version. Default value is 1.
 #
 # .. variable:: CPACK_PACKAGE_VERSION_PATCH
 #
-#  Package patch Version
+#  Package patch Version. Default value is 1.
 #
 # .. variable:: CPACK_PACKAGE_DESCRIPTION_FILE
 #
@@ -95,7 +98,12 @@
 #
 # .. variable:: CPACK_PACKAGE_DESCRIPTION_SUMMARY
 #
-#  Short description of the project (only a few words).
+#  Short description of the project (only a few words). Default value is::
+#
+#    ${PROJECT_DESCRIPTION}
+#
+#  if DESCRIPTION has given to the project() call or
+#  CMake generated string with PROJECT_NAME otherwise.
 #
 # .. variable:: CPACK_PACKAGE_FILE_NAME
 #
@@ -115,6 +123,17 @@
 #
 #  A branding image that will be displayed inside the installer (used by GUI
 #  installers).
+#
+# .. variable:: CPACK_PACKAGE_CHECKSUM
+#
+#  An algorithm that will be used to generate additional file with checksum
+#  of the package. Output file name will be::
+#
+#     ${CPACK_PACKAGE_FILE_NAME}.${CPACK_PACKAGE_CHECKSUM}
+#
+#  Supported algorithms are those listed by the
+#  :ref:`string(\<HASH\>) <Supported Hash Algorithms>`
+#  command.
 #
 # .. variable:: CPACK_PROJECT_CONFIG_FILE
 #
@@ -243,7 +262,8 @@
 #
 # .. variable:: CPACK_SYSTEM_NAME
 #
-#  System name, defaults to the value of ${CMAKE_SYSTEM_NAME}.
+#  System name, defaults to the value of ${CMAKE_SYSTEM_NAME}, except on
+#  Windows where it will be "win32" or "win64".
 #
 # .. variable:: CPACK_PACKAGE_VERSION
 #
@@ -274,19 +294,6 @@
 #  List of desktop links to create.
 #  Each desktop link requires a corresponding start menu shortcut
 #  as created by :variable:`CPACK_PACKAGE_EXECUTABLES`.
-
-#=============================================================================
-# Copyright 2006-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 # Define this var in order to avoid (or warn) concerning multiple inclusion
 if(CPack_CMake_INCLUDED)
@@ -332,7 +339,7 @@ function(cpack_encode_variables)
         set(value "${${var}}")
       endif()
 
-      set(commands "${commands}\nSET(${var} \"${value}\")")
+      string(APPEND commands "\nset(${var} \"${value}\")")
     endif()
   endforeach()
 
@@ -359,8 +366,13 @@ _cpack_set_default(CPACK_PACKAGE_VERSION_PATCH "1")
 _cpack_set_default(CPACK_PACKAGE_VERSION
   "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}")
 _cpack_set_default(CPACK_PACKAGE_VENDOR "Humanity")
-_cpack_set_default(CPACK_PACKAGE_DESCRIPTION_SUMMARY
-  "${CMAKE_PROJECT_NAME} built using CMake")
+if(CMAKE_PROJECT_DESCRIPTION)
+  _cpack_set_default(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "${CMAKE_PROJECT_DESCRIPTION}")
+else()
+  _cpack_set_default(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "${CMAKE_PROJECT_NAME} built using CMake")
+endif()
 
 _cpack_set_default(CPACK_PACKAGE_DESCRIPTION_FILE
   "${CMAKE_ROOT}/Templates/CPack.GenericDescription.txt")
@@ -372,6 +384,12 @@ _cpack_set_default(CPACK_RESOURCE_FILE_WELCOME
   "${CMAKE_ROOT}/Templates/CPack.GenericWelcome.txt")
 
 _cpack_set_default(CPACK_MODULE_PATH "${CMAKE_MODULE_PATH}")
+
+# Set default directory creation permissions mode
+if(CMAKE_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS)
+  _cpack_set_default(CPACK_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS
+    "${CMAKE_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS}")
+endif()
 
 if(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL)
   set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
@@ -455,10 +473,12 @@ if(NOT CPACK_GENERATOR)
         option(CPACK_BINARY_DRAGNDROP    "Enable to build OSX Drag And Drop package" OFF)
         option(CPACK_BINARY_OSXX11       "Enable to build OSX X11 packages"      OFF)
         option(CPACK_BINARY_PACKAGEMAKER "Enable to build PackageMaker packages" OFF)
+        option(CPACK_BINARY_PRODUCTBUILD "Enable to build productbuild packages" OFF)
       else()
         option(CPACK_BINARY_TZ  "Enable to build TZ packages"     ON)
       endif()
       option(CPACK_BINARY_DEB  "Enable to build Debian packages"  OFF)
+      option(CPACK_BINARY_FREEBSD  "Enable to build FreeBSD packages"  OFF)
       option(CPACK_BINARY_NSIS "Enable to build NSIS packages"    OFF)
       option(CPACK_BINARY_RPM  "Enable to build RPM packages"     OFF)
       option(CPACK_BINARY_STGZ "Enable to build STGZ packages"    ON)
@@ -479,10 +499,12 @@ if(NOT CPACK_GENERATOR)
   cpack_optional_append(CPACK_GENERATOR  CPACK_BINARY_CYGWIN       CygwinBinary)
   cpack_optional_append(CPACK_GENERATOR  CPACK_BINARY_DEB          DEB)
   cpack_optional_append(CPACK_GENERATOR  CPACK_BINARY_DRAGNDROP    DragNDrop)
+  cpack_optional_append(CPACK_GENERATOR  CPACK_BINARY_FREEBSD      FREEBSD)
   cpack_optional_append(CPACK_GENERATOR  CPACK_BINARY_IFW          IFW)
   cpack_optional_append(CPACK_GENERATOR  CPACK_BINARY_NSIS         NSIS)
   cpack_optional_append(CPACK_GENERATOR  CPACK_BINARY_OSXX11       OSXX11)
   cpack_optional_append(CPACK_GENERATOR  CPACK_BINARY_PACKAGEMAKER PackageMaker)
+  cpack_optional_append(CPACK_GENERATOR  CPACK_BINARY_PRODUCTBUILD productbuild)
   cpack_optional_append(CPACK_GENERATOR  CPACK_BINARY_RPM          RPM)
   cpack_optional_append(CPACK_GENERATOR  CPACK_BINARY_STGZ         STGZ)
   cpack_optional_append(CPACK_GENERATOR  CPACK_BINARY_TBZ2         TBZ2)
@@ -500,6 +522,7 @@ if(NOT CPACK_SOURCE_GENERATOR)
     if(CYGWIN)
       option(CPACK_SOURCE_CYGWIN "Enable to build Cygwin source packages" ON)
     else()
+      option(CPACK_SOURCE_RPM  "Enable to build RPM source packages"  OFF)
       option(CPACK_SOURCE_TBZ2 "Enable to build TBZ2 source packages" ON)
       option(CPACK_SOURCE_TGZ  "Enable to build TGZ source packages"  ON)
       option(CPACK_SOURCE_TXZ  "Enable to build TXZ source packages"  ON)
@@ -513,6 +536,7 @@ if(NOT CPACK_SOURCE_GENERATOR)
 
   cpack_optional_append(CPACK_SOURCE_GENERATOR  CPACK_SOURCE_7Z      7Z)
   cpack_optional_append(CPACK_SOURCE_GENERATOR  CPACK_SOURCE_CYGWIN  CygwinSource)
+  cpack_optional_append(CPACK_SOURCE_GENERATOR  CPACK_SOURCE_RPM     RPM)
   cpack_optional_append(CPACK_SOURCE_GENERATOR  CPACK_SOURCE_TBZ2    TBZ2)
   cpack_optional_append(CPACK_SOURCE_GENERATOR  CPACK_SOURCE_TGZ     TGZ)
   cpack_optional_append(CPACK_SOURCE_GENERATOR  CPACK_SOURCE_TXZ     TXZ)
@@ -527,10 +551,12 @@ mark_as_advanced(
   CPACK_BINARY_CYGWIN
   CPACK_BINARY_DEB
   CPACK_BINARY_DRAGNDROP
+  CPACK_BINARY_FREEBSD
   CPACK_BINARY_IFW
   CPACK_BINARY_NSIS
   CPACK_BINARY_OSXX11
   CPACK_BINARY_PACKAGEMAKER
+  CPACK_BINARY_PRODUCTBUILD
   CPACK_BINARY_RPM
   CPACK_BINARY_STGZ
   CPACK_BINARY_TBZ2
@@ -541,6 +567,7 @@ mark_as_advanced(
   CPACK_BINARY_ZIP
   CPACK_SOURCE_7Z
   CPACK_SOURCE_CYGWIN
+  CPACK_SOURCE_RPM
   CPACK_SOURCE_TBZ2
   CPACK_SOURCE_TGZ
   CPACK_SOURCE_TXZ
@@ -588,6 +615,8 @@ _cpack_set_default(CPACK_WIX_SIZEOF_VOID_P "${CMAKE_SIZEOF_VOID_P}")
 if(CMAKE_OSX_SYSROOT)
   _cpack_set_default(CPACK_OSX_SYSROOT "${_CMAKE_OSX_SYSROOT_PATH}")
 endif()
+
+_cpack_set_default(CPACK_BUILD_SOURCE_DIRS "${CMAKE_SOURCE_DIR};${CMAKE_BINARY_DIR}")
 
 if(DEFINED CPACK_COMPONENTS_ALL)
   if(CPACK_MONOLITHIC_INSTALL)
@@ -647,6 +676,8 @@ set(CPACK_TOPLEVEL_TAG "${CPACK_SOURCE_TOPLEVEL_TAG}")
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_SOURCE_PACKAGE_FILE_NAME}")
 set(CPACK_IGNORE_FILES "${CPACK_SOURCE_IGNORE_FILES}")
 set(CPACK_STRIP_FILES "${CPACK_SOURCE_STRIP_FILES}")
+
+set(CPACK_RPM_PACKAGE_SOURCES "ON")
 
 cpack_encode_variables()
 configure_file("${cpack_source_input_file}"

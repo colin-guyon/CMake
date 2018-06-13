@@ -1,17 +1,11 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmGetSourceFilePropertyCommand.h"
 
+#include "cmMakefile.h"
 #include "cmSourceFile.h"
+
+class cmExecutionStatus;
 
 // cmSetSourceFilePropertyCommand
 bool cmGetSourceFilePropertyCommand::InitialPass(
@@ -21,8 +15,8 @@ bool cmGetSourceFilePropertyCommand::InitialPass(
     this->SetError("called with incorrect number of arguments");
     return false;
   }
-  const char* var = args[0].c_str();
-  const char* file = args[1].c_str();
+  std::string const& var = args[0];
+  std::string const& file = args[1];
   cmSourceFile* sf = this->Makefile->GetSource(file);
 
   // for the location we must create a source file first
@@ -34,7 +28,7 @@ bool cmGetSourceFilePropertyCommand::InitialPass(
       this->Makefile->AddDefinition(var, sf->GetLanguage().c_str());
       return true;
     }
-    const char* prop = 0;
+    const char* prop = nullptr;
     if (!args[2].empty()) {
       prop = sf->GetPropertyForUser(args[2]);
     }

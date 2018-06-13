@@ -1,20 +1,14 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmInstallFilesGenerator.h"
 
 #include "cmGeneratorExpression.h"
-#include "cmLocalGenerator.h"
-#include "cmMakefile.h"
+#include "cmInstallType.h"
 #include "cmSystemTools.h"
+
+#include <memory> // IWYU pragma: keep
+
+class cmLocalGenerator;
 
 cmInstallFilesGenerator::cmInstallFilesGenerator(
   std::vector<std::string> const& files, const char* dest, bool programs,
@@ -23,7 +17,7 @@ cmInstallFilesGenerator::cmInstallFilesGenerator(
   const char* rename, bool optional)
   : cmInstallGenerator(dest, configurations, component, message,
                        exclude_from_all)
-  , LocalGenerator(0)
+  , LocalGenerator(nullptr)
   , Files(files)
   , FilePermissions(file_permissions)
   , Rename(rename)
@@ -61,20 +55,20 @@ std::string cmInstallFilesGenerator::GetDestination(
 }
 
 void cmInstallFilesGenerator::AddFilesInstallRule(
-  std::ostream& os, std::string const& config, Indent const& indent,
+  std::ostream& os, std::string const& config, Indent indent,
   std::vector<std::string> const& files)
 {
   // Write code to install the files.
-  const char* no_dir_permissions = 0;
+  const char* no_dir_permissions = nullptr;
   this->AddInstallRule(
     os, this->GetDestination(config),
     (this->Programs ? cmInstallType_PROGRAMS : cmInstallType_FILES), files,
     this->Optional, this->FilePermissions.c_str(), no_dir_permissions,
-    this->Rename.c_str(), 0, indent);
+    this->Rename.c_str(), nullptr, indent);
 }
 
 void cmInstallFilesGenerator::GenerateScriptActions(std::ostream& os,
-                                                    Indent const& indent)
+                                                    Indent indent)
 {
   if (this->ActionsPerConfig) {
     this->cmInstallGenerator::GenerateScriptActions(os, indent);
@@ -84,13 +78,12 @@ void cmInstallFilesGenerator::GenerateScriptActions(std::ostream& os,
 }
 
 void cmInstallFilesGenerator::GenerateScriptForConfig(
-  std::ostream& os, const std::string& config, Indent const& indent)
+  std::ostream& os, const std::string& config, Indent indent)
 {
   std::vector<std::string> files;
   cmGeneratorExpression ge;
-  for (std::vector<std::string>::const_iterator i = this->Files.begin();
-       i != this->Files.end(); ++i) {
-    cmsys::auto_ptr<cmCompiledGeneratorExpression> cge = ge.Parse(*i);
+  for (std::string const& f : this->Files) {
+    std::unique_ptr<cmCompiledGeneratorExpression> cge = ge.Parse(f);
     cmSystemTools::ExpandListArgument(
       cge->Evaluate(this->LocalGenerator, config), files);
   }

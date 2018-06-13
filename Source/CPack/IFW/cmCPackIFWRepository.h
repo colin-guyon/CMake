@@ -1,27 +1,21 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCPackIFWRepository_h
 #define cmCPackIFWRepository_h
 
-#include <cmStandardIncludes.h>
+#include "cmConfigure.h" // IWYU pragma: keep
 
-class cmCPackIFWGenerator;
+#include "cmCPackIFWCommon.h"
+
+#include <string>
+#include <vector>
+
 class cmXMLWriter;
 
 /** \class cmCPackIFWRepository
  * \brief A remote repository to be created CPack IFW generator
  */
-class cmCPackIFWRepository
+class cmCPackIFWRepository : public cmCPackIFWCommon
 {
 public:
   // Types
@@ -79,13 +73,6 @@ public:
 
   bool IsValid() const;
 
-  const char* GetOption(const std::string& op) const;
-  bool IsOn(const std::string& op) const;
-
-  bool IsVersionLess(const char* version);
-  bool IsVersionGreater(const char* version);
-  bool IsVersionEqual(const char* version);
-
   bool ConfigureFromOptions();
 
   bool PatchUpdatesXml();
@@ -94,12 +81,8 @@ public:
   void WriteRepositoryUpdate(cmXMLWriter& xout);
   void WriteRepositoryUpdates(cmXMLWriter& xout);
 
-  cmCPackIFWGenerator* Generator;
   RepositoriesVector RepositoryUpdate;
   std::string Directory;
-
-protected:
-  void WriteGeneratedByToStrim(cmXMLWriter& xout);
 };
 
 #endif // cmCPackIFWRepository_h

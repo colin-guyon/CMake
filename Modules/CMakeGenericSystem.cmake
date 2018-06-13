@@ -1,16 +1,7 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
 
-#=============================================================================
-# Copyright 2004-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
+include(CMakeInitializeConfigs)
 
 set(CMAKE_SHARED_LIBRARY_C_FLAGS "")            # -pic
 set(CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS "-shared")       # -shared
@@ -18,7 +9,6 @@ set(CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "")         # +s, flag for exe link to use
 set(CMAKE_SHARED_LIBRARY_RUNTIME_C_FLAG "")       # -rpath
 set(CMAKE_SHARED_LIBRARY_RUNTIME_C_FLAG_SEP "")   # : or empty
 set(CMAKE_INCLUDE_FLAG_C "-I")       # -I
-set(CMAKE_INCLUDE_FLAG_C_SEP "")     # , or empty
 set(CMAKE_LIBRARY_PATH_FLAG "-L")
 set(CMAKE_LIBRARY_PATH_TERMINATOR "")  # for the Digital Mars D compiler the link paths have to be terminated with a "/"
 set(CMAKE_LINK_LIBRARY_FLAG "-l")
@@ -33,6 +23,8 @@ set(CMAKE_DL_LIBS "dl")
 
 set(CMAKE_FIND_LIBRARY_PREFIXES "lib")
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".so" ".a")
+set(CMAKE_AUTOMOC_COMPILER_PREDEFINES ON)
+set(CMAKE_AUTOMOC_MACRO_NAMES "Q_OBJECT" "Q_GADGET" "Q_NAMESPACE")
 
 # basically all general purpose OSs support shared libs
 set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
@@ -91,6 +83,8 @@ function(GetDefaultWindowsPrefixBase var)
   #
   if("${CMAKE_GENERATOR}" MATCHES "(Win64|IA64)")
     set(arch_hint "x64")
+  elseif("${CMAKE_GENERATOR_PLATFORM}" MATCHES "ARM64")
+    set(arch_hint "ARM64")
   elseif("${CMAKE_GENERATOR}" MATCHES "ARM")
     set(arch_hint "ARM")
   elseif("${CMAKE_SIZEOF_VOID_P}" STREQUAL "8")

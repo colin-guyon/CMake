@@ -1,46 +1,44 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmDefinePropertyCommand.h"
 
+#include <sstream>
+
+#include "cmMakefile.h"
+#include "cmProperty.h"
 #include "cmState.h"
-#include "cmake.h"
+
+class cmExecutionStatus;
 
 bool cmDefinePropertyCommand::InitialPass(std::vector<std::string> const& args,
                                           cmExecutionStatus&)
 {
-  if (args.size() < 1) {
+  if (args.empty()) {
     this->SetError("called with incorrect number of arguments");
     return false;
   }
 
   // Get the scope in which to define the property.
   cmProperty::ScopeType scope;
-  if (args[0] == "GLOBAL") {
+  std::string const& scope_arg = args[0];
+
+  if (scope_arg == "GLOBAL") {
     scope = cmProperty::GLOBAL;
-  } else if (args[0] == "DIRECTORY") {
+  } else if (scope_arg == "DIRECTORY") {
     scope = cmProperty::DIRECTORY;
-  } else if (args[0] == "TARGET") {
+  } else if (scope_arg == "TARGET") {
     scope = cmProperty::TARGET;
-  } else if (args[0] == "SOURCE") {
+  } else if (scope_arg == "SOURCE") {
     scope = cmProperty::SOURCE_FILE;
-  } else if (args[0] == "TEST") {
+  } else if (scope_arg == "TEST") {
     scope = cmProperty::TEST;
-  } else if (args[0] == "VARIABLE") {
+  } else if (scope_arg == "VARIABLE") {
     scope = cmProperty::VARIABLE;
-  } else if (args[0] == "CACHED_VARIABLE") {
+  } else if (scope_arg == "CACHED_VARIABLE") {
     scope = cmProperty::CACHED_VARIABLE;
   } else {
     std::ostringstream e;
-    e << "given invalid scope " << args[0] << ".  "
+    e << "given invalid scope " << scope_arg << ".  "
       << "Valid scopes are "
       << "GLOBAL, DIRECTORY, TARGET, SOURCE, "
       << "TEST, VARIABLE, CACHED_VARIABLE.";

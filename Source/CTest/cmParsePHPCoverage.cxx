@@ -1,8 +1,13 @@
 #include "cmParsePHPCoverage.h"
 
+#include "cmCTest.h"
+#include "cmCTestCoverageHandler.h"
 #include "cmSystemTools.h"
-#include <cmsys/Directory.hxx>
-#include <cmsys/FStream.hxx>
+
+#include "cmsys/Directory.hxx"
+#include "cmsys/FStream.hxx"
+#include <stdlib.h>
+#include <string.h>
 
 /*
   To setup coverage for php.
@@ -27,10 +32,7 @@ bool cmParsePHPCoverage::ReadUntil(std::istream& in, char until)
   char c = 0;
   while (in.get(c) && c != until) {
   }
-  if (c != until) {
-    return false;
-  }
-  return true;
+  return c == until;
 }
 bool cmParsePHPCoverage::ReadCoverageArray(std::istream& in,
                                            std::string const& fileName)

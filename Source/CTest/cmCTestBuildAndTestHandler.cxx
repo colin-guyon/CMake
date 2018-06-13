@@ -1,30 +1,25 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCTestBuildAndTestHandler.h"
 
 #include "cmCTest.h"
 #include "cmCTestTestHandler.h"
 #include "cmGlobalGenerator.h"
 #include "cmSystemTools.h"
+#include "cmWorkingDirectory.h"
 #include "cmake.h"
-#include <cmsys/Process.h>
+
+#include "cmsys/Process.h"
+#include <chrono>
+#include <ratio>
+#include <stdlib.h>
 
 cmCTestBuildAndTestHandler::cmCTestBuildAndTestHandler()
 {
   this->BuildTwoConfig = false;
   this->BuildNoClean = false;
   this->BuildNoCMake = false;
-  this->Timeout = 0;
+  this->Timeout = cmDuration::zero();
 }
 
 void cmCTestBuildAndTestHandler::Initialize()
@@ -39,7 +34,7 @@ const char* cmCTestBuildAndTestHandler::GetOutput()
 }
 int cmCTestBuildAndTestHandler::ProcessHandler()
 {
-  this->Output = "";
+  this->Output.clear();
   std::string output;
   cmSystemTools::ResetErrorOccuredFlag();
   int retv = this->RunCMakeAndTest(&this->Output);
@@ -50,29 +45,22 @@ int cmCTestBuildAndTestHandler::ProcessHandler()
 int cmCTestBuildAndTestHandler::RunCMake(std::string* outstring,
                                          std::ostringstream& out,
                                          std::string& cmakeOutString,
-                                         std::string& cwd, cmake* cm)
+                                         cmake* cm)
 {
-  unsigned int k;
   std::vector<std::string> args;
   args.push_back(cmSystemTools::GetCMakeCommand());
   args.push_back(this->SourceDir);
   if (!this->BuildGenerator.empty()) {
-    std::string generator = "-G";
-    generator += this->BuildGenerator;
-    args.push_back(generator);
+    args.push_back("-G" + this->BuildGenerator);
   }
   if (!this->BuildGeneratorPlatform.empty()) {
-    std::string platform = "-A";
-    platform += this->BuildGeneratorPlatform;
-    args.push_back(platform);
+    args.push_back("-A" + this->BuildGeneratorPlatform);
   }
   if (!this->BuildGeneratorToolset.empty()) {
-    std::string toolset = "-T";
-    toolset += this->BuildGeneratorToolset;
-    args.push_back(toolset);
+    args.push_back("-T" + this->BuildGeneratorToolset);
   }
 
-  const char* config = 0;
+  const char* config = nullptr;
   if (!this->CTest->GetConfigType().empty()) {
     config = this->CTest->GetConfigType().c_str();
   }
@@ -83,18 +71,15 @@ int cmCTestBuildAndTestHandler::RunCMake(std::string* outstring,
 #endif
 
   if (config) {
-    std::string btype = "-DCMAKE_BUILD_TYPE:STRING=" + std::string(config);
-    args.push_back(btype);
+    args.push_back("-DCMAKE_BUILD_TYPE:STRING=" + std::string(config));
   }
 
-  for (k = 0; k < this->BuildOptions.size(); ++k) {
-    args.push_back(this->BuildOptions[k]);
+  for (std::string const& opt : this->BuildOptions) {
+    args.push_back(opt);
   }
   if (cm->Run(args) != 0) {
     out << "Error: cmake execution failed\n";
     out << cmakeOutString << "\n";
-    // return to the original directory
-    cmSystemTools::ChangeDirectory(cwd);
     if (outstring) {
       *outstring = out.str();
     } else {
@@ -107,8 +92,6 @@ int cmCTestBuildAndTestHandler::RunCMake(std::string* outstring,
     if (cm->Run(args) != 0) {
       out << "Error: cmake execution failed\n";
       out << cmakeOutString << "\n";
-      // return to the original directory
-      cmSystemTools::ChangeDirectory(cwd);
       if (outstring) {
         *outstring = out.str();
       } else {
@@ -123,23 +106,24 @@ int cmCTestBuildAndTestHandler::RunCMake(std::string* outstring,
   return 0;
 }
 
-void CMakeMessageCallback(const char* m, const char*, bool&, void* s)
+void CMakeMessageCallback(const char* m, const char* /*unused*/,
+                          bool& /*unused*/, void* s)
 {
-  std::string* out = (std::string*)s;
+  std::string* out = static_cast<std::string*>(s);
   *out += m;
   *out += "\n";
 }
 
-void CMakeProgressCallback(const char* msg, float, void* s)
+void CMakeProgressCallback(const char* msg, float /*unused*/, void* s)
 {
-  std::string* out = (std::string*)s;
+  std::string* out = static_cast<std::string*>(s);
   *out += msg;
   *out += "\n";
 }
 
 void CMakeOutputCallback(const char* m, size_t len, void* s)
 {
-  std::string* out = (std::string*)s;
+  std::string* out = static_cast<std::string*>(s);
   out->append(m, len);
 }
 
@@ -158,10 +142,10 @@ public:
   }
   ~cmCTestBuildAndTestCaptureRAII()
   {
-    this->CM.SetProgressCallback(0, 0);
-    cmSystemTools::SetStderrCallback(0, 0);
-    cmSystemTools::SetStdoutCallback(0, 0);
-    cmSystemTools::SetMessageCallback(0, 0);
+    this->CM.SetProgressCallback(nullptr, nullptr);
+    cmSystemTools::SetStderrCallback(nullptr, nullptr);
+    cmSystemTools::SetStdoutCallback(nullptr, nullptr);
+    cmSystemTools::SetMessageCallback(nullptr, nullptr);
   }
 };
 
@@ -177,7 +161,7 @@ int cmCTestBuildAndTestHandler::RunCMakeAndTest(std::string* outstring)
     return 1;
   }
 
-  cmake cm;
+  cmake cm(cmake::RoleProject);
   cm.SetHomeDirectory("");
   cm.SetHomeOutputDirectory("");
   std::string cmakeOutString;
@@ -203,16 +187,15 @@ int cmCTestBuildAndTestHandler::RunCMakeAndTest(std::string* outstring)
 
   // we need to honor the timeout specified, the timeout include cmake, build
   // and test time
-  double clock_start = cmSystemTools::GetTime();
+  auto clock_start = std::chrono::steady_clock::now();
 
   // make sure the binary dir is there
-  std::string cwd = cmSystemTools::GetCurrentWorkingDirectory();
   out << "Internal cmake changing into directory: " << this->BinaryDir
       << std::endl;
   if (!cmSystemTools::FileIsDirectory(this->BinaryDir)) {
-    cmSystemTools::MakeDirectory(this->BinaryDir.c_str());
+    cmSystemTools::MakeDirectory(this->BinaryDir);
   }
-  cmSystemTools::ChangeDirectory(this->BinaryDir);
+  cmWorkingDirectory workdir(this->BinaryDir);
 
   if (this->BuildNoCMake) {
     // Make the generator available for the Build call below.
@@ -224,22 +207,21 @@ int cmCTestBuildAndTestHandler::RunCMakeAndTest(std::string* outstring)
     cm.LoadCache(this->BinaryDir);
   } else {
     // do the cmake step, no timeout here since it is not a sub process
-    if (this->RunCMake(outstring, out, cmakeOutString, cwd, &cm)) {
+    if (this->RunCMake(outstring, out, cmakeOutString, &cm)) {
       return 1;
     }
   }
 
   // do the build
-  std::vector<std::string>::iterator tarIt;
   if (this->BuildTargets.empty()) {
     this->BuildTargets.push_back("");
   }
-  for (tarIt = this->BuildTargets.begin(); tarIt != this->BuildTargets.end();
-       ++tarIt) {
-    double remainingTime = 0;
-    if (this->Timeout > 0) {
-      remainingTime = this->Timeout - cmSystemTools::GetTime() + clock_start;
-      if (remainingTime <= 0) {
+  for (std::string const& tar : this->BuildTargets) {
+    cmDuration remainingTime = std::chrono::seconds(0);
+    if (this->Timeout > cmDuration::zero()) {
+      remainingTime =
+        this->Timeout - (std::chrono::steady_clock::now() - clock_start);
+      if (remainingTime <= std::chrono::seconds(0)) {
         if (outstring) {
           *outstring = "--build-and-test timeout exceeded. ";
         }
@@ -247,7 +229,7 @@ int cmCTestBuildAndTestHandler::RunCMakeAndTest(std::string* outstring)
       }
     }
     std::string output;
-    const char* config = 0;
+    const char* config = nullptr;
     if (!this->CTest->GetConfigType().empty()) {
       config = this->CTest->GetConfigType().c_str();
     }
@@ -260,7 +242,7 @@ int cmCTestBuildAndTestHandler::RunCMakeAndTest(std::string* outstring)
       config = "Debug";
     }
     int retVal = cm.GetGlobalGenerator()->Build(
-      this->SourceDir, this->BinaryDir, this->BuildProject, *tarIt, output,
+      this->SourceDir, this->BinaryDir, this->BuildProject, tar, output,
       this->BuildMakeProgram, config, !this->BuildNoClean, false, false,
       remainingTime);
     out << output;
@@ -298,30 +280,28 @@ int cmCTestBuildAndTestHandler::RunCMakeAndTest(std::string* outstring)
     cmCTestTestHandler::FindExecutable(this->CTest, this->TestCommand.c_str(),
                                        resultingConfig, extraPaths, failed);
 
-  if (!cmSystemTools::FileExists(fullPath.c_str())) {
+  if (!cmSystemTools::FileExists(fullPath)) {
     out << "Could not find path to executable, perhaps it was not built: "
         << this->TestCommand << "\n";
     out << "tried to find it in these places:\n";
-    out << fullPath.c_str() << "\n";
-    for (unsigned int i = 0; i < failed.size(); ++i) {
-      out << failed[i] << "\n";
+    out << fullPath << "\n";
+    for (std::string const& fail : failed) {
+      out << fail << "\n";
     }
     if (outstring) {
       *outstring = out.str();
     } else {
       cmCTestLog(this->CTest, ERROR_MESSAGE, out.str());
     }
-    // return to the original directory
-    cmSystemTools::ChangeDirectory(cwd);
     return 1;
   }
 
   std::vector<const char*> testCommand;
   testCommand.push_back(fullPath.c_str());
-  for (size_t k = 0; k < this->TestCommandArgs.size(); ++k) {
-    testCommand.push_back(this->TestCommandArgs[k].c_str());
+  for (std::string const& testCommandArg : this->TestCommandArgs) {
+    testCommand.push_back(testCommandArg.c_str());
   }
-  testCommand.push_back(0);
+  testCommand.push_back(nullptr);
   std::string outs;
   int retval = 0;
   // run the test from the this->BuildRunDir if set
@@ -330,16 +310,17 @@ int cmCTestBuildAndTestHandler::RunCMakeAndTest(std::string* outstring)
     cmSystemTools::ChangeDirectory(this->BuildRunDir);
   }
   out << "Running test command: \"" << fullPath << "\"";
-  for (size_t k = 0; k < this->TestCommandArgs.size(); ++k) {
-    out << " \"" << this->TestCommandArgs[k] << "\"";
+  for (std::string const& testCommandArg : this->TestCommandArgs) {
+    out << " \"" << testCommandArg << "\"";
   }
   out << "\n";
 
   // how much time is remaining
-  double remainingTime = 0;
-  if (this->Timeout > 0) {
-    remainingTime = this->Timeout - cmSystemTools::GetTime() + clock_start;
-    if (remainingTime <= 0) {
+  cmDuration remainingTime = std::chrono::seconds(0);
+  if (this->Timeout > cmDuration::zero()) {
+    remainingTime =
+      this->Timeout - (std::chrono::steady_clock::now() - clock_start);
+    if (remainingTime <= std::chrono::seconds(0)) {
       if (outstring) {
         *outstring = "--build-and-test timeout exceeded. ";
       }
@@ -347,8 +328,8 @@ int cmCTestBuildAndTestHandler::RunCMakeAndTest(std::string* outstring)
     }
   }
 
-  int runTestRes =
-    this->CTest->RunTest(testCommand, &outs, &retval, 0, remainingTime, 0);
+  int runTestRes = this->CTest->RunTest(testCommand, &outs, &retval, nullptr,
+                                        remainingTime, nullptr);
 
   if (runTestRes != cmsysProcess_State_Exited || retval != 0) {
     out << "Test command failed: " << testCommand[0] << "\n";
@@ -377,7 +358,7 @@ int cmCTestBuildAndTestHandler::ProcessCommandLineArguments(
       idx++;
       this->BinaryDir = allArgs[idx];
       // dir must exist before CollapseFullPath is called
-      cmSystemTools::MakeDirectory(this->BinaryDir.c_str());
+      cmSystemTools::MakeDirectory(this->BinaryDir);
       this->BinaryDir = cmSystemTools::CollapseFullPath(this->BinaryDir);
       this->SourceDir = cmSystemTools::CollapseFullPath(this->SourceDir);
     } else {
@@ -407,7 +388,7 @@ int cmCTestBuildAndTestHandler::ProcessCommandLineArguments(
   }
   if (currentArg.find("--test-timeout", 0) == 0 && idx < allArgs.size() - 1) {
     idx++;
-    this->Timeout = atof(allArgs[idx].c_str());
+    this->Timeout = cmDuration(atof(allArgs[idx].c_str()));
   }
   if (currentArg == "--build-generator" && idx < allArgs.size() - 1) {
     idx++;

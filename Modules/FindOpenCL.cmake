@@ -1,10 +1,22 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindOpenCL
 # ----------
 #
 # Try to find OpenCL
 #
-# Once done this will define::
+# IMPORTED Targets
+# ^^^^^^^^^^^^^^^^
+#
+# This module defines :prop_tgt:`IMPORTED` target ``OpenCL::OpenCL``, if
+# OpenCL has been found.
+#
+# Result Variables
+# ^^^^^^^^^^^^^^^^
+#
+# This module defines the following variables::
 #
 #   OpenCL_FOUND          - True if OpenCL was found
 #   OpenCL_INCLUDE_DIRS   - include directories for OpenCL
@@ -19,32 +31,19 @@
 #   OpenCL_LIBRARY        - the path to the OpenCL library
 #
 
-#=============================================================================
-# Copyright 2014 Matthaeus G. Chajdas
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
-
 function(_FIND_OPENCL_VERSION)
   include(CheckSymbolExists)
   include(CMakePushCheckState)
   set(CMAKE_REQUIRED_QUIET ${OpenCL_FIND_QUIETLY})
 
   CMAKE_PUSH_CHECK_STATE()
-  foreach(VERSION "2_0" "1_2" "1_1" "1_0")
+  foreach(VERSION "2_2" "2_1" "2_0" "1_2" "1_1" "1_0")
     set(CMAKE_REQUIRED_INCLUDES "${OpenCL_INCLUDE_DIR}")
 
     if(APPLE)
       CHECK_SYMBOL_EXISTS(
         CL_VERSION_${VERSION}
-        "${OpenCL_INCLUDE_DIR}/OpenCL/cl.h"
+        "${OpenCL_INCLUDE_DIR}/Headers/cl.h"
         OPENCL_VERSION_${VERSION})
     else()
       CHECK_SYMBOL_EXISTS(
@@ -77,6 +76,7 @@ find_path(OpenCL_INCLUDE_DIR
     ENV NVSDKCOMPUTE_ROOT
     ENV CUDA_PATH
     ENV ATISTREAMSDKROOT
+    ENV OCL_ROOT
   PATH_SUFFIXES
     include
     OpenCL/common/inc
@@ -95,6 +95,7 @@ if(WIN32)
         ENV CUDA_PATH
         ENV NVSDKCOMPUTE_ROOT
         ENV ATISTREAMSDKROOT
+        ENV OCL_ROOT
       PATH_SUFFIXES
         "AMD APP/lib/x86"
         lib/x86
@@ -110,6 +111,7 @@ if(WIN32)
         ENV CUDA_PATH
         ENV NVSDKCOMPUTE_ROOT
         ENV ATISTREAMSDKROOT
+        ENV OCL_ROOT
       PATH_SUFFIXES
         "AMD APP/lib/x86_64"
         lib/x86_64
@@ -118,7 +120,15 @@ if(WIN32)
   endif()
 else()
   find_library(OpenCL_LIBRARY
-    NAMES OpenCL)
+    NAMES OpenCL
+    PATHS
+      ENV AMDAPPSDKROOT
+      ENV CUDA_PATH
+    PATH_SUFFIXES
+      lib/x86_64
+      lib/x64
+      lib
+      lib64)
 endif()
 
 set(OpenCL_LIBRARIES ${OpenCL_LIBRARY})
@@ -134,3 +144,17 @@ find_package_handle_standard_args(
 mark_as_advanced(
   OpenCL_INCLUDE_DIR
   OpenCL_LIBRARY)
+
+if(OpenCL_FOUND AND NOT TARGET OpenCL::OpenCL)
+  if(OpenCL_LIBRARY MATCHES "/([^/]+)\\.framework$")
+    add_library(OpenCL::OpenCL INTERFACE IMPORTED)
+    set_target_properties(OpenCL::OpenCL PROPERTIES
+      INTERFACE_LINK_LIBRARIES "${OpenCL_LIBRARY}")
+  else()
+    add_library(OpenCL::OpenCL UNKNOWN IMPORTED)
+    set_target_properties(OpenCL::OpenCL PROPERTIES
+      IMPORTED_LOCATION "${OpenCL_LIBRARY}")
+  endif()
+  set_target_properties(OpenCL::OpenCL PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${OpenCL_INCLUDE_DIRS}")
+endif()

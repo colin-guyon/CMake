@@ -1,16 +1,5 @@
-
-#=============================================================================
-# Copyright 2004-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
 
 
 # This file sets the basic flags for the Windows Resource Compiler.
@@ -28,10 +17,9 @@ set(CMAKE_SYSTEM_AND_RC_COMPILER_INFO_FILE
   ${CMAKE_ROOT}/Modules/Platform/${CMAKE_SYSTEM_NAME}-${CMAKE_BASE_NAME}.cmake)
 include(Platform/${CMAKE_SYSTEM_NAME}-${CMAKE_BASE_NAME} OPTIONAL)
 
+set(CMAKE_RC_FLAGS_INIT "$ENV{RCFLAGS} ${CMAKE_RC_FLAGS_INIT}")
 
-
-set (CMAKE_RC_FLAGS "$ENV{RCFLAGS} ${CMAKE_RC_FLAGS_INIT}" CACHE STRING
-     "Flags for Windows Resource Compiler.")
+cmake_initialize_per_config_variable(CMAKE_RC_FLAGS "Flags for Windows Resource Compiler")
 
 # These are the only types of flags that should be passed to the rc
 # command, if COMPILE_FLAGS is used on a target this will be used
@@ -47,8 +35,5 @@ if(NOT CMAKE_RC_COMPILE_OBJECT)
     "<CMAKE_RC_COMPILER> <DEFINES> <INCLUDES> <FLAGS> /fo<OBJECT> <SOURCE>")
 endif()
 
-mark_as_advanced(
-CMAKE_RC_FLAGS
-)
 # set this variable so we can avoid loading this more than once.
 set(CMAKE_RC_INFORMATION_LOADED 1)

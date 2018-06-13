@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # FindLAPACK
 # ----------
@@ -30,21 +33,16 @@
 #      all the possibilities
 #   BLA_F95     if set on tries to find the f95 interfaces for BLAS/LAPACK
 #
-# ## List of vendors (BLA_VENDOR) valid in this module # Intel(mkl),
-# OpenBLAS, ACML,Apple, NAS, Generic
-
-#=============================================================================
-# Copyright 2007-2009 Kitware, Inc.
+# List of vendors (BLA_VENDOR) valid in this module:
 #
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
+# * Intel(mkl)
+# * OpenBLAS
+# * FLAME
+# * ACML
+# * Apple
+# * NAS
+# * Generic
 #
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
 
 set(_lapack_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
 
@@ -198,6 +196,20 @@ if (BLA_VENDOR STREQUAL "OpenBLAS" OR BLA_VENDOR STREQUAL "All")
   cheev
   ""
   "openblas"
+  "${BLAS_LIBRARIES}"
+  ""
+  )
+ endif()
+endif ()
+
+if (BLA_VENDOR STREQUAL "FLAME" OR BLA_VENDOR STREQUAL "All")
+ if(NOT LAPACK_LIBRARIES)
+  check_lapack_libraries(
+  LAPACK_LIBRARIES
+  LAPACK
+  cheev
+  ""
+  "flame"
   "${BLAS_LIBRARIES}"
   ""
   )

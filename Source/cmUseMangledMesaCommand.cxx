@@ -1,32 +1,20 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmUseMangledMesaCommand.h"
+
+#include "cmsys/FStream.hxx"
+#include "cmsys/RegularExpression.hxx"
 
 #include "cmSystemTools.h"
 
-#include <cmsys/FStream.hxx>
-#include <cmsys/RegularExpression.hxx>
+class cmExecutionStatus;
 
 bool cmUseMangledMesaCommand::InitialPass(std::vector<std::string> const& args,
                                           cmExecutionStatus&)
 {
-  if (this->Disallowed(
-        cmPolicies::CMP0030,
-        "The use_mangled_mesa command should not be called; see CMP0030.")) {
-    return true;
-  }
   // expected two arguments:
-  // arguement one: the full path to gl_mangle.h
-  // arguement two : directory for output of edited headers
+  // argument one: the full path to gl_mangle.h
+  // argument two : directory for output of edited headers
   if (args.size() != 2) {
     this->SetError("called with incorrect number of arguments");
     return false;
@@ -35,7 +23,7 @@ bool cmUseMangledMesaCommand::InitialPass(std::vector<std::string> const& args,
   std::string glh = inputDir;
   glh += "/";
   glh += "gl.h";
-  if (!cmSystemTools::FileExists(glh.c_str())) {
+  if (!cmSystemTools::FileExists(glh)) {
     std::string e = "Bad path to Mesa, could not find: ";
     e += glh;
     e += " ";
@@ -50,11 +38,10 @@ bool cmUseMangledMesaCommand::InitialPass(std::vector<std::string> const& args,
     return false;
   }
   cmSystemTools::MakeDirectory(destDir);
-  for (std::vector<std::string>::iterator i = files.begin(); i != files.end();
-       ++i) {
+  for (std::string const& f : files) {
     std::string path = inputDir;
     path += "/";
-    path += *i;
+    path += f;
     this->CopyAndFullPathMesaHeader(path.c_str(), destDir);
   }
 
@@ -114,5 +101,5 @@ void cmUseMangledMesaCommand::CopyAndFullPathMesaHeader(const char* source,
   fin.close();
   fout.close();
   cmSystemTools::CopyFileIfDifferent(tempOutputFile.c_str(), outFile.c_str());
-  cmSystemTools::RemoveFile(tempOutputFile.c_str());
+  cmSystemTools::RemoveFile(tempOutputFile);
 }

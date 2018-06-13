@@ -1,64 +1,41 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #ifndef cmCTest_h
 #define cmCTest_h
 
-#include "cmStandardIncludes.h"
+#include "cmConfigure.h" // IWYU pragma: keep
 
-#include "cmListFileCache.h"
+#include "cmDuration.h"
+#include "cmProcessOutput.h"
+#include "cmsys/String.hxx"
+#include <chrono>
+#include <map>
+#include <set>
+#include <sstream>
+#include <string>
 #include <time.h>
+#include <vector>
 
-class cmake;
-class cmMakefile;
 class cmCTestGenericHandler;
-class cmGeneratedFileStream;
-class cmCTestCommand;
-class cmCTestScriptHandler;
 class cmCTestStartCommand;
+class cmGeneratedFileStream;
+class cmMakefile;
 class cmXMLWriter;
 
-#define cmCTestLog(ctSelf, logType, msg)                                      \
-  do {                                                                        \
-    std::ostringstream cmCTestLog_msg;                                        \
-    cmCTestLog_msg << msg;                                                    \
-    (ctSelf)->Log(cmCTest::logType, __FILE__, __LINE__,                       \
-                  cmCTestLog_msg.str().c_str());                              \
-  } while (0)
-
-#define cmCTestOptionalLog(ctSelf, logType, msg, suppress)                    \
-  do {                                                                        \
-    std::ostringstream cmCTestLog_msg;                                        \
-    cmCTestLog_msg << msg;                                                    \
-    (ctSelf)->Log(cmCTest::logType, __FILE__, __LINE__,                       \
-                  cmCTestLog_msg.str().c_str(), suppress);                    \
-  } while (0)
-
-#ifdef cerr
-#undef cerr
-#endif
-#define cerr no_cerr_use_cmCTestLog
-
-#ifdef cout
-#undef cout
-#endif
-#define cout no_cout_use_cmCTestLog
-
+/** \class cmCTest
+ * \brief Represents a ctest invocation.
+ *
+ * This class represents a ctest invocation. It is the top level class when
+ * running ctest.
+ *
+ */
 class cmCTest
 {
   friend class cmCTestRunTest;
   friend class cmCTestMultiProcessHandler;
 
 public:
+  typedef cmProcessOutput::Encoding Encoding;
   /** Enumerate parts of the testing and submission process.  */
   enum Part
   {
@@ -119,8 +96,8 @@ public:
   typedef std::vector<cmsys::String> VectorOfStrings;
   typedef std::set<std::string> SetOfStrings;
 
-  ///! Process Command line arguments
-  int Run(std::vector<std::string>&, std::string* output = 0);
+  /** Process Command line arguments */
+  int Run(std::vector<std::string>&, std::string* output = nullptr);
 
   /**
    * Initialize and finalize testing
@@ -129,23 +106,30 @@ public:
   void Finalize();
 
   /**
-   * Process the tests. This is the main routine. The execution of the
-   * tests should look like this:
+   * Process the dashboard client steps.
    *
+   * Steps are enabled using SetTest()
+   *
+   * The execution of the steps (or #Part) should look like this:
+   *
+   * /code
    * ctest foo;
    * foo.Initialize();
    * // Set some things on foo
-   * foo.ProcessTests();
+   * foo.ProcessSteps();
    * foo.Finalize();
+   * /endcode
+   *
+   * \sa Initialize(), Finalize(), Part, PartInfo, SetTest()
    */
-  int ProcessTests();
+  int ProcessSteps();
 
-  /*
+  /**
    * A utility function that returns the nightly time
    */
   struct tm* GetNightlyTime(std::string const& str, bool tomorrowtag);
 
-  /*
+  /**
    * Is the tomorrow tag set?
    */
   bool GetTomorrowTag() { return this->TomorrowTag; }
@@ -155,14 +139,14 @@ public:
    */
   int TestDirectory(bool memcheck);
 
-  ///! what is the configuraiton type, e.g. Debug, Release etc.
+  /** what is the configuraiton type, e.g. Debug, Release etc. */
   std::string const& GetConfigType();
-  double GetTimeOut() { return this->TimeOut; }
-  void SetTimeOut(double t) { this->TimeOut = t; }
+  cmDuration GetTimeOut() { return this->TimeOut; }
+  void SetTimeOut(cmDuration t) { this->TimeOut = t; }
 
-  double GetGlobalTimeout() { return this->GlobalTimeout; }
+  cmDuration GetGlobalTimeout() { return this->GlobalTimeout; }
 
-  // how many test to run at the same time
+  /** how many test to run at the same time */
   int GetParallelLevel() { return this->ParallelLevel; }
   void SetParallelLevel(int);
 
@@ -200,33 +184,37 @@ public:
   cmCTest();
   ~cmCTest();
 
-  //! Set the notes files to be created.
+  /** Set the notes files to be created. */
   void SetNotesFiles(const char* notes);
 
   void PopulateCustomVector(cmMakefile* mf, const std::string& definition,
                             std::vector<std::string>& vec);
   void PopulateCustomInteger(cmMakefile* mf, const std::string& def, int& val);
 
-  ///! Get the current time as string
+  /** Get the current time as string */
   std::string CurrentTime();
 
-  //! tar/gzip and then base 64 encode a file
+  /** tar/gzip and then base 64 encode a file */
   std::string Base64GzipEncodeFile(std::string const& file);
-  //! base64 encode a file
+  /** base64 encode a file */
   std::string Base64EncodeFile(std::string const& file);
 
   /**
    * Return the time remaining that the script is allowed to run in
    * seconds if the user has set the variable CTEST_TIME_LIMIT. If that has
-   * not been set it returns 1e7 seconds
+   * not been set it returns a very large duration.
    */
-  double GetRemainingTimeAllowed();
+  cmDuration GetRemainingTimeAllowed();
 
-  ///! Open file in the output directory and set the stream
+  static cmDuration MaxDuration();
+
+  /**
+   * Open file in the output directory and set the stream
+   */
   bool OpenOutputFile(const std::string& path, const std::string& name,
                       cmGeneratedFileStream& stream, bool compress = false);
 
-  ///! Should we only show what we would do?
+  /** Should we only show what we would do? */
   bool GetShowOnly();
 
   bool ShouldUseHTTP10() { return this->UseHTTP10; }
@@ -234,19 +222,19 @@ public:
   bool ShouldPrintLabels() { return this->PrintLabels; }
 
   bool ShouldCompressTestOutput();
-  bool ShouldCompressMemCheckOutput();
   bool CompressString(std::string& str);
 
-  std::string GetCDashVersion();
-
-  std::string GetStopTime() { return this->StopTime; }
+  std::chrono::system_clock::time_point GetStopTime()
+  {
+    return this->StopTime;
+  }
   void SetStopTime(std::string const& time);
 
-  // Used for parallel ctest job scheduling
+  /** Used for parallel ctest job scheduling */
   std::string GetScheduleType() { return this->ScheduleType; }
-  void SetScheduleType(std::string type) { this->ScheduleType = type; }
+  void SetScheduleType(std::string const& type) { this->ScheduleType = type; }
 
-  ///! The max output width
+  /** The max output width */
   int GetMaxTestNameWidth() const;
   void SetMaxTestNameWidth(int w) { this->MaxTestNameWidth = w; }
 
@@ -264,41 +252,45 @@ public:
    * exit code will be stored. If the retVal is not specified and
    * the program exits with a code other than 0, then the this
    * function will return false.
-   *
-   * If the command has spaces in the path the caller MUST call
-   * cmSystemTools::ConvertToRunCommandPath on the command before passing
-   * it into this function or it will not work.  The command must be correctly
-   * escaped for this to with spaces.
    */
-  bool RunCommand(const char* command, std::string* stdOut,
-                  std::string* stdErr, int* retVal = 0, const char* dir = 0,
-                  double timeout = 0.0);
+  bool RunCommand(std::vector<std::string> const& args, std::string* stdOut,
+                  std::string* stdErr, int* retVal = nullptr,
+                  const char* dir = nullptr,
+                  cmDuration timeout = cmDuration::zero(),
+                  Encoding encoding = cmProcessOutput::Auto);
 
-  //! Clean/make safe for xml the given value such that it may be used as
-  // one of the key fields by CDash when computing the buildid.
+  /**
+   * Clean/make safe for xml the given value such that it may be used as
+   * one of the key fields by CDash when computing the buildid.
+   */
   static std::string SafeBuildIdField(const std::string& value);
 
-  //! Start CTest XML output file
+  /** Start CTest XML output file */
   void StartXML(cmXMLWriter& xml, bool append);
 
-  //! End CTest XML output file
+  /** End CTest XML output file */
   void EndXML(cmXMLWriter& xml);
 
-  //! Run command specialized for make and configure. Returns process status
-  // and retVal is return value or exception.
-  int RunMakeCommand(const char* command, std::string& output, int* retVal,
-                     const char* dir, int timeout, std::ostream& ofs);
-
-  /*
-   * return the current tag
+  /**
+   * Run command specialized for make and configure. Returns process status
+   * and retVal is return value or exception.
    */
+  int RunMakeCommand(const char* command, std::string& output, int* retVal,
+                     const char* dir, cmDuration timeout, std::ostream& ofs,
+                     Encoding encoding = cmProcessOutput::Auto);
+
+  /** Return the current tag */
   std::string GetCurrentTag();
 
-  //! Get the path to the build tree
+  /** Get the path to the build tree */
   std::string GetBinaryDir();
 
-  //! Get the short path to the file. This means if the file is in binary or
-  // source directory, it will become /.../relative/path/to/file
+  /**
+   * Get the short path to the file.
+   *
+   * This means if the file is in binary or
+   * source directory, it will become /.../relative/path/to/file
+   */
   std::string GetShortPathToFile(const char* fname);
 
   enum
@@ -308,7 +300,7 @@ public:
     CONTINUOUS
   };
 
-  // provide some more detailed info on the return code for ctest
+  /** provide some more detailed info on the return code for ctest */
   enum
   {
     UPDATE_ERRORS = 0x01,
@@ -320,17 +312,20 @@ public:
     SUBMIT_ERRORS = 0x40
   };
 
-  ///! Are we producing XML
+  /** Are we producing XML */
   bool GetProduceXML();
   void SetProduceXML(bool v);
 
-  //! Run command specialized for tests. Returns process status and retVal is
-  // return value or exception. If environment is non-null, it is used to set
-  // environment variables prior to running the test. After running the test,
-  // environment variables are restored to their previous values.
+  /**
+   * Run command specialized for tests. Returns process status and retVal is
+   * return value or exception. If environment is non-null, it is used to set
+   * environment variables prior to running the test. After running the test,
+   * environment variables are restored to their previous values.
+   */
   int RunTest(std::vector<const char*> args, std::string* output, int* retVal,
-              std::ostream* logfile, double testTimeOut,
-              std::vector<std::string>* environment);
+              std::ostream* logfile, cmDuration testTimeOut,
+              std::vector<std::string>* environment,
+              Encoding encoding = cmProcessOutput::Auto);
 
   /**
    * Execute handler and return its result. If the handler fails, it returns
@@ -338,13 +333,13 @@ public:
    */
   int ExecuteHandler(const char* handler);
 
-  /*
+  /**
    * Get the handler object
    */
   cmCTestGenericHandler* GetHandler(const char* handler);
   cmCTestGenericHandler* GetInitializedHandler(const char* handler);
 
-  /*
+  /**
    * Set the CTest variable from CMake variable
    */
   bool SetCTestConfigurationFromCMakeVariable(cmMakefile* mf,
@@ -352,37 +347,42 @@ public:
                                               const std::string& cmake_var,
                                               bool suppress = false);
 
-  //! Make string safe to be send as an URL
+  /** Make string safe to be send as an URL */
   static std::string MakeURLSafe(const std::string&);
 
   /** Decode a URL to the original string.  */
   static std::string DecodeURL(const std::string&);
 
-  //! Should ctect configuration be updated. When using new style ctest
-  // script, this should be true.
+  /**
+   * Should ctect configuration be updated. When using new style ctest
+   * script, this should be true.
+   */
   void SetSuppressUpdatingCTestConfiguration(bool val)
   {
     this->SuppressUpdatingCTestConfiguration = val;
   }
 
-  //! Add overwrite to ctest configuration.
-  // The format is key=value
+  /**
+   * Add overwrite to ctest configuration.
+   *
+   * The format is key=value
+   */
   void AddCTestConfigurationOverwrite(const std::string& encstr);
 
-  //! Create XML file that contains all the notes specified
+  /** Create XML file that contains all the notes specified */
   int GenerateNotesFile(const VectorOfStrings& files);
 
-  //! Submit extra files to the server
+  /** Submit extra files to the server */
   bool SubmitExtraFiles(const char* files);
   bool SubmitExtraFiles(const VectorOfStrings& files);
 
-  //! Set the output log file name
+  /** Set the output log file name */
   void SetOutputLogFileName(const char* name);
 
-  //! Set the visual studio or Xcode config type
+  /** Set the visual studio or Xcode config type */
   void SetConfigType(const char* ct);
 
-  //! Various log types
+  /** Various log types */
   enum
   {
     DEBUG = 0,
@@ -395,15 +395,15 @@ public:
     OTHER
   };
 
-  //! Add log to the output
+  /** Add log to the output */
   void Log(int logType, const char* file, int line, const char* msg,
            bool suppress = false);
 
-  //! Get the version of dart server
+  /** Get the version of dart server */
   int GetDartVersion() { return this->DartVersion; }
   int GetDropSiteCDash() { return this->DropSiteCDash; }
 
-  //! Add file to be submitted
+  /** Add file to be submitted */
   void AddSubmitFile(Part part, const char* name);
   std::vector<std::string> const& GetSubmitFiles(Part part)
   {
@@ -411,7 +411,9 @@ public:
   }
   void ClearSubmitFiles(Part part) { this->Parts[part].SubmitFiles.clear(); }
 
-  //! Read the custom configuration files and apply them to the current ctest
+  /**
+   * Read the custom configuration files and apply them to the current ctest
+   */
   int ReadCustomConfigurationFileTree(const char* dir, cmMakefile* mf);
 
   std::vector<std::string>& GetInitialCommandLineArguments()
@@ -419,15 +421,12 @@ public:
     return this->InitialCommandLineArguments;
   }
 
-  //! Set the track to submit to
+  /** Set the track to submit to */
   void SetSpecificTrack(const char* track);
   const char* GetSpecificTrack();
 
   void SetFailover(bool failover) { this->Failover = failover; }
   bool GetFailover() { return this->Failover; }
-
-  void SetBatchJobs(bool batch = true) { this->BatchJobs = batch; }
-  bool GetBatchJobs() { return this->BatchJobs; }
 
   bool GetVerbose() { return this->Verbose; }
   bool GetExtraVerbose() { return this->ExtraVerbose; }
@@ -439,7 +438,9 @@ public:
     this->StreamErr = err;
   }
   void AddSiteProperties(cmXMLWriter& xml);
+
   bool GetLabelSummary() { return this->LabelSummary; }
+  bool GetSubprojectSummary() { return this->SubprojectSummary; }
 
   std::string GetCostDataFile();
 
@@ -447,37 +448,38 @@ public:
   {
     return this->Definitions;
   }
-  // return the number of times a test should be run
+
+  /** Return the number of times a test should be run */
   int GetTestRepeat() { return this->RepeatTests; }
-  // return true if test should run until fail
+
+  /** Return true if test should run until fail */
   bool GetRepeatUntilFail() { return this->RepeatUntilFail; }
+
+  void GenerateSubprojectsOutput(cmXMLWriter& xml);
+  std::vector<std::string> GetLabelsForSubprojects();
+
+  void SetRunCurrentScript(bool value);
+
 private:
   int RepeatTests;
   bool RepeatUntilFail;
   std::string ConfigType;
   std::string ScheduleType;
-  std::string StopTime;
-  bool NextDayStopTime;
+  std::chrono::system_clock::time_point StopTime;
   bool Verbose;
   bool ExtraVerbose;
   bool ProduceXML;
   bool LabelSummary;
+  bool SubprojectSummary;
   bool UseHTTP10;
   bool PrintLabels;
   bool Failover;
-  bool BatchJobs;
 
   bool ForceNewCTestProcess;
 
   bool RunConfigurationScript;
 
-  // flag for lazy getter (optimization)
-  bool ComputedCompressTestOutput;
-  bool ComputedCompressMemCheckOutput;
-
   int GenerateNotesFile(const char* files);
-
-  void DetermineNextDayStop();
 
   // these are helper classes
   typedef std::map<std::string, cmCTestGenericHandler*> t_TestingHandlers;
@@ -485,10 +487,9 @@ private:
 
   bool ShowOnly;
 
-  //! Map of configuration properties
+  /** Map of configuration properties */
   typedef std::map<std::string, std::string> CTestConfigurationMap;
 
-  std::string CTestConfigFile;
   // TODO: The ctest configuration should be a hierarchy of
   // configuration option sources: command-line, script, ini file.
   // Then the ini file can get re-loaded whenever it changes without
@@ -505,11 +506,9 @@ private:
   int TestModel;
   std::string SpecificTrack;
 
-  double TimeOut;
+  cmDuration TimeOut;
 
-  double GlobalTimeout;
-
-  int LastStopTimeout;
+  cmDuration GlobalTimeout;
 
   int MaxTestNameWidth;
 
@@ -531,7 +530,6 @@ private:
 
   bool CompressXMLFiles;
   bool CompressTestOutput;
-  bool CompressMemCheckOutput;
 
   void InitStreams();
   std::ostream* StreamOut;
@@ -549,35 +547,46 @@ private:
    */
   int Initialize(const char* binary_dir, cmCTestStartCommand* command);
 
-  //! parse the option after -D and convert it into the appropriate steps
+  /** parse the option after -D and convert it into the appropriate steps */
   bool AddTestsForDashboardType(std::string& targ);
 
-  //! read as "emit an error message for an unknown -D value"
+  /** read as "emit an error message for an unknown -D value" */
   void ErrorMessageUnknownDashDValue(std::string& val);
 
-  //! add a variable definition from a command line -D value
+  /** add a variable definition from a command line -D value */
   bool AddVariableDefinition(const std::string& arg);
 
-  //! parse and process most common command line arguments
+  /** parse and process most common command line arguments */
   bool HandleCommandLineArguments(size_t& i, std::vector<std::string>& args,
                                   std::string& errormsg);
 
-  //! hande the -S -SP and -SR arguments
+  /** hande the -S -SP and -SR arguments */
   void HandleScriptArguments(size_t& i, std::vector<std::string>& args,
                              bool& SRArgumentSpecified);
 
-  //! Reread the configuration file
+  /** Reread the configuration file */
   bool UpdateCTestConfiguration();
 
-  //! Create note from files.
+  /** Create note from files. */
   int GenerateCTestNotesOutput(cmXMLWriter& xml, const VectorOfStrings& files);
 
-  //! Check if the argument is the one specified
+  /** Check if the argument is the one specified */
   bool CheckArgument(const std::string& arg, const char* varg1,
-                     const char* varg2 = 0);
+                     const char* varg2 = nullptr);
 
-  //! Output errors from a test
+  /** Output errors from a test */
   void OutputTestErrors(std::vector<char> const& process_output);
+
+  /** Handle the --test-action command line argument */
+  bool HandleTestActionArgument(const char* ctestExec, size_t& i,
+                                const std::vector<std::string>& args);
+
+  /** Handle the --test-model command line argument */
+  bool HandleTestModelArgument(const char* ctestExec, size_t& i,
+                               const std::vector<std::string>& args);
+
+  int RunCMakeAndTest(std::string* output);
+  int ExecuteTests();
 
   bool SuppressUpdatingCTestConfiguration;
 
@@ -622,5 +631,21 @@ inline std::ostream& operator<<(std::ostream& os, const cmCTestLogWrite& c)
   os.flush();
   return os;
 }
+
+#define cmCTestLog(ctSelf, logType, msg)                                      \
+  do {                                                                        \
+    std::ostringstream cmCTestLog_msg;                                        \
+    cmCTestLog_msg << msg;                                                    \
+    (ctSelf)->Log(cmCTest::logType, __FILE__, __LINE__,                       \
+                  cmCTestLog_msg.str().c_str());                              \
+  } while (false)
+
+#define cmCTestOptionalLog(ctSelf, logType, msg, suppress)                    \
+  do {                                                                        \
+    std::ostringstream cmCTestLog_msg;                                        \
+    cmCTestLog_msg << msg;                                                    \
+    (ctSelf)->Log(cmCTest::logType, __FILE__, __LINE__,                       \
+                  cmCTestLog_msg.str().c_str(), suppress);                    \
+  } while (false)
 
 #endif

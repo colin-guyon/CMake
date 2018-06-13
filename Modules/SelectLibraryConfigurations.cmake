@@ -1,3 +1,6 @@
+# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+# file Copyright.txt or https://cmake.org/licensing for details.
+
 #.rst:
 # SelectLibraryConfigurations
 # ---------------------------
@@ -24,20 +27,6 @@
 # take only the release value, or the debug value if the release one is
 # not set.
 
-#=============================================================================
-# Copyright 2009 Will Dicharry <wdicharry@stellarscience.com>
-# Copyright 2005-2009 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of CMake, substitute the full
-#  License text for the above reference.)
-
 # This macro was adapted from the FindQt4 CMake module and is maintained by Will
 # Dicharry <wdicharry@stellarscience.com>.
 
@@ -49,11 +38,12 @@ macro( select_library_configurations basename )
         set(${basename}_LIBRARY_DEBUG "${basename}_LIBRARY_DEBUG-NOTFOUND" CACHE FILEPATH "Path to a library.")
     endif()
 
+    get_property(_isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
     if( ${basename}_LIBRARY_DEBUG AND ${basename}_LIBRARY_RELEASE AND
            NOT ${basename}_LIBRARY_DEBUG STREQUAL ${basename}_LIBRARY_RELEASE AND
-           ( CMAKE_CONFIGURATION_TYPES OR CMAKE_BUILD_TYPE ) )
-        # if the generator supports configuration types or CMAKE_BUILD_TYPE
-        # is set, then set optimized and debug options.
+           ( _isMultiConfig OR CMAKE_BUILD_TYPE ) )
+        # if the generator is multi-config or if CMAKE_BUILD_TYPE is set for
+        # single-config generators, set optimized and debug libraries
         set( ${basename}_LIBRARY "" )
         foreach( _libname IN LISTS ${basename}_LIBRARY_RELEASE )
             list( APPEND ${basename}_LIBRARY optimized "${_libname}" )

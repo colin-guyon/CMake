@@ -19,12 +19,12 @@ foreach(c DIRECTORY NAME EXT NAME_WE PATH)
 endforeach()
 
 # Test Windows paths with DIRECTORY component and an absolute Windows path.
-get_filename_component(test_slashes "c:\\path\\to\\filename.ext.in" DIRECTORY)
-check("DIRECTORY from backslashes" "${test_slashes}" "c:/path/to")
+get_filename_component(test_slashes "C:\\path\\to\\filename.ext.in" DIRECTORY)
+check("DIRECTORY from backslashes" "${test_slashes}" "C:/path/to")
 list(APPEND non_cache_vars test_slashes)
 
-get_filename_component(test_winroot "c:\\filename.ext.in" DIRECTORY)
-check("DIRECTORY in windows root" "${test_winroot}" "c:/")
+get_filename_component(test_winroot "C:\\filename.ext.in" DIRECTORY)
+check("DIRECTORY in windows root" "${test_winroot}" "C:/")
 list(APPEND non_cache_vars test_winroot)
 
 # Test finding absolute paths.
@@ -33,8 +33,8 @@ check("ABSOLUTE" "${test_absolute}" "/path/to/filename.ext.in")
 
 get_filename_component(test_absolute "/../path/to/filename.ext.in" ABSOLUTE)
 check("ABSOLUTE .. in root" "${test_absolute}" "/path/to/filename.ext.in")
-get_filename_component(test_absolute "c:/../path/to/filename.ext.in" ABSOLUTE)
-check("ABSOLUTE .. in windows root" "${test_absolute}" "c:/path/to/filename.ext.in")
+get_filename_component(test_absolute "C:/../path/to/filename.ext.in" ABSOLUTE)
+check("ABSOLUTE .. in windows root" "${test_absolute}" "C:/path/to/filename.ext.in")
 
 list(APPEND non_cache_vars test_absolute)
 
@@ -79,6 +79,17 @@ get_filename_component(test_program_name "/ arg1 arg2" PROGRAM
   PROGRAM_ARGS test_program_args)
 check("PROGRAM with args output: name" "${test_program_name}" "/")
 check("PROGRAM with args output: args" "${test_program_args}" " arg1 arg2")
+
+get_filename_component(test_program_name " " PROGRAM)
+check("PROGRAM with just a space" "${test_program_name}" "")
+
+get_filename_component(test_program_name "${CMAKE_CURRENT_LIST_FILE}" PROGRAM)
+check("PROGRAM specified explicitly without quoting" "${test_program_name}" "${CMAKE_CURRENT_LIST_FILE}")
+
+get_filename_component(test_program_name "\"${CMAKE_CURRENT_LIST_FILE}\" arg1 arg2" PROGRAM
+  PROGRAM_ARGS test_program_args)
+check("PROGRAM specified explicitly with arguments: name" "${test_program_name}" "${CMAKE_CURRENT_LIST_FILE}")
+check("PROGRAM specified explicitly with arguments: args" "${test_program_args}" " arg1 arg2")
 
 list(APPEND non_cache_vars test_program_name)
 list(APPEND non_cache_vars test_program_args)

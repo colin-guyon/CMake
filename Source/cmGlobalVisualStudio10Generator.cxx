@@ -1,25 +1,33 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-#include "windows.h" // this must be first to define GetCurrentDirectory
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmGlobalVisualStudio10Generator.h"
 
 #include "cmAlgorithms.h"
+#include "cmDocumentationEntry.h"
+#include "cmGeneratorTarget.h"
 #include "cmLocalVisualStudio10Generator.h"
 #include "cmMakefile.h"
 #include "cmSourceFile.h"
+#include "cmVS10CLFlagTable.h"
+#include "cmVS10CSharpFlagTable.h"
+#include "cmVS10CudaFlagTable.h"
+#include "cmVS10CudaHostFlagTable.h"
+#include "cmVS10LibFlagTable.h"
+#include "cmVS10LinkFlagTable.h"
+#include "cmVS10MASMFlagTable.h"
+#include "cmVS10NASMFlagTable.h"
+#include "cmVS10RCFlagTable.h"
+#include "cmVersion.h"
 #include "cmVisualStudioSlnData.h"
 #include "cmVisualStudioSlnParser.h"
+#include "cmXMLWriter.h"
 #include "cmake.h"
+
+#include "cmsys/FStream.hxx"
+#include "cmsys/Glob.hxx"
+#include "cmsys/RegularExpression.hxx"
+
+#include <algorithm>
 
 static const char vs10generatorName[] = "Visual Studio 10 2010";
 
@@ -42,8 +50,8 @@ class cmGlobalVisualStudio10Generator::Factory
   : public cmGlobalGeneratorFactory
 {
 public:
-  virtual cmGlobalGenerator* CreateGlobalGenerator(const std::string& name,
-                                                   cmake* cm) const
+  cmGlobalGenerator* CreateGlobalGenerator(const std::string& name,
+                                           cmake* cm) const override
   {
     std::string genName;
     const char* p = cmVS10GenName(name, genName);
@@ -65,21 +73,22 @@ public:
     return 0;
   }
 
-  virtual void GetDocumentation(cmDocumentationEntry& entry) const
+  void GetDocumentation(cmDocumentationEntry& entry) const override
   {
     entry.Name = std::string(vs10generatorName) + " [arch]";
     entry.Brief = "Generates Visual Studio 2010 project files.  "
                   "Optional [arch] can be \"Win64\" or \"IA64\".";
   }
 
-  virtual void GetGenerators(std::vector<std::string>& names) const
+  void GetGenerators(std::vector<std::string>& names) const override
   {
     names.push_back(vs10generatorName);
     names.push_back(vs10generatorName + std::string(" IA64"));
     names.push_back(vs10generatorName + std::string(" Win64"));
   }
 
-  virtual bool SupportsToolset() const { return true; }
+  bool SupportsToolset() const override { return true; }
+  bool SupportsPlatform() const override { return true; }
 };
 
 cmGlobalGeneratorFactory* cmGlobalVisualStudio10Generator::NewFactory()
@@ -96,11 +105,32 @@ cmGlobalVisualStudio10Generator::cmGlobalVisualStudio10Generator(
     "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VCExpress\\10.0\\Setup\\VC;"
     "ProductDir",
     vc10Express, cmSystemTools::KeyWOW64_32);
+  this->CudaEnabled = false;
   this->SystemIsWindowsCE = false;
   this->SystemIsWindowsPhone = false;
   this->SystemIsWindowsStore = false;
   this->MSBuildCommandInitialized = false;
+  {
+    std::string envPlatformToolset;
+    if (cmSystemTools::GetEnv("PlatformToolset", envPlatformToolset) &&
+        envPlatformToolset == "Windows7.1SDK") {
+      // We are running from a Windows7.1SDK command prompt.
+      this->DefaultPlatformToolset = "Windows7.1SDK";
+    } else {
+      this->DefaultPlatformToolset = "v100";
+    }
+  }
+  this->DefaultClFlagTable = cmVS10CLFlagTable;
+  this->DefaultCSharpFlagTable = cmVS10CSharpFlagTable;
+  this->DefaultLibFlagTable = cmVS10LibFlagTable;
+  this->DefaultLinkFlagTable = cmVS10LinkFlagTable;
+  this->DefaultCudaFlagTable = cmVS10CudaFlagTable;
+  this->DefaultCudaHostFlagTable = cmVS10CudaHostFlagTable;
+  this->DefaultMasmFlagTable = cmVS10MASMFlagTable;
+  this->DefaultNasmFlagTable = cmVS10NASMFlagTable;
+  this->DefaultRcFlagTable = cmVS10RCFlagTable;
   this->Version = VS10;
+  this->PlatformToolsetNeedsDebugEnum = false;
 }
 
 bool cmGlobalVisualStudio10Generator::MatchesGeneratorName(
@@ -139,6 +169,13 @@ bool cmGlobalVisualStudio10Generator::SetGeneratorPlatform(
   return true;
 }
 
+static void cmCudaToolVersion(std::string& s)
+{
+  // "CUDA x.y.props" => "x.y"
+  s = s.substr(5);
+  s = s.substr(0, s.size() - 6);
+}
+
 bool cmGlobalVisualStudio10Generator::SetGeneratorToolset(
   std::string const& ts, cmMakefile* mf)
 {
@@ -151,11 +188,138 @@ bool cmGlobalVisualStudio10Generator::SetGeneratorToolset(
     return false;
   }
 
-  this->GeneratorToolset = ts;
+  if (!this->ParseGeneratorToolset(ts, mf)) {
+    return false;
+  }
+
+  if (!this->FindVCTargetsPath(mf)) {
+    return false;
+  }
+
+  if (cmHasLiteralPrefix(this->GetPlatformToolsetString(), "v140")) {
+    // The GenerateDebugInformation link setting for the v140 toolset
+    // in VS 2015 was originally an enum with "No" and "Debug" values,
+    // differing from the "false" and "true" values used in older toolsets.
+    // A VS 2015 update changed it back.  Parse the "link.xml" file to
+    // discover which one we need.
+    std::string const link_xml = this->VCTargetsPath + "/1033/link.xml";
+    cmsys::ifstream fin(link_xml.c_str());
+    std::string line;
+    while (fin && cmSystemTools::GetLineFromStream(fin, line)) {
+      if (line.find(" Switch=\"DEBUG\" ") != std::string::npos) {
+        this->PlatformToolsetNeedsDebugEnum =
+          line.find(" Name=\"Debug\" ") != std::string::npos;
+        break;
+      }
+    }
+  }
+
+  if (this->GeneratorToolsetCuda.empty()) {
+    // Find the highest available version of the CUDA tools.
+    std::vector<std::string> cudaTools;
+    std::string const bcDir = this->VCTargetsPath + "/BuildCustomizations";
+    cmsys::Glob gl;
+    gl.SetRelative(bcDir.c_str());
+    if (gl.FindFiles(bcDir + "/CUDA *.props")) {
+      cudaTools = gl.GetFiles();
+    }
+    if (!cudaTools.empty()) {
+      std::for_each(cudaTools.begin(), cudaTools.end(), cmCudaToolVersion);
+      std::sort(cudaTools.begin(), cudaTools.end(),
+                cmSystemTools::VersionCompareGreater);
+      this->GeneratorToolsetCuda = cudaTools.at(0);
+    }
+  }
+
   if (const char* toolset = this->GetPlatformToolset()) {
     mf->AddDefinition("CMAKE_VS_PLATFORM_TOOLSET", toolset);
   }
+  if (const char* hostArch = this->GetPlatformToolsetHostArchitecture()) {
+    mf->AddDefinition("CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE", hostArch);
+  }
+  if (const char* cuda = this->GetPlatformToolsetCuda()) {
+    mf->AddDefinition("CMAKE_VS_PLATFORM_TOOLSET_CUDA", cuda);
+  }
   return true;
+}
+
+bool cmGlobalVisualStudio10Generator::ParseGeneratorToolset(
+  std::string const& ts, cmMakefile* mf)
+{
+  std::vector<std::string> const fields = cmSystemTools::tokenize(ts, ",");
+  std::vector<std::string>::const_iterator fi = fields.begin();
+  if (fi == fields.end()) {
+    return true;
+  }
+
+  // The first field may be the VS platform toolset.
+  if (fi->find('=') == fi->npos) {
+    this->GeneratorToolset = *fi;
+    ++fi;
+  }
+
+  std::set<std::string> handled;
+
+  // The rest of the fields must be key=value pairs.
+  for (; fi != fields.end(); ++fi) {
+    std::string::size_type pos = fi->find('=');
+    if (pos == fi->npos) {
+      std::ostringstream e;
+      /* clang-format off */
+      e <<
+        "Generator\n"
+        "  " << this->GetName() << "\n"
+        "given toolset specification\n"
+        "  " << ts << "\n"
+        "that contains a field after the first ',' with no '='."
+        ;
+      /* clang-format on */
+      mf->IssueMessage(cmake::FATAL_ERROR, e.str());
+      return false;
+    }
+    std::string const key = fi->substr(0, pos);
+    std::string const value = fi->substr(pos + 1);
+    if (!handled.insert(key).second) {
+      std::ostringstream e;
+      /* clang-format off */
+      e <<
+        "Generator\n"
+        "  " << this->GetName() << "\n"
+        "given toolset specification\n"
+        "  " << ts << "\n"
+        "that contains duplicate field key '" << key << "'."
+        ;
+      /* clang-format on */
+      mf->IssueMessage(cmake::FATAL_ERROR, e.str());
+      return false;
+    }
+    if (!this->ProcessGeneratorToolsetField(key, value)) {
+      std::ostringstream e;
+      /* clang-format off */
+      e <<
+        "Generator\n"
+        "  " << this->GetName() << "\n"
+        "given toolset specification\n"
+        "  " << ts << "\n"
+        "that contains invalid field '" << *fi << "'."
+        ;
+      /* clang-format on */
+      mf->IssueMessage(cmake::FATAL_ERROR, e.str());
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool cmGlobalVisualStudio10Generator::ProcessGeneratorToolsetField(
+  std::string const& key, std::string const& value)
+{
+  if (key == "cuda") {
+    this->GeneratorToolsetCuda = value;
+    return true;
+  }
+  return false;
 }
 
 bool cmGlobalVisualStudio10Generator::InitializeSystem(cmMakefile* mf)
@@ -243,14 +407,14 @@ bool cmGlobalVisualStudio10Generator::InitializeWindowsStore(cmMakefile* mf)
 bool cmGlobalVisualStudio10Generator::SelectWindowsPhoneToolset(
   std::string& toolset) const
 {
-  toolset = "";
+  toolset.clear();
   return false;
 }
 
 bool cmGlobalVisualStudio10Generator::SelectWindowsStoreToolset(
   std::string& toolset) const
 {
-  toolset = "";
+  toolset.clear();
   return false;
 }
 
@@ -314,25 +478,71 @@ void cmGlobalVisualStudio10Generator::Generate()
 void cmGlobalVisualStudio10Generator::EnableLanguage(
   std::vector<std::string> const& lang, cmMakefile* mf, bool optional)
 {
+  for (std::string const& it : lang) {
+    if (it == "ASM_NASM") {
+      this->NasmEnabled = true;
+    }
+    if (it == "CUDA") {
+      this->CudaEnabled = true;
+    }
+  }
+  this->AddPlatformDefinitions(mf);
   cmGlobalVisualStudio8Generator::EnableLanguage(lang, mf, optional);
 }
 
 const char* cmGlobalVisualStudio10Generator::GetPlatformToolset() const
 {
-  if (!this->GeneratorToolset.empty()) {
-    return this->GeneratorToolset.c_str();
+  std::string const& toolset = this->GetPlatformToolsetString();
+  if (toolset.empty()) {
+    return nullptr;
   }
-  if (!this->DefaultPlatformToolset.empty()) {
-    return this->DefaultPlatformToolset.c_str();
-  }
-  return 0;
+  return toolset.c_str();
 }
 
-void cmGlobalVisualStudio10Generator::FindMakeProgram(cmMakefile* mf)
+std::string const& cmGlobalVisualStudio10Generator::GetPlatformToolsetString()
+  const
 {
-  this->cmGlobalVisualStudio8Generator::FindMakeProgram(mf);
+  if (!this->GeneratorToolset.empty()) {
+    return this->GeneratorToolset;
+  }
+  if (!this->DefaultPlatformToolset.empty()) {
+    return this->DefaultPlatformToolset;
+  }
+  static std::string const empty;
+  return empty;
+}
+
+const char*
+cmGlobalVisualStudio10Generator::GetPlatformToolsetHostArchitecture() const
+{
+  if (!this->GeneratorToolsetHostArchitecture.empty()) {
+    return this->GeneratorToolsetHostArchitecture.c_str();
+  }
+  return nullptr;
+}
+
+const char* cmGlobalVisualStudio10Generator::GetPlatformToolsetCuda() const
+{
+  if (!this->GeneratorToolsetCuda.empty()) {
+    return this->GeneratorToolsetCuda.c_str();
+  }
+  return nullptr;
+}
+
+std::string const&
+cmGlobalVisualStudio10Generator::GetPlatformToolsetCudaString() const
+{
+  return this->GeneratorToolsetCuda;
+}
+
+bool cmGlobalVisualStudio10Generator::FindMakeProgram(cmMakefile* mf)
+{
+  if (!this->cmGlobalVisualStudio8Generator::FindMakeProgram(mf)) {
+    return false;
+  }
   mf->AddDefinition("CMAKE_VS_MSBUILD_COMMAND",
                     this->GetMSBuildCommand().c_str());
+  return true;
 }
 
 std::string const& cmGlobalVisualStudio10Generator::GetMSBuildCommand()
@@ -347,16 +557,22 @@ std::string const& cmGlobalVisualStudio10Generator::GetMSBuildCommand()
 std::string cmGlobalVisualStudio10Generator::FindMSBuildCommand()
 {
   std::string msbuild;
-  std::string mskey =
-    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\MSBuild\\ToolsVersions\\";
+  std::string mskey;
+
+  // Search in standard location.
+  mskey = "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\MSBuild\\ToolsVersions\\";
   mskey += this->GetToolsVersion();
   mskey += ";MSBuildToolsPath";
   if (cmSystemTools::ReadRegistryValue(mskey.c_str(), msbuild,
                                        cmSystemTools::KeyWOW64_32)) {
     cmSystemTools::ConvertToUnixSlashes(msbuild);
-    msbuild += "/";
+    msbuild += "/MSBuild.exe";
+    if (cmSystemTools::FileExists(msbuild, true)) {
+      return msbuild;
+    }
   }
-  msbuild += "MSBuild.exe";
+
+  msbuild = "MSBuild.exe";
   return msbuild;
 }
 
@@ -371,6 +587,214 @@ std::string cmGlobalVisualStudio10Generator::FindDevEnvCommand()
   // Skip over the cmGlobalVisualStudio8Generator implementation because
   // we expect a real devenv and do not want to look for VCExpress.
   return this->cmGlobalVisualStudio71Generator::FindDevEnvCommand();
+}
+
+bool cmGlobalVisualStudio10Generator::FindVCTargetsPath(cmMakefile* mf)
+{
+  // Skip this in special cases within our own test suite.
+  if (this->GetPlatformName() == "Test Platform" ||
+      this->GetPlatformToolsetString() == "Test Toolset") {
+    return true;
+  }
+
+  std::string wd;
+  if (!this->ConfiguredFilesPath.empty()) {
+    // In a try-compile we are given the outer CMakeFiles directory.
+    wd = this->ConfiguredFilesPath;
+  } else {
+    wd = this->GetCMakeInstance()->GetHomeOutputDirectory();
+    wd += cmake::GetCMakeFilesDirectory();
+  }
+  wd += "/";
+  wd += cmVersion::GetCMakeVersion();
+
+  // We record the result persistently in a file.
+  std::string const txt = wd + "/VCTargetsPath.txt";
+
+  // If we have a recorded result, use it.
+  {
+    cmsys::ifstream fin(txt.c_str());
+    if (fin && cmSystemTools::GetLineFromStream(fin, this->VCTargetsPath) &&
+        cmSystemTools::FileIsDirectory(this->VCTargetsPath)) {
+      cmSystemTools::ConvertToUnixSlashes(this->VCTargetsPath);
+      return true;
+    }
+  }
+
+  // Prepare the work directory.
+  if (!cmSystemTools::MakeDirectory(wd)) {
+    std::string e = "Failed to make directory:\n  " + wd;
+    mf->IssueMessage(cmake::FATAL_ERROR, e.c_str());
+    cmSystemTools::SetFatalErrorOccured();
+    return false;
+  }
+
+  // Generate a project file for MSBuild to tell us the VCTargetsPath value.
+  std::string const vcxproj = "VCTargetsPath.vcxproj";
+  {
+    std::string const vcxprojAbs = wd + "/" + vcxproj;
+    cmsys::ofstream fout(vcxprojAbs.c_str());
+    cmXMLWriter xw(fout);
+
+    /* clang-format off */
+    xw.StartDocument();
+    xw.StartElement("Project");
+     xw.Attribute("DefaultTargets", "Build");
+     xw.Attribute("ToolsVersion", "4.0");
+     xw.Attribute("xmlns",
+                  "http://schemas.microsoft.com/developer/msbuild/2003");
+     if (this->IsNsightTegra()) {
+       xw.StartElement("PropertyGroup");
+        xw.Attribute("Label", "NsightTegraProject");
+        xw.StartElement("NsightTegraProjectRevisionNumber");
+         xw.Content("6");
+        xw.EndElement(); // NsightTegraProjectRevisionNumber
+       xw.EndElement(); // PropertyGroup
+     }
+     xw.StartElement("ItemGroup");
+      xw.Attribute("Label", "ProjectConfigurations");
+      xw.StartElement("ProjectConfiguration");
+       xw.Attribute("Include", "Debug|" + this->GetPlatformName());
+       xw.StartElement("Configuration");
+        xw.Content("Debug");
+       xw.EndElement(); // Configuration
+       xw.StartElement("Platform");
+        xw.Content(this->GetPlatformName());
+       xw.EndElement(); // Platform
+      xw.EndElement(); // ProjectConfiguration
+     xw.EndElement(); // ItemGroup
+    xw.StartElement("PropertyGroup");
+     xw.Attribute("Label", "Globals");
+     xw.StartElement("ProjectGuid");
+      xw.Content("{F3FC6D86-508D-3FB1-96D2-995F08B142EC}");
+     xw.EndElement(); // ProjectGuid
+     xw.StartElement("Keyword");
+      xw.Content("Win32Proj");
+     xw.EndElement(); // Keyword
+     xw.StartElement("Platform");
+      xw.Content(this->GetPlatformName());
+     xw.EndElement(); // Platform
+     if (this->GetSystemName() == "WindowsPhone") {
+       xw.StartElement("ApplicationType");
+        xw.Content("Windows Phone");
+       xw.EndElement(); // ApplicationType
+       xw.StartElement("ApplicationTypeRevision");
+        xw.Content(this->GetSystemVersion());
+       xw.EndElement(); // ApplicationTypeRevision
+     } else if (this->GetSystemName() == "WindowsStore") {
+       xw.StartElement("ApplicationType");
+        xw.Content("Windows Store");
+       xw.EndElement(); // ApplicationType
+       xw.StartElement("ApplicationTypeRevision");
+        xw.Content(this->GetSystemVersion());
+       xw.EndElement(); // ApplicationTypeRevision
+     }
+     if (!this->WindowsTargetPlatformVersion.empty()) {
+       xw.StartElement("WindowsTargetPlatformVersion");
+        xw.Content(this->WindowsTargetPlatformVersion);
+       xw.EndElement(); // WindowsTargetPlatformVersion
+     }
+     if (this->GetPlatformName() == "ARM64") {
+       xw.StartElement("WindowsSDKDesktopARM64Support");
+        xw.Content("true");
+       xw.EndElement(); // WindowsSDK64DesktopARMSupport
+     }
+     else if (this->GetPlatformName() == "ARM") {
+       xw.StartElement("WindowsSDKDesktopARMSupport");
+        xw.Content("true");
+       xw.EndElement(); // WindowsSDKDesktopARMSupport
+     }
+    xw.EndElement(); // PropertyGroup
+    xw.StartElement("Import");
+     xw.Attribute("Project",
+                  "$(VCTargetsPath)\\Microsoft.Cpp.Default.props");
+    xw.EndElement(); // Import
+    if (!this->GeneratorToolsetHostArchitecture.empty()) {
+      xw.StartElement("PropertyGroup");
+       xw.StartElement("PreferredToolArchitecture");
+        xw.Content(this->GeneratorToolsetHostArchitecture);
+       xw.EndElement(); // PreferredToolArchitecture
+      xw.EndElement(); // PropertyGroup
+    }
+    xw.StartElement("PropertyGroup");
+     xw.Attribute("Label", "Configuration");
+     xw.StartElement("ConfigurationType");
+      if (this->IsNsightTegra()) {
+        // Tegra-Android platform does not understand "Utility".
+        xw.Content("StaticLibrary");
+      } else {
+        xw.Content("Utility");
+      }
+     xw.EndElement(); // ConfigurationType
+     xw.StartElement("CharacterSet");
+      xw.Content("MultiByte");
+     xw.EndElement(); // CharacterSet
+     if (this->IsNsightTegra()) {
+       xw.StartElement("NdkToolchainVersion");
+       xw.Content(this->GetPlatformToolsetString());
+       xw.EndElement(); // NdkToolchainVersion
+     } else {
+       xw.StartElement("PlatformToolset");
+       xw.Content(this->GetPlatformToolsetString());
+       xw.EndElement(); // PlatformToolset
+     }
+    xw.EndElement(); // PropertyGroup
+    xw.StartElement("Import");
+     xw.Attribute("Project", "$(VCTargetsPath)\\Microsoft.Cpp.props");
+    xw.EndElement(); // Import
+    xw.StartElement("ItemDefinitionGroup");
+     xw.StartElement("PostBuildEvent");
+      xw.StartElement("Command");
+       xw.Content("echo VCTargetsPath=$(VCTargetsPath)");
+      xw.EndElement(); // Command
+     xw.EndElement(); // PostBuildEvent
+    xw.EndElement(); // ItemDefinitionGroup
+    xw.StartElement("Import");
+     xw.Attribute("Project",
+                  "$(VCTargetsPath)\\Microsoft.Cpp.targets");
+    xw.EndElement(); // Import
+    xw.EndElement(); // Project
+    xw.EndDocument();
+    /* clang-format on */
+  }
+
+  std::vector<std::string> cmd;
+  cmd.push_back(this->GetMSBuildCommand());
+  cmd.push_back(vcxproj);
+  cmd.push_back("/p:Configuration=Debug");
+  cmd.push_back(std::string("/p:VisualStudioVersion=") +
+                this->GetIDEVersion());
+  std::string out;
+  int ret = 0;
+  cmsys::RegularExpression regex("\n *VCTargetsPath=([^%\r\n]+)[\r\n]");
+  if (!cmSystemTools::RunSingleCommand(cmd, &out, &out, &ret, wd.c_str(),
+                                       cmSystemTools::OUTPUT_NONE) ||
+      ret != 0 || !regex.find(out)) {
+    cmSystemTools::ReplaceString(out, "\n", "\n  ");
+    std::ostringstream e;
+    /* clang-format off */
+    e <<
+      "Failed to run MSBuild command:\n"
+      "  " << cmd[0] << "\n"
+      "to get the value of VCTargetsPath:\n"
+      "  " << out << "\n"
+      ;
+    /* clang-format on */
+    if (ret != 0) {
+      e << "Exit code: " << ret << "\n";
+    }
+    mf->IssueMessage(cmake::FATAL_ERROR, e.str().c_str());
+    cmSystemTools::SetFatalErrorOccured();
+    return false;
+  }
+  this->VCTargetsPath = regex.match(1);
+  cmSystemTools::ConvertToUnixSlashes(this->VCTargetsPath);
+
+  {
+    cmsys::ofstream fout(txt.c_str());
+    fout << this->VCTargetsPath << "\n";
+  }
+  return true;
 }
 
 void cmGlobalVisualStudio10Generator::GenerateBuildCommand(
@@ -404,8 +828,9 @@ void cmGlobalVisualStudio10Generator::GenerateBuildCommand(
     if (parser.ParseFile(slnFile, slnData,
                          cmVisualStudioSlnParser::DataGroupProjects)) {
       std::vector<cmSlnProjectEntry> slnProjects = slnData.GetProjects();
-      for (std::vector<cmSlnProjectEntry>::iterator i = slnProjects.begin();
-           !useDevEnv && i != slnProjects.end(); ++i) {
+      for (std::vector<cmSlnProjectEntry>::const_iterator i =
+             slnProjects.cbegin();
+           !useDevEnv && i != slnProjects.cend(); ++i) {
         std::string proj = i->GetRelativePath();
         if (proj.size() > 7 && proj.substr(proj.size() - 7) == ".vfproj") {
           useDevEnv = true;
@@ -459,6 +884,10 @@ void cmGlobalVisualStudio10Generator::GenerateBuildCommand(
 
 bool cmGlobalVisualStudio10Generator::Find64BitTools(cmMakefile* mf)
 {
+  if (this->DefaultPlatformToolset == "v100") {
+    // The v100 64-bit toolset does not exist in the express edition.
+    this->DefaultPlatformToolset.clear();
+  }
   if (this->GetPlatformToolset()) {
     return true;
   }
@@ -522,6 +951,11 @@ void cmGlobalVisualStudio10Generator::PathTooLong(cmGeneratorTarget* target,
   }
 }
 
+std::string cmGlobalVisualStudio10Generator::Encoding()
+{
+  return "utf-8";
+}
+
 bool cmGlobalVisualStudio10Generator::IsNsightTegra() const
 {
   return !this->NsightTegraVersion.empty();
@@ -540,4 +974,69 @@ std::string cmGlobalVisualStudio10Generator::GetInstalledNsightTegraVersion()
     "Version",
     version, cmSystemTools::KeyWOW64_32);
   return version;
+}
+
+cmIDEFlagTable const* cmGlobalVisualStudio10Generator::GetClFlagTable() const
+{
+  cmIDEFlagTable const* table = this->ToolsetOptions.GetClFlagTable(
+    this->GetPlatformName(), this->GetPlatformToolsetString());
+
+  return (table != nullptr) ? table : this->DefaultClFlagTable;
+}
+
+cmIDEFlagTable const* cmGlobalVisualStudio10Generator::GetCSharpFlagTable()
+  const
+{
+  cmIDEFlagTable const* table = this->ToolsetOptions.GetCSharpFlagTable(
+    this->GetPlatformName(), this->GetPlatformToolsetString());
+
+  return (table != nullptr) ? table : this->DefaultCSharpFlagTable;
+}
+
+cmIDEFlagTable const* cmGlobalVisualStudio10Generator::GetRcFlagTable() const
+{
+  cmIDEFlagTable const* table = this->ToolsetOptions.GetRcFlagTable(
+    this->GetPlatformName(), this->GetPlatformToolsetString());
+
+  return (table != nullptr) ? table : this->DefaultRcFlagTable;
+}
+
+cmIDEFlagTable const* cmGlobalVisualStudio10Generator::GetLibFlagTable() const
+{
+  cmIDEFlagTable const* table = this->ToolsetOptions.GetLibFlagTable(
+    this->GetPlatformName(), this->GetPlatformToolsetString());
+
+  return (table != nullptr) ? table : this->DefaultLibFlagTable;
+}
+
+cmIDEFlagTable const* cmGlobalVisualStudio10Generator::GetLinkFlagTable() const
+{
+  cmIDEFlagTable const* table = this->ToolsetOptions.GetLinkFlagTable(
+    this->GetPlatformName(), this->GetPlatformToolsetString());
+
+  return (table != nullptr) ? table : this->DefaultLinkFlagTable;
+}
+
+cmIDEFlagTable const* cmGlobalVisualStudio10Generator::GetCudaFlagTable() const
+{
+  return this->DefaultCudaFlagTable;
+}
+
+cmIDEFlagTable const* cmGlobalVisualStudio10Generator::GetCudaHostFlagTable()
+  const
+{
+  return this->DefaultCudaHostFlagTable;
+}
+
+cmIDEFlagTable const* cmGlobalVisualStudio10Generator::GetMasmFlagTable() const
+{
+  cmIDEFlagTable const* table = this->ToolsetOptions.GetMasmFlagTable(
+    this->GetPlatformName(), this->GetPlatformToolsetString());
+
+  return (table != nullptr) ? table : this->DefaultMasmFlagTable;
+}
+
+cmIDEFlagTable const* cmGlobalVisualStudio10Generator::GetNasmFlagTable() const
+{
+  return this->DefaultNasmFlagTable;
 }

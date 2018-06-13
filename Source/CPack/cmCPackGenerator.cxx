@@ -1,30 +1,27 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCPackGenerator.h"
+
+#include "cmsys/FStream.hxx"
+#include "cmsys/Glob.hxx"
+#include "cmsys/RegularExpression.hxx"
+#include <algorithm>
+#include <memory> // IWYU pragma: keep
+#include <utility>
 
 #include "cmCPackComponentGroup.h"
 #include "cmCPackLog.h"
+#include "cmCryptoHash.h"
+#include "cmDuration.h"
+#include "cmFSPermissions.h"
 #include "cmGeneratedFileStream.h"
 #include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
+#include "cmStateSnapshot.h"
+#include "cmVersion.h"
+#include "cmWorkingDirectory.h"
 #include "cmXMLSafe.h"
 #include "cmake.h"
-
-#include <algorithm>
-#include <cmsys/FStream.hxx>
-#include <cmsys/Glob.hxx>
-#include <cmsys/SystemTools.hxx>
-#include <list>
 
 #if defined(__HAIKU__)
 #include <FindDirectory.h>
@@ -34,14 +31,14 @@
 cmCPackGenerator::cmCPackGenerator()
 {
   this->GeneratorVerbose = cmSystemTools::OUTPUT_NONE;
-  this->MakefileMap = 0;
-  this->Logger = 0;
+  this->MakefileMap = nullptr;
+  this->Logger = nullptr;
   this->componentPackageMethod = ONE_PACKAGE_PER_GROUP;
 }
 
 cmCPackGenerator::~cmCPackGenerator()
 {
-  this->MakefileMap = 0;
+  this->MakefileMap = nullptr;
 }
 
 void cmCPackGeneratorProgress(const char* msg, float prog, void* ptr)
@@ -67,7 +64,8 @@ int cmCPackGenerator::PrepareNames()
         cmCPackLog::LOG_ERROR, "CPACK_SET_DESTDIR is set to ON but the '"
           << Name << "' generator does NOT support it." << std::endl);
       return 0;
-    } else if (SETDESTDIR_SHOULD_NOT_BE_USED == SupportsSetDestdir()) {
+    }
+    if (SETDESTDIR_SHOULD_NOT_BE_USED == SupportsSetDestdir()) {
       cmCPackLogger(cmCPackLog::LOG_WARNING,
                     "CPACK_SET_DESTDIR is set to ON but it is "
                       << "usually a bad idea to do that with '" << Name
@@ -159,6 +157,14 @@ int cmCPackGenerator::PrepareNames()
         << std::endl);
     return 0;
   }
+  const char* algoSignature = this->GetOption("CPACK_PACKAGE_CHECKSUM");
+  if (algoSignature) {
+    if (!cmCryptoHash::New(algoSignature)) {
+      cmCPackLogger(cmCPackLog::LOG_ERROR, "Cannot recognize algorithm: "
+                      << algoSignature << std::endl);
+      return 0;
+    }
+  }
 
   this->SetOptionIfNotSet("CPACK_REMOVE_TOPLEVEL_DIRECTORY", "1");
 
@@ -181,7 +187,7 @@ int cmCPackGenerator::InstallProject()
 
   const char* tempInstallDirectory = tempInstallDirectoryStr.c_str();
   int res = 1;
-  if (!cmsys::SystemTools::MakeDirectory(bareTempInstallDirectory.c_str())) {
+  if (!cmsys::SystemTools::MakeDirectory(bareTempInstallDirectory)) {
     cmCPackLogger(cmCPackLog::LOG_ERROR,
                   "Problem creating temporary directory: "
                     << (tempInstallDirectory ? tempInstallDirectory : "(NULL)")
@@ -196,6 +202,29 @@ int cmCPackGenerator::InstallProject()
   } else {
     // Make sure there is no destdir
     cmSystemTools::PutEnv("DESTDIR=");
+  }
+
+  // prepare default created directory permissions
+  mode_t default_dir_mode_v = 0;
+  mode_t* default_dir_mode = nullptr;
+  const char* default_dir_install_permissions =
+    this->GetOption("CPACK_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS");
+  if (default_dir_install_permissions && *default_dir_install_permissions) {
+    std::vector<std::string> items;
+    cmSystemTools::ExpandListArgument(default_dir_install_permissions, items);
+    for (const auto& arg : items) {
+      if (!cmFSPermissions::stringToModeT(arg, default_dir_mode_v)) {
+        cmCPackLogger(cmCPackLog::LOG_ERROR, "Invalid permission value '"
+                        << arg
+                        << "'."
+                           " CPACK_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS "
+                           "value is invalid."
+                        << std::endl);
+        return 0;
+      }
+    }
+
+    default_dir_mode = &default_dir_mode_v;
   }
 
   // If the CPackConfig file sets CPACK_INSTALL_COMMANDS then run them
@@ -215,15 +244,15 @@ int cmCPackGenerator::InstallProject()
   // If the CPackConfig file sets CPACK_INSTALLED_DIRECTORIES
   // then glob it and copy it to CPACK_TEMPORARY_DIRECTORY
   // This is used in Source packaging
-  if (!this->InstallProjectViaInstalledDirectories(setDestDir,
-                                                   tempInstallDirectory)) {
+  if (!this->InstallProjectViaInstalledDirectories(
+        setDestDir, tempInstallDirectory, default_dir_mode)) {
     return 0;
   }
 
   // If the project is a CMAKE project then run pre-install
   // and then read the cmake_install script to run it
-  if (!this->InstallProjectViaInstallCMakeProjects(setDestDir,
-                                                   bareTempInstallDirectory)) {
+  if (!this->InstallProjectViaInstallCMakeProjects(
+        setDestDir, bareTempInstallDirectory, default_dir_mode)) {
     return 0;
   }
 
@@ -245,24 +274,23 @@ int cmCPackGenerator::InstallProjectViaInstallCommands(
     cmSystemTools::PutEnv(tempInstallDirectoryEnv);
     std::vector<std::string> installCommandsVector;
     cmSystemTools::ExpandListArgument(installCommands, installCommandsVector);
-    std::vector<std::string>::iterator it;
-    for (it = installCommandsVector.begin(); it != installCommandsVector.end();
-         ++it) {
-      cmCPackLogger(cmCPackLog::LOG_VERBOSE, "Execute: " << *it << std::endl);
+    for (std::string const& ic : installCommandsVector) {
+      cmCPackLogger(cmCPackLog::LOG_VERBOSE, "Execute: " << ic << std::endl);
       std::string output;
       int retVal = 1;
       bool resB = cmSystemTools::RunSingleCommand(
-        it->c_str(), &output, &output, &retVal, 0, this->GeneratorVerbose, 0);
+        ic.c_str(), &output, &output, &retVal, nullptr, this->GeneratorVerbose,
+        cmDuration::zero());
       if (!resB || retVal) {
         std::string tmpFile = this->GetOption("CPACK_TOPLEVEL_DIRECTORY");
         tmpFile += "/InstallOutput.log";
         cmGeneratedFileStream ofs(tmpFile.c_str());
-        ofs << "# Run command: " << *it << std::endl
+        ofs << "# Run command: " << ic << std::endl
             << "# Output:" << std::endl
             << output << std::endl;
         cmCPackLogger(
           cmCPackLog::LOG_ERROR, "Problem running install command: "
-            << *it << std::endl
+            << ic << std::endl
             << "Please check " << tmpFile << " for errors" << std::endl);
         return 0;
       }
@@ -272,7 +300,8 @@ int cmCPackGenerator::InstallProjectViaInstallCommands(
 }
 
 int cmCPackGenerator::InstallProjectViaInstalledDirectories(
-  bool setDestDir, const std::string& tempInstallDirectory)
+  bool setDestDir, const std::string& tempInstallDirectory,
+  const mode_t* default_dir_mode)
 {
   (void)setDestDir;
   (void)tempInstallDirectory;
@@ -282,12 +311,10 @@ int cmCPackGenerator::InstallProjectViaInstalledDirectories(
     std::vector<std::string> ignoreFilesRegexString;
     cmSystemTools::ExpandListArgument(cpackIgnoreFiles,
                                       ignoreFilesRegexString);
-    std::vector<std::string>::iterator it;
-    for (it = ignoreFilesRegexString.begin();
-         it != ignoreFilesRegexString.end(); ++it) {
+    for (std::string const& ifr : ignoreFilesRegexString) {
       cmCPackLogger(cmCPackLog::LOG_VERBOSE,
-                    "Create ignore files regex for: " << *it << std::endl);
-      ignoreFilesRegex.push_back(it->c_str());
+                    "Create ignore files regex for: " << ifr << std::endl);
+      ignoreFilesRegex.emplace_back(ifr);
     }
   }
   const char* installDirectories =
@@ -309,7 +336,7 @@ int cmCPackGenerator::InstallProjectViaInstalledDirectories(
     const std::string& tempDir = tempInstallDirectory;
     for (it = installDirectoriesVector.begin();
          it != installDirectoriesVector.end(); ++it) {
-      std::list<std::pair<std::string, std::string> > symlinkedFiles;
+      std::vector<std::pair<std::string, std::string>> symlinkedFiles;
       cmCPackLogger(cmCPackLog::LOG_DEBUG, "Find files" << std::endl);
       cmsys::Glob gl;
       std::string top = *it;
@@ -330,15 +357,14 @@ int cmCPackGenerator::InstallProjectViaInstalledDirectories(
       files = gl.GetFiles();
       std::vector<std::string>::iterator gfit;
       std::vector<cmsys::RegularExpression>::iterator regIt;
-      for (gfit = files.begin(); gfit != files.end(); ++gfit) {
+      for (std::string const& gf : files) {
         bool skip = false;
-        std::string inFile = *gfit;
-        if (cmSystemTools::FileIsDirectory(*gfit)) {
+        std::string inFile = gf;
+        if (cmSystemTools::FileIsDirectory(gf)) {
           inFile += '/';
         }
-        for (regIt = ignoreFilesRegex.begin(); regIt != ignoreFilesRegex.end();
-             ++regIt) {
-          if (regIt->find(inFile.c_str())) {
+        for (cmsys::RegularExpression& reg : ignoreFilesRegex) {
+          if (reg.find(inFile.c_str())) {
             cmCPackLogger(cmCPackLog::LOG_VERBOSE,
                           "Ignore file: " << inFile << std::endl);
             skip = true;
@@ -348,18 +374,17 @@ int cmCPackGenerator::InstallProjectViaInstalledDirectories(
           continue;
         }
         std::string filePath = tempDir;
-        filePath += "/" + subdir + "/" +
-          cmSystemTools::RelativePath(top.c_str(), gfit->c_str());
+        filePath += "/" + subdir + "/" + cmSystemTools::RelativePath(top, gf);
         cmCPackLogger(cmCPackLog::LOG_DEBUG, "Copy file: "
                         << inFile << " -> " << filePath << std::endl);
         /* If the file is a symlink we will have to re-create it */
         if (cmSystemTools::FileIsSymlink(inFile)) {
           std::string targetFile;
           std::string inFileRelative =
-            cmSystemTools::RelativePath(top.c_str(), inFile.c_str());
+            cmSystemTools::RelativePath(top, inFile);
           cmSystemTools::ReadSymlink(inFile, targetFile);
-          symlinkedFiles.push_back(
-            std::pair<std::string, std::string>(targetFile, inFileRelative));
+          symlinkedFiles.emplace_back(std::move(targetFile),
+                                      std::move(inFileRelative));
         }
         /* If it is not a symlink then do a plain copy */
         else if (!(cmSystemTools::CopyFileIfDifferent(inFile.c_str(),
@@ -373,38 +398,36 @@ int cmCPackGenerator::InstallProjectViaInstalledDirectories(
       }
       /* rebuild symlinks in the installed tree */
       if (!symlinkedFiles.empty()) {
-        std::list<std::pair<std::string, std::string> >::iterator symlinkedIt;
         std::string curDir = cmSystemTools::GetCurrentWorkingDirectory();
         std::string goToDir = tempDir;
         goToDir += "/" + subdir;
         cmCPackLogger(cmCPackLog::LOG_DEBUG, "Change dir to: " << goToDir
                                                                << std::endl);
-        cmSystemTools::ChangeDirectory(goToDir);
-        for (symlinkedIt = symlinkedFiles.begin();
-             symlinkedIt != symlinkedFiles.end(); ++symlinkedIt) {
+        cmWorkingDirectory workdir(goToDir);
+        for (auto const& symlinked : symlinkedFiles) {
           cmCPackLogger(cmCPackLog::LOG_DEBUG, "Will create a symlink: "
-                          << symlinkedIt->second << "--> "
-                          << symlinkedIt->first << std::endl);
+                          << symlinked.second << "--> " << symlinked.first
+                          << std::endl);
           // make sure directory exists for symlink
           std::string destDir =
-            cmSystemTools::GetFilenamePath(symlinkedIt->second);
-          if (!destDir.empty() && !cmSystemTools::MakeDirectory(destDir)) {
+            cmSystemTools::GetFilenamePath(symlinked.second);
+          if (!destDir.empty() &&
+              !cmSystemTools::MakeDirectory(destDir, default_dir_mode)) {
             cmCPackLogger(cmCPackLog::LOG_ERROR, "Cannot create dir: "
                             << destDir << "\nTrying to create symlink: "
-                            << symlinkedIt->second << "--> "
-                            << symlinkedIt->first << std::endl);
+                            << symlinked.second << "--> " << symlinked.first
+                            << std::endl);
           }
-          if (!cmSystemTools::CreateSymlink(symlinkedIt->first,
-                                            symlinkedIt->second)) {
+          if (!cmSystemTools::CreateSymlink(symlinked.first,
+                                            symlinked.second)) {
             cmCPackLogger(cmCPackLog::LOG_ERROR, "Cannot create symlink: "
-                            << symlinkedIt->second << "--> "
-                            << symlinkedIt->first << std::endl);
+                            << symlinked.second << "--> " << symlinked.first
+                            << std::endl);
             return 0;
           }
         }
         cmCPackLogger(cmCPackLog::LOG_DEBUG, "Going back to: " << curDir
                                                                << std::endl);
-        cmSystemTools::ChangeDirectory(curDir);
       }
     }
   }
@@ -420,10 +443,7 @@ int cmCPackGenerator::InstallProjectViaInstallScript(
                                                                 << std::endl);
     std::vector<std::string> cmakeScriptsVector;
     cmSystemTools::ExpandListArgument(cmakeScripts, cmakeScriptsVector);
-    std::vector<std::string>::iterator it;
-    for (it = cmakeScriptsVector.begin(); it != cmakeScriptsVector.end();
-         ++it) {
-      std::string installScript = *it;
+    for (std::string const& installScript : cmakeScriptsVector) {
 
       cmCPackLogger(cmCPackLog::LOG_OUTPUT,
                     "- Install script: " << installScript << std::endl);
@@ -471,7 +491,8 @@ int cmCPackGenerator::InstallProjectViaInstallScript(
 }
 
 int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
-  bool setDestDir, const std::string& baseTempInstallDirectory)
+  bool setDestDir, const std::string& baseTempInstallDirectory,
+  const mode_t* default_dir_mode)
 {
   const char* cmakeProjects = this->GetOption("CPACK_INSTALL_CMAKE_PROJECTS");
   const char* cmakeGenerator = this->GetOption("CPACK_CMAKE_GENERATOR");
@@ -529,10 +550,8 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
         if (installTypes && *installTypes) {
           std::vector<std::string> installTypesVector;
           cmSystemTools::ExpandListArgument(installTypes, installTypesVector);
-          std::vector<std::string>::iterator installTypeIt;
-          for (installTypeIt = installTypesVector.begin();
-               installTypeIt != installTypesVector.end(); ++installTypeIt) {
-            this->GetInstallationType(installProjectName, *installTypeIt);
+          for (std::string const& installType : installTypesVector) {
+            this->GetInstallationType(installProjectName, installType);
           }
         }
 
@@ -542,10 +561,8 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
         const char* components = this->GetOption(componentsVar);
         if (components && *components) {
           cmSystemTools::ExpandListArgument(components, componentsVector);
-          std::vector<std::string>::iterator compIt;
-          for (compIt = componentsVector.begin();
-               compIt != componentsVector.end(); ++compIt) {
-            GetComponent(installProjectName, *compIt);
+          for (std::string const& comp : componentsVector) {
+            GetComponent(installProjectName, comp);
           }
           componentInstall = true;
         }
@@ -584,7 +601,8 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
         int retVal = 1;
         bool resB = cmSystemTools::RunSingleCommand(
           buildCommand.c_str(), &output, &output, &retVal,
-          installDirectory.c_str(), this->GeneratorVerbose, 0);
+          installDirectory.c_str(), this->GeneratorVerbose,
+          cmDuration::zero());
         if (!resB || retVal) {
           std::string tmpFile = this->GetOption("CPACK_TOPLEVEL_DIRECTORY");
           tmpFile += "/PreinstallOutput.log";
@@ -606,25 +624,24 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
                     "- Install project: " << installProjectName << std::endl);
 
       // Run the installation for each component
-      std::vector<std::string>::iterator componentIt;
-      for (componentIt = componentsVector.begin();
-           componentIt != componentsVector.end(); ++componentIt) {
+      for (std::string const& component : componentsVector) {
         std::string tempInstallDirectory = baseTempInstallDirectory;
-        installComponent = *componentIt;
+        installComponent = component;
         if (componentInstall) {
           cmCPackLogger(cmCPackLog::LOG_OUTPUT, "-   Install component: "
                           << installComponent << std::endl);
         }
 
-        cmake cm;
+        cmake cm(cmake::RoleScript);
         cm.SetHomeDirectory("");
         cm.SetHomeOutputDirectory("");
         cm.GetCurrentSnapshot().SetDefaultDefinitions();
         cm.AddCMakePaths();
         cm.SetProgressCallback(cmCPackGeneratorProgress, this);
+        cm.SetTrace(this->Trace);
+        cm.SetTraceExpand(this->TraceExpand);
         cmGlobalGenerator gg(&cm);
-        cmsys::auto_ptr<cmMakefile> mf(
-          new cmMakefile(&gg, cm.GetCurrentSnapshot()));
+        cmMakefile mf(&gg, cm.GetCurrentSnapshot());
         if (!installSubDirectory.empty() && installSubDirectory != "/" &&
             installSubDirectory != ".") {
           tempInstallDirectory += installSubDirectory;
@@ -643,6 +660,13 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
             tempInstallDirectory += "/";
             tempInstallDirectory += this->GetOption("CPACK_PACKAGE_FILE_NAME");
           }
+        }
+
+        const char* default_dir_inst_permissions =
+          this->GetOption("CPACK_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS");
+        if (default_dir_inst_permissions && *default_dir_inst_permissions) {
+          mf.AddDefinition("CMAKE_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS",
+                           default_dir_inst_permissions);
         }
 
         if (!setDestDir) {
@@ -670,11 +694,11 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
           if (this->GetOption("CPACK_INSTALL_PREFIX")) {
             dir += this->GetOption("CPACK_INSTALL_PREFIX");
           }
-          mf->AddDefinition("CMAKE_INSTALL_PREFIX", dir.c_str());
+          mf.AddDefinition("CMAKE_INSTALL_PREFIX", dir.c_str());
 
           cmCPackLogger(
             cmCPackLog::LOG_DEBUG,
-            "- Using DESTDIR + CPACK_INSTALL_PREFIX... (mf->AddDefinition)"
+            "- Using DESTDIR + CPACK_INSTALL_PREFIX... (mf.AddDefinition)"
               << std::endl);
           cmCPackLogger(cmCPackLog::LOG_DEBUG,
                         "- Setting CMAKE_INSTALL_PREFIX to '" << dir << "'"
@@ -704,18 +728,18 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
           cmCPackLogger(cmCPackLog::LOG_DEBUG, "- Creating directory: '"
                           << dir << "'" << std::endl);
 
-          if (!cmsys::SystemTools::MakeDirectory(dir.c_str())) {
+          if (!cmsys::SystemTools::MakeDirectory(dir, default_dir_mode)) {
             cmCPackLogger(
               cmCPackLog::LOG_ERROR,
               "Problem creating temporary directory: " << dir << std::endl);
             return 0;
           }
         } else {
-          mf->AddDefinition("CMAKE_INSTALL_PREFIX",
-                            tempInstallDirectory.c_str());
+          mf.AddDefinition("CMAKE_INSTALL_PREFIX",
+                           tempInstallDirectory.c_str());
 
-          if (!cmsys::SystemTools::MakeDirectory(
-                tempInstallDirectory.c_str())) {
+          if (!cmsys::SystemTools::MakeDirectory(tempInstallDirectory,
+                                                 default_dir_mode)) {
             cmCPackLogger(cmCPackLog::LOG_ERROR,
                           "Problem creating temporary directory: "
                             << tempInstallDirectory << std::endl);
@@ -723,7 +747,7 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
           }
 
           cmCPackLogger(cmCPackLog::LOG_DEBUG,
-                        "- Using non-DESTDIR install... (mf->AddDefinition)"
+                        "- Using non-DESTDIR install... (mf.AddDefinition)"
                           << std::endl);
           cmCPackLogger(cmCPackLog::LOG_DEBUG,
                         "- Setting CMAKE_INSTALL_PREFIX to '"
@@ -731,25 +755,25 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
         }
 
         if (!buildConfig.empty()) {
-          mf->AddDefinition("BUILD_TYPE", buildConfig.c_str());
+          mf.AddDefinition("BUILD_TYPE", buildConfig.c_str());
         }
         std::string installComponentLowerCase =
           cmSystemTools::LowerCase(installComponent);
         if (installComponentLowerCase != "all") {
-          mf->AddDefinition("CMAKE_INSTALL_COMPONENT",
-                            installComponent.c_str());
+          mf.AddDefinition("CMAKE_INSTALL_COMPONENT",
+                           installComponent.c_str());
         }
 
         // strip on TRUE, ON, 1, one or several file names, but not on
         // FALSE, OFF, 0 and an empty string
         if (!cmSystemTools::IsOff(this->GetOption("CPACK_STRIP_FILES"))) {
-          mf->AddDefinition("CMAKE_INSTALL_DO_STRIP", "1");
+          mf.AddDefinition("CMAKE_INSTALL_DO_STRIP", "1");
         }
         // Remember the list of files before installation
         // of the current component (if we are in component install)
-        const char* InstallPrefix = tempInstallDirectory.c_str();
+        std::string const& InstallPrefix = tempInstallDirectory;
         std::vector<std::string> filesBefore;
-        std::string findExpr(InstallPrefix);
+        std::string findExpr = tempInstallDirectory;
         if (componentInstall) {
           cmsys::Glob glB;
           findExpr += "/*";
@@ -763,7 +787,7 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
         // If CPack was asked to warn on ABSOLUTE INSTALL DESTINATION
         // then forward request to cmake_install.cmake script
         if (this->IsOn("CPACK_WARN_ON_ABSOLUTE_INSTALL_DESTINATION")) {
-          mf->AddDefinition("CMAKE_WARN_ON_ABSOLUTE_INSTALL_DESTINATION", "1");
+          mf.AddDefinition("CMAKE_WARN_ON_ABSOLUTE_INSTALL_DESTINATION", "1");
         }
         // If current CPack generator does support
         // ABSOLUTE INSTALL DESTINATION or CPack has been asked for
@@ -771,18 +795,17 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
         // as soon as it occurs (before installing file)
         if (!SupportsAbsoluteDestination() ||
             this->IsOn("CPACK_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION")) {
-          mf->AddDefinition("CMAKE_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION",
-                            "1");
+          mf.AddDefinition("CMAKE_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION", "1");
         }
         // do installation
-        int res = mf->ReadListFile(installFile.c_str());
+        int res = mf.ReadListFile(installFile.c_str());
         // forward definition of CMAKE_ABSOLUTE_DESTINATION_FILES
         // to CPack (may be used by generators like CPack RPM or DEB)
         // in order to transparently handle ABSOLUTE PATH
-        if (mf->GetDefinition("CMAKE_ABSOLUTE_DESTINATION_FILES")) {
-          mf->AddDefinition(
+        if (mf.GetDefinition("CMAKE_ABSOLUTE_DESTINATION_FILES")) {
+          mf.AddDefinition(
             "CPACK_ABSOLUTE_DESTINATION_FILES",
-            mf->GetDefinition("CMAKE_ABSOLUTE_DESTINATION_FILES"));
+            mf.GetDefinition("CMAKE_ABSOLUTE_DESTINATION_FILES"));
         }
 
         // Now rebuild the list of files after installation
@@ -791,6 +814,7 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
           cmsys::Glob glA;
           glA.RecurseOn();
           glA.SetRecurseListDirs(true);
+          glA.SetRecurseThroughSymlinks(false);
           glA.FindFiles(findExpr);
           std::vector<std::string> filesAfter = glA.GetFiles();
           std::sort(filesAfter.begin(), filesAfter.end());
@@ -804,10 +828,9 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
           std::string localFileName;
           // Populate the File field of each component
           for (fit = result.begin(); fit != diff; ++fit) {
+            localFileName = cmSystemTools::RelativePath(InstallPrefix, *fit);
             localFileName =
-              cmSystemTools::RelativePath(InstallPrefix, fit->c_str());
-            localFileName = localFileName.substr(
-              localFileName.find_first_not_of('/'), std::string::npos);
+              localFileName.substr(localFileName.find_first_not_of('/'));
             Components[installComponent].Files.push_back(localFileName);
             cmCPackLogger(cmCPackLog::LOG_DEBUG, "Adding file <"
                             << localFileName << "> to component <"
@@ -815,12 +838,12 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
           }
         }
 
-        if (NULL != mf->GetDefinition("CPACK_ABSOLUTE_DESTINATION_FILES")) {
+        if (nullptr != mf.GetDefinition("CPACK_ABSOLUTE_DESTINATION_FILES")) {
           if (!absoluteDestFiles.empty()) {
             absoluteDestFiles += ";";
           }
           absoluteDestFiles +=
-            mf->GetDefinition("CPACK_ABSOLUTE_DESTINATION_FILES");
+            mf.GetDefinition("CPACK_ABSOLUTE_DESTINATION_FILES");
           cmCPackLogger(cmCPackLog::LOG_DEBUG,
                         "Got some ABSOLUTE DESTINATION FILES: "
                           << absoluteDestFiles << std::endl);
@@ -829,18 +852,18 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
             std::string absoluteDestFileComponent =
               std::string("CPACK_ABSOLUTE_DESTINATION_FILES") + "_" +
               GetComponentInstallDirNameSuffix(installComponent);
-            if (NULL != this->GetOption(absoluteDestFileComponent)) {
+            if (nullptr != this->GetOption(absoluteDestFileComponent)) {
               std::string absoluteDestFilesListComponent =
                 this->GetOption(absoluteDestFileComponent);
               absoluteDestFilesListComponent += ";";
               absoluteDestFilesListComponent +=
-                mf->GetDefinition("CPACK_ABSOLUTE_DESTINATION_FILES");
+                mf.GetDefinition("CPACK_ABSOLUTE_DESTINATION_FILES");
               this->SetOption(absoluteDestFileComponent,
                               absoluteDestFilesListComponent.c_str());
             } else {
               this->SetOption(
                 absoluteDestFileComponent,
-                mf->GetDefinition("CPACK_ABSOLUTE_DESTINATION_FILES"));
+                mf.GetDefinition("CPACK_ABSOLUTE_DESTINATION_FILES"));
             }
           }
         }
@@ -968,11 +991,21 @@ int cmCPackGenerator::DoPackage()
    */
   packageFileNames.push_back(tempPackageFileName ? tempPackageFileName : "");
   toplevel = tempDirectory;
-  if (!this->PackageFiles() || cmSystemTools::GetErrorOccuredFlag()) {
-    cmCPackLogger(cmCPackLog::LOG_ERROR, "Problem compressing the directory"
-                    << std::endl);
-    return 0;
+  { // scope that enables package generators to run internal scripts with
+    // latest CMake policies enabled
+    cmMakefile::ScopePushPop pp{ this->MakefileMap };
+    this->MakefileMap->SetPolicyVersion(cmVersion::GetCMakeVersion());
+
+    if (!this->PackageFiles() || cmSystemTools::GetErrorOccuredFlag()) {
+      cmCPackLogger(cmCPackLog::LOG_ERROR, "Problem compressing the directory"
+                      << std::endl);
+      return 0;
+    }
   }
+
+  /* Prepare checksum algorithm*/
+  const char* algo = this->GetOption("CPACK_PACKAGE_CHECKSUM");
+  std::unique_ptr<cmCryptoHash> crypto = cmCryptoHash::New(algo ? algo : "");
 
   /*
    * Copy the generated packages to final destination
@@ -982,12 +1015,12 @@ int cmCPackGenerator::DoPackage()
    */
   cmCPackLogger(cmCPackLog::LOG_VERBOSE, "Copying final package(s) ["
                   << packageFileNames.size() << "]:" << std::endl);
-  std::vector<std::string>::iterator it;
   /* now copy package one by one */
-  for (it = packageFileNames.begin(); it != packageFileNames.end(); ++it) {
+  for (std::string const& pkgFileName : packageFileNames) {
     std::string tmpPF(this->GetOption("CPACK_OUTPUT_FILE_PREFIX"));
-    tempPackageFileName = it->c_str();
-    tmpPF += "/" + cmSystemTools::GetFilenameName(*it);
+    std::string filename(cmSystemTools::GetFilenameName(pkgFileName));
+    tempPackageFileName = pkgFileName.c_str();
+    tmpPF += "/" + filename;
     const char* packageFileName = tmpPF.c_str();
     cmCPackLogger(cmCPackLog::LOG_DEBUG, "Copy final package(s): "
                     << (tempPackageFileName ? tempPackageFileName : "(NULL)")
@@ -1003,6 +1036,22 @@ int cmCPackGenerator::DoPackage()
     }
     cmCPackLogger(cmCPackLog::LOG_OUTPUT, "- package: "
                     << packageFileName << " generated." << std::endl);
+
+    /* Generate checksum file */
+    if (crypto) {
+      std::string hashFile(this->GetOption("CPACK_OUTPUT_FILE_PREFIX"));
+      hashFile += "/" + filename;
+      hashFile += "." + cmSystemTools::LowerCase(algo);
+      cmsys::ofstream outF(hashFile.c_str());
+      if (!outF) {
+        cmCPackLogger(cmCPackLog::LOG_ERROR, "Cannot create checksum file: "
+                        << hashFile << std::endl);
+        return 0;
+      }
+      outF << crypto->HashFile(packageFileName) << "  " << filename << "\n";
+      cmCPackLogger(cmCPackLog::LOG_OUTPUT, "- checksum file: "
+                      << hashFile << " generated." << std::endl);
+    }
   }
 
   return 1;
@@ -1047,6 +1096,24 @@ bool cmCPackGenerator::IsOn(const std::string& name) const
   return cmSystemTools::IsOn(GetOption(name));
 }
 
+bool cmCPackGenerator::IsSetToOff(const std::string& op) const
+{
+  const char* ret = this->MakefileMap->GetDefinition(op);
+  if (ret && *ret) {
+    return cmSystemTools::IsOff(ret);
+  }
+  return false;
+}
+
+bool cmCPackGenerator::IsSetToEmpty(const std::string& op) const
+{
+  const char* ret = this->MakefileMap->GetDefinition(op);
+  if (ret) {
+    return !*ret;
+  }
+  return false;
+}
+
 const char* cmCPackGenerator::GetOption(const std::string& op) const
 {
   const char* ret = this->MakefileMap->GetDefinition(op);
@@ -1073,11 +1140,11 @@ const char* cmCPackGenerator::GetInstallPath()
     return this->InstallPath.c_str();
   }
 #if defined(_WIN32) && !defined(__CYGWIN__)
-  const char* prgfiles = cmsys::SystemTools::GetEnv("ProgramFiles");
-  const char* sysDrive = cmsys::SystemTools::GetEnv("SystemDrive");
-  if (prgfiles) {
+  std::string prgfiles;
+  std::string sysDrive;
+  if (cmsys::SystemTools::GetEnv("ProgramFiles", prgfiles)) {
     this->InstallPath = prgfiles;
-  } else if (sysDrive) {
+  } else if (cmsys::SystemTools::GetEnv("SystemDrive", sysDrive)) {
     this->InstallPath = sysDrive;
     this->InstallPath += "/Program Files";
   } else {
@@ -1179,7 +1246,7 @@ int cmCPackGenerator::PrepareGroupingKind()
   std::string groupingType;
 
   // Second way to specify grouping
-  if (NULL != this->GetOption("CPACK_COMPONENTS_GROUPING")) {
+  if (nullptr != this->GetOption("CPACK_COMPONENTS_GROUPING")) {
     groupingType = this->GetOption("CPACK_COMPONENTS_GROUPING");
   }
 
@@ -1351,12 +1418,17 @@ cmCPackComponent* cmCPackGenerator::GetComponent(
       component->ArchiveFile = archiveFile;
     }
 
+    const char* plist = this->GetOption(macroPrefix + "_PLIST");
+    if (plist && *plist) {
+      component->Plist = plist;
+    }
+
     const char* groupName = this->GetOption(macroPrefix + "_GROUP");
     if (groupName && *groupName) {
       component->Group = GetComponentGroup(projectName, groupName);
       component->Group->Components.push_back(component);
     } else {
-      component->Group = 0;
+      component->Group = nullptr;
     }
 
     const char* description = this->GetOption(macroPrefix + "_DESCRIPTION");
@@ -1370,10 +1442,9 @@ cmCPackComponent* cmCPackGenerator::GetComponent(
       std::vector<std::string> installTypesVector;
       cmSystemTools::ExpandListArgument(installTypes, installTypesVector);
       std::vector<std::string>::iterator installTypesIt;
-      for (installTypesIt = installTypesVector.begin();
-           installTypesIt != installTypesVector.end(); ++installTypesIt) {
+      for (std::string const& installType : installTypesVector) {
         component->InstallationTypes.push_back(
-          this->GetInstallationType(projectName, *installTypesIt));
+          this->GetInstallationType(projectName, installType));
       }
     }
 
@@ -1383,9 +1454,8 @@ cmCPackComponent* cmCPackGenerator::GetComponent(
       std::vector<std::string> dependsVector;
       cmSystemTools::ExpandListArgument(depends, dependsVector);
       std::vector<std::string>::iterator dependIt;
-      for (dependIt = dependsVector.begin(); dependIt != dependsVector.end();
-           ++dependIt) {
-        cmCPackComponent* child = GetComponent(projectName, *dependIt);
+      for (std::string const& depend : dependsVector) {
+        cmCPackComponent* child = GetComponent(projectName, depend);
         component->Dependencies.push_back(child);
         child->ReverseDependencies.push_back(component);
       }
@@ -1424,7 +1494,7 @@ cmCPackComponentGroup* cmCPackGenerator::GetComponentGroup(
       group->ParentGroup = GetComponentGroup(projectName, parentGroupName);
       group->ParentGroup->Subgroups.push_back(group);
     } else {
-      group->ParentGroup = 0;
+      group->ParentGroup = nullptr;
     }
   }
   return group;

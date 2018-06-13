@@ -1,19 +1,10 @@
-/*============================================================================
-  CMake - Cross Platform Makefile Generator
-  Copyright 2000-2013 Kitware, Inc., Insight Software Consortium
-
-  Distributed under the OSI-approved BSD License (the "License");
-  see accompanying file Copyright.txt for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the License for more information.
-============================================================================*/
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmVisualStudioSlnParser.h"
 
 #include "cmSystemTools.h"
 #include "cmVisualStudioSlnData.h"
-#include <cmsys/FStream.hxx>
+#include "cmsys/FStream.hxx"
 
 #include <cassert>
 #include <stack>
@@ -338,7 +329,7 @@ bool cmVisualStudioSlnParser::State::Process(
     case FileStateIgnore:
       if (line.GetTag() == this->EndIgnoreTag) {
         this->Stack.pop();
-        this->EndIgnoreTag = "";
+        this->EndIgnoreTag.clear();
       }
       break;
     default:
