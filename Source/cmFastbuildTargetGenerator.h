@@ -1,5 +1,7 @@
-#ifndef CMFASTBUILDTARGETGENERATOR_H
-#define CMFASTBUILDTARGETGENERATOR_H
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
+#ifndef cmFastbuildTargetGenerator_h
+#define cmFastbuildTargetGenerator_h
 
 #include <cmCommonTargetGenerator.h>
 
@@ -15,4 +17,4 @@ public:
   std::string ConvertToFastbuildPath(const std::string& path);
 };
 
-#endif // CMFASTBUILDTARGETGENERATOR_H
+#endif // cmFastbuildTargetGenerator_h

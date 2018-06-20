@@ -1,5 +1,7 @@
-#ifndef CMFASTBUILDUTILITYTARGETGENERATOR_H
-#define CMFASTBUILDUTILITYTARGETGENERATOR_H
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
+#ifndef cmFastbuildUtilityTargetGenerator_h
+#define cmFastbuildUtilityTargetGenerator_h
 
 #include <cmFastbuildTargetGenerator.h>
 
@@ -11,4 +13,4 @@ public:
   virtual void Generate();
 };
 
-#endif // CMFASTBUILDUTILITYTARGETGENERATOR_H
+#endif // cmFastbuildUtilityTargetGenerator_h

@@ -1,5 +1,7 @@
-#ifndef CMFASTBUILDNORMALTARGETGENERATOR_H
-#define CMFASTBUILDNORMALTARGETGENERATOR_H
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
+#ifndef cmFastbuildNormalTargetGenerator_h
+#define cmFastbuildNormalTargetGenerator_h
 
 #include "cmFastbuildTargetGenerator.h"
 #include "cmGlobalFastbuildGenerator.h"
@@ -98,4 +100,4 @@ private:
     s_customCommandAliases;
 };
 
-#endif // CMFASTBUILDNORMALTARGETGENERATOR_H
+#endif // cmFastbuildNormalTargetGenerator_h
