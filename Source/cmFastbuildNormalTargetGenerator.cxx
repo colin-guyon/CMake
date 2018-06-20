@@ -522,7 +522,7 @@ void cmFastbuildNormalTargetGenerator::DetectOutput(
       GeneratorTarget->GetCompilePDBPath(configName);
     if (targetNamesOut.targetOutputCompilePDBDir.empty()) {
       targetNamesOut.targetOutputCompilePDBDir =
-        GeneratorTarget->GetSupportDirectory() + "/";
+        GeneratorTarget->GetSupportDirectory() + "/" + configName + "/";
     }
   }
 
