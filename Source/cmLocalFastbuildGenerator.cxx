@@ -87,7 +87,7 @@ std::string EncodeLiteral(const std::string& lit)
 
 //----------------------------------------------------------------------------
 void cmLocalFastbuildGenerator::AppendFlagEscape(std::string& flags,
-                                                 const std::string& rawFlag)
+                                                 const std::string& rawFlag) const
 {
   std::string escapedFlag = this->EscapeForShell(rawFlag);
   // Other make systems will remove the double $ but

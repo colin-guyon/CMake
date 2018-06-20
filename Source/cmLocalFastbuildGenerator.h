@@ -14,8 +14,6 @@
 
 #include "cmLocalCommonGenerator.h"
 
-#include <cm_auto_ptr.hxx>
-
 class cmSourceFile;
 class cmSourceGroup;
 class cmCustomCommand;
@@ -31,19 +29,19 @@ class cmLocalFastbuildGenerator : public cmLocalCommonGenerator
 {
 public:
   cmLocalFastbuildGenerator(cmGlobalGenerator* gg, cmMakefile* makefile);
-  ~cmLocalFastbuildGenerator() CM_OVERRIDE;
+  ~cmLocalFastbuildGenerator() override;
 
-  void Generate() CM_OVERRIDE;
+  void Generate() override;
 
   std::string ConvertToLinkReference(std::string const& lib,
                                      OutputFormat format);
   void ComputeObjectFilenames(
     std::map<cmSourceFile const*, std::string>& mapping,
-    cmGeneratorTarget const* gt) CM_OVERRIDE;
+    cmGeneratorTarget const* gt) override;
   std::string GetTargetDirectory(const cmGeneratorTarget* gt) const
-    CM_OVERRIDE;
+    override;
   void AppendFlagEscape(std::string& flags,
-                        const std::string& rawFlag) CM_OVERRIDE;
+                        const std::string& rawFlag) const override;
 };
 
 #endif

@@ -33,33 +33,33 @@ public:
   static cmGlobalGeneratorFactory* NewFactory();
 
   void EnableLanguage(std::vector<std::string> const& lang, cmMakefile* mf,
-                      bool optional) CM_OVERRIDE;
-  void Generate() CM_OVERRIDE;
+                      bool optional) override;
+  void Generate() override;
   void GenerateBuildCommand(
     std::vector<std::string>& makeCommand, const std::string& makeProgram,
     const std::string& projectName, const std::string& projectDir,
     const std::string& targetName, const std::string& config, bool fast,
-    bool verbose, std::vector<std::string> const& makeOptions) CM_OVERRIDE;
+    bool verbose, std::vector<std::string> const& makeOptions) override;
 
   ///! create the correct local generator
-  cmLocalGenerator* CreateLocalGenerator(cmMakefile* makefile) CM_OVERRIDE;
-  std::string GetName() const CM_OVERRIDE
+  cmLocalGenerator* CreateLocalGenerator(cmMakefile* makefile) override;
+  std::string GetName() const override
   {
     return cmGlobalFastbuildGenerator::GetActualName();
   }
 
-  bool IsMultiConfig() const CM_OVERRIDE { return true; }
+  bool IsMultiConfig() const override { return true; }
 
   void AppendDirectoryForConfig(const std::string& prefix,
                                 const std::string& config,
                                 const std::string& suffix,
-                                std::string& dir) CM_OVERRIDE;
+                                std::string& dir) override;
 
-  void ComputeTargetObjectDirectory(cmGeneratorTarget*) const CM_OVERRIDE;
-  const char* GetCMakeCFGIntDir() const CM_OVERRIDE;
+  void ComputeTargetObjectDirectory(cmGeneratorTarget*) const override;
+  const char* GetCMakeCFGIntDir() const override;
 
   std::string ExpandCFGIntDir(const std::string& str,
-                              const std::string& config) const CM_OVERRIDE;
+                              const std::string& config) const override;
 
   static std::string GetActualName() { return "Fastbuild"; }
 

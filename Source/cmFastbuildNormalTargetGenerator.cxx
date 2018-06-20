@@ -1,5 +1,7 @@
 #include "cmFastbuildNormalTargetGenerator.h"
 
+#include <memory>
+
 #include "cmComputeLinkInformation.h"
 #include "cmCustomCommandGenerator.h"
 #include "cmRulePlaceholderExpander.h"
@@ -634,7 +636,7 @@ bool cmFastbuildNormalTargetGenerator::DetectBaseLinkerCommand(
     launcher += " ";
   }
 
-  CM_AUTO_PTR<cmRulePlaceholderExpander> rulePlaceholderExpander(
+  std::unique_ptr<cmRulePlaceholderExpander> rulePlaceholderExpander(
     GeneratorTarget->LocalGenerator->CreateRulePlaceholderExpander());
   rulePlaceholderExpander->SetTargetImpLib(VAR_LITERAL("TargetOutputImplib"));
 
@@ -758,7 +760,7 @@ void cmFastbuildNormalTargetGenerator::DetectBaseCompileCommand(
   std::vector<std::string> compileCmds;
   cmSystemTools::ExpandListArgument(compileCmd, compileCmds);
 
-  CM_AUTO_PTR<cmRulePlaceholderExpander> rulePlaceholderExpander(
+  std::unique_ptr<cmRulePlaceholderExpander> rulePlaceholderExpander(
     GeneratorTarget->LocalGenerator->CreateRulePlaceholderExpander());
 
   rulePlaceholderExpander->SetTargetImpLib(VAR_LITERAL("TargetOutputImplib"));
@@ -935,12 +937,12 @@ void cmFastbuildNormalTargetGenerator::SplitExecutableAndFlags(
 }
 
 void cmFastbuildNormalTargetGenerator::EnsureDirectoryExists(
-  const std::string& path, const char* homeOutputDirectory)
+  const std::string& path, const std::string& homeOutputDirectory)
 {
   if (cmSystemTools::FileIsFullPath(path.c_str())) {
     cmSystemTools::MakeDirectory(path.c_str());
   } else {
-    const std::string fullPath = std::string(homeOutputDirectory) + "/" + path;
+    const std::string fullPath = homeOutputDirectory + "/" + path;
     cmSystemTools::MakeDirectory(fullPath.c_str());
   }
 }
@@ -1345,7 +1347,7 @@ void cmFastbuildNormalTargetGenerator::Generate()
 
         cmLocalGenerator* root =
           GeneratorTarget->GlobalGenerator->GetLocalGenerators()[0];
-        CM_AUTO_PTR<cmLinkLineComputer> linkLineComputer(
+        std::unique_ptr<cmLinkLineComputer> linkLineComputer(
           GeneratorTarget->GlobalGenerator->CreateLinkLineComputer(
             root, root->GetStateSnapshot().GetDirectory()));
 
