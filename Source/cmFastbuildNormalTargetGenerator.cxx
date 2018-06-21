@@ -369,14 +369,25 @@ void cmFastbuildNormalTargetGenerator::WriteCustomCommand(
   if (workingDirectory.empty()) {
     workingDirectory = Makefile->GetCurrentBinaryDirectory();
   }
-  workingDirectory += "/";
+  if (workingDirectory.back() != '/') {
+    workingDirectory += "/";
+  }
+
+  // FIX: workindDirectory may be within the source hierarchy that we are not permitted to write to
+  // so the script is now always generated in the current binary directory.
+  std::string scriptDirectory = Makefile->GetCurrentBinaryDirectory();
+  if (scriptDirectory.back() != '/') {
+    scriptDirectory += "/";
+  }
 
   // during script file generate, should expand
   // CMAKE_CFG_INTDIR variable
   workingDirectory = GeneratorTarget->LocalGenerator->GetGlobalGenerator()->ExpandCFGIntDir(
     workingDirectory, configName);
+  scriptDirectory = GeneratorTarget->LocalGenerator->GetGlobalGenerator()->ExpandCFGIntDir(
+    scriptDirectory, configName);
 
-  std::string scriptFileName(workingDirectory + scriptBaseName + shellExt);
+  std::string scriptFileName(scriptDirectory + scriptBaseName + shellExt);
   cmsys::ofstream scriptFile(scriptFileName.c_str());
 
 #ifndef _WIN32

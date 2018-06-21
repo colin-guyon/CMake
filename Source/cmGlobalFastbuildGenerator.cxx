@@ -374,6 +374,8 @@ void cmGlobalFastbuildGenerator::Detail::Detection::DependencySorter::
   std::string workingDirectory = ccg.GetWorkingDirectory();
   if (workingDirectory.empty()) {
     workingDirectory = makefile->GetCurrentBinaryDirectory();
+  }
+  if (workingDirectory.back() != '/') {
     workingDirectory += "/";
   }
 
