@@ -1543,22 +1543,8 @@ int cmcmd::VisualStudioLink(std::vector<std::string> const& args, int type)
     return -1;
   }
   const bool verbose = cmSystemTools::HasEnv("VERBOSE");
-  std::vector<std::string> expandedArgs;
-  for (std::string const& i : args) {
-    // check for nmake temporary files
-    if (i[0] == '@' && i.find("@CMakeFiles") != 0) {
-      cmsys::ifstream fin(i.substr(1).c_str());
-      std::string line;
-      while (cmSystemTools::GetLineFromStream(fin, line)) {
-        cmSystemTools::ParseWindowsCommandLine(line.c_str(), expandedArgs);
-      }
-    } else {
-      expandedArgs.push_back(i);
-    }
-  }
-
   cmVSLink vsLink(type, verbose);
-  if (!vsLink.Parse(expandedArgs.begin() + 2, expandedArgs.end())) {
+  if (!vsLink.Parse(args.begin() + 2, args.end())) {
     return -1;
   }
   return vsLink.Link();
@@ -1634,49 +1620,97 @@ static bool RunCommand(const char* comment, std::vector<std::string>& command,
 bool cmVSLink::Parse(std::vector<std::string>::const_iterator argBeg,
                      std::vector<std::string>::const_iterator argEnd)
 {
-  // Parse our own arguments.
   std::string intDir;
-  std::vector<std::string>::const_iterator arg = argBeg;
-  while (arg != argEnd && cmHasLiteralPrefix(*arg, "-")) {
-    if (*arg == "--") {
-      ++arg;
+  // Parse our own arguments.
+
+  std::vector<std::string> expandedArgs; // content of response files
+  // We use two iterators :
+  // - if ex_arg is not at the end of expandedArgs, it means that we are
+  //   parsing the content of a response file and this iterator is active
+  // - otherwise, we are parsing regular command line arguments and in_arg
+  //   iterator is active
+  std::vector<std::string>::const_iterator ex_arg = expandedArgs.end();
+  std::vector<std::string>::const_iterator in_arg = argBeg;
+  // Simple state machine to follow where we are in the parsing: 
+  bool parsingOptions = true;        // initial options
+  bool parsingManifests = false;     // list of manifests
+  bool parsingLinkCommand = false;   // or the link command at the end
+  while ((ex_arg != expandedArgs.end() || in_arg != argEnd)) {
+    // check for nmake temporary files (otherwise known as response files)
+    while (ex_arg == expandedArgs.end() && in_arg != argEnd &&
+           cmHasLiteralPrefix(*in_arg, "@") &&
+           in_arg->find("@CMakeFiles") != 0) {
+      cmsys::ifstream fin(in_arg->substr(1).c_str());
+      std::string line;
+      expandedArgs.clear();
+      while (cmSystemTools::GetLineFromStream(fin, line)) {
+        cmSystemTools::ParseWindowsCommandLine(line.c_str(), expandedArgs);
+      }
+      ++in_arg;
+      ex_arg = expandedArgs.begin();
+    }
+    if (ex_arg == expandedArgs.end() && in_arg == argEnd)
+    { // we may have expanded empty resource files leading to the end here
       break;
     }
-    if (*arg == "--manifests") {
-      for (++arg; arg != argEnd && !cmHasLiteralPrefix(*arg, "-"); ++arg) {
-        this->UserManifests.push_back(*arg);
+    // active iterator
+    std::vector<std::string>::const_iterator& arg =
+      (ex_arg != expandedArgs.end()) ? ex_arg : in_arg;
+    if ((parsingOptions || parsingManifests) && cmHasLiteralPrefix(*arg, "-")) {
+      if (*arg == "--") { // next is the link command
+        parsingOptions = false;
+        parsingManifests = false;
+        parsingLinkCommand = true;
+      } else if (*arg == "--manifests") { // next is manifests list
+        parsingOptions = false;
+        parsingManifests = true;
+        parsingLinkCommand = false;
+      } else if (cmHasLiteralPrefix(*arg, "--intdir=")) { // normal option
+        parsingOptions = true;
+        parsingManifests = false;
+        parsingLinkCommand = false;
+        intDir = arg->substr(9);
+      } else { // unknown option
+        std::cerr << "unknown argument '" << *arg << "'\n";
+        return false;
       }
-    } else if (cmHasLiteralPrefix(*arg, "--intdir=")) {
-      intDir = arg->substr(9);
-      ++arg;
+    } else if (parsingManifests) { // manifests list
+      this->UserManifests.push_back(*arg);
     } else {
-      std::cerr << "unknown argument '" << *arg << "'\n";
-      return false;
+      // We are now parsing the link command
+      parsingOptions = false;
+      parsingManifests = false;
+      parsingLinkCommand = true;
+      // Save the remaining (unexpanded) arguments if this is the first time we
+      // are here (i.e. the current argument is the link executable)
+      if (this->LinkCommand.empty()) {
+        this->LinkCommand.insert(this->LinkCommand.end(), ex_arg,
+            (std::vector<std::string>::const_iterator)expandedArgs.end());
+        this->LinkCommand.insert(this->LinkCommand.end(), in_arg, argEnd);
+      } else {
+        // Parse the link command to extract information we need.
+        if (cmSystemTools::Strucmp(arg->c_str(), "/INCREMENTAL:YES") == 0) {
+          this->Incremental = true;
+        } else if (cmSystemTools::Strucmp(arg->c_str(), "/INCREMENTAL") == 0) {
+          this->Incremental = true;
+        } else if (cmSystemTools::Strucmp(arg->c_str(), "/MANIFEST:NO") == 0) {
+          this->LinkGeneratesManifest = false;
+        } else if (cmHasLiteralPrefix(*arg, "/Fe")) {
+          this->TargetFile = arg->substr(3);
+        } else if (cmHasLiteralPrefix(*arg, "/out:")) {
+          this->TargetFile = arg->substr(5);
+        }
+      }
     }
+    ++arg;
   }
+
   if (intDir.empty()) {
     return false;
   }
 
-  // The rest of the arguments form the link command.
-  if (arg == argEnd) {
+  if (this->LinkCommand.empty()) {
     return false;
-  }
-  this->LinkCommand.insert(this->LinkCommand.begin(), arg, argEnd);
-
-  // Parse the link command to extract information we need.
-  for (; arg != argEnd; ++arg) {
-    if (cmSystemTools::Strucmp(arg->c_str(), "/INCREMENTAL:YES") == 0) {
-      this->Incremental = true;
-    } else if (cmSystemTools::Strucmp(arg->c_str(), "/INCREMENTAL") == 0) {
-      this->Incremental = true;
-    } else if (cmSystemTools::Strucmp(arg->c_str(), "/MANIFEST:NO") == 0) {
-      this->LinkGeneratesManifest = false;
-    } else if (cmHasLiteralPrefix(*arg, "/Fe")) {
-      this->TargetFile = arg->substr(3);
-    } else if (cmHasLiteralPrefix(*arg, "/out:")) {
-      this->TargetFile = arg->substr(5);
-    }
   }
 
   if (this->TargetFile.empty()) {
