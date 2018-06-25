@@ -28,6 +28,10 @@ endif()
 if("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
   set(PP_VS 1)
 endif()
+# https://github.com/JeremieA/CMake/commit/981cb1d81c82013d4c3e4ea45360ee380bd4fc39
+if("${CMAKE_GENERATOR}" MATCHES "Fastbuild")
+  set(PP_FASTBUILD 1)
+endif()
 
 # Some tests below check the PP_* variables set above.  They are meant
 # to test the case that the build tool is at fault.  Other tests below
@@ -53,8 +57,8 @@ endif()
 
 string(APPEND STRING_EXTRA " ")
 
-if(NOT PP_BORLAND AND NOT PP_WATCOM)
-  # Borland, WMake: multiple spaces
+if(NOT PP_BORLAND AND NOT PP_WATCOM AND NOT PP_FASTBUILD)
+  # Borland, WMake, FASTBuild: multiple spaces
   # The make tool seems to remove extra whitespace from inside
   # quoted strings when passing to the compiler.  It does not have
   # trouble passing to other tools, and the compiler may be directly
