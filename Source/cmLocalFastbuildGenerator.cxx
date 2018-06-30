@@ -10,9 +10,11 @@
   See the License for more information.
 ============================================================================*/
 #include "cmLocalFastbuildGenerator.h"
+#include "cmGeneratorTarget.h"
 #include "cmGlobalFastbuildGenerator.h"
 #include "cmMakefile.h"
 #include "cmSourceFile.h"
+#include "cmState.h"
 #include "cmSystemTools.h"
 #include "cmCustomCommandGenerator.h"
 #ifdef _WIN32
@@ -21,12 +23,8 @@
 #define FASTBUILD_DOLLAR_TAG "FASTBUILD_DOLLAR_TAG"
 //----------------------------------------------------------------------------
 cmLocalFastbuildGenerator::cmLocalFastbuildGenerator(cmGlobalFastbuildGenerator* gg, cmMakefile* makefile)
-    : cmLocalGenerator(gg, makefile)
+    : cmLocalCommonGenerator(gg, makefile, makefile->GetCurrentBinaryDirectory())
 {
-#ifdef _WIN32
-    makefile->GetState()->SetWindowsShell(true);
-#endif
-	this->TargetImplib = FASTBUILD_DOLLAR_TAG "TargetOutputImplib" FASTBUILD_DOLLAR_TAG;
 	//this->LinkScriptShell = true;
 }
 
@@ -44,13 +42,6 @@ void cmLocalFastbuildGenerator::Generate()
 	//GetMakefile()->Print();
 
 	// Now generate information for this generator
-}
-
-//----------------------------------------------------------------------------
-void cmLocalFastbuildGenerator::ExpandRuleVariables(std::string& s, 
-	const RuleVariables& replaceValues)
-{
-	return cmLocalGenerator::ExpandRuleVariables( s, replaceValues );
 }
 
 //----------------------------------------------------------------------------
@@ -99,7 +90,7 @@ std::string EncodeLiteral(const std::string &lit)
 
 //----------------------------------------------------------------------------
 void cmLocalFastbuildGenerator::AppendFlagEscape(std::string& flags,
-	const std::string& rawFlag)
+	const std::string& rawFlag) const
 {
 	std::string escapedFlag = this->EscapeForShell(rawFlag);
 	// Other make systems will remove the double $ but

@@ -12,9 +12,7 @@
 #ifndef cmLocalFastbuildGenerator_h
 #define cmLocalFastbuildGenerator_h
 
-#include "cmLocalGenerator.h"
-
-#include <cmsys/auto_ptr.hxx>
+#include "cmLocalCommonGenerator.h"
 
 class cmSourceFile;
 class cmSourceGroup;
@@ -29,26 +27,25 @@ class cmGlobalFastbuildGenerator;
  * Visual Studio generators.
  */
 class cmLocalFastbuildGenerator 
-	: public cmLocalGenerator
+	: public cmLocalCommonGenerator
 {
 public:
   
 	cmLocalFastbuildGenerator(cmGlobalFastbuildGenerator* gg, cmMakefile* makefile);
-	virtual ~cmLocalFastbuildGenerator();
+	~cmLocalFastbuildGenerator() override;
 
-	virtual void Generate();
+	void Generate() override;
 
-	void ExpandRuleVariables(std::string& s, const RuleVariables& replaceValues);
-	virtual std::string ConvertToLinkReference(
+	std::string ConvertToLinkReference(
 		std::string const& lib,
 		OutputFormat format);
-	virtual void ComputeObjectFilenames(
+	void ComputeObjectFilenames(
 		std::map<cmSourceFile const*, std::string>& mapping,
-		cmGeneratorTarget const* gt);
-	virtual std::string GetTargetDirectory(
-		cmGeneratorTarget const* target) const;
-	virtual void AppendFlagEscape(std::string& flags,
-		const std::string& rawFlag);
+		cmGeneratorTarget const* gt) override;
+	std::string GetTargetDirectory(
+		cmGeneratorTarget const* target) const override;
+	void AppendFlagEscape(std::string& flags,
+		const std::string& rawFlag) const override;
 
 };
 

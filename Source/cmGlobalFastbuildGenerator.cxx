@@ -98,11 +98,19 @@ The following tests FAILED:
 ============================================================================*/
 #include "cmGlobalFastbuildGenerator.h"
 
+#include <assert.h>
+#include <memory> // IWYU pragma: keep
+
+#include "cmDocumentationEntry.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalGeneratorFactory.h"
+#include "cmLinkLineComputer.h"
+#include "cmLocalCommonGenerator.h"
 #include "cmLocalFastbuildGenerator.h"
 #include "cmMakefile.h"
+#include "cmStateDirectory.h"
 #include "cmSourceFile.h"
+#include "cmState.h"
 #include "cmTarget.h"
 #include "cmGeneratedFileStream.h"
 #include "cmLocalGenerator.h"
@@ -110,9 +118,9 @@ The following tests FAILED:
 #include "cmGlobalVisualStudioGenerator.h"
 #include "cmGlobalVisualStudio7Generator.h" // for CMAKE_CHECK_BUILD_SYSTEM_TARGET
 #include "cmCustomCommandGenerator.h"
+#include "cmRulePlaceholderExpander.h"
 #include <cmsys/Encoding.hxx>
 #include <cmsys/SystemTools.hxx>
-#include <assert.h>
 
 static const char fastbuildGeneratorName[] = "Fastbuild";
 
@@ -390,7 +398,7 @@ public:
 			"Semicolon separated list of supported configuration types, "
 			"only supports Debug, Release, MinSizeRel, and RelWithDebInfo, "
 			"anything else will be ignored.",
-			cmState::STRING);
+			cmStateEnums::STRING);
 	}
 
 	struct FastbuildTargetNames
@@ -414,7 +422,7 @@ public:
 		cmGeneratorTarget &target,
 		const std::string & configName)
 	{
-		if (target.GetType() == cmState::EXECUTABLE)
+		if (target.GetType() == cmStateEnums::EXECUTABLE)
 		{
 			target.GetExecutableNames(
 				targetNamesOut.targetNameOut,
@@ -439,11 +447,13 @@ public:
 			targetNamesOut.targetOutputDir = target.GetDirectory(configName) + "/";
 
 			targetNamesOut.targetOutput = target.GetFullPath(configName);
-			targetNamesOut.targetOutputReal = target.GetFullPath(configName,
-				/*implib=*/false,
+			targetNamesOut.targetOutputReal = target.GetFullPath(
+				configName,
+				cmStateEnums::RuntimeBinaryArtifact,
 				/*realpath=*/true);
-			targetNamesOut.targetOutputImplib = target.GetFullPath(configName,
-				/*implib=*/true);
+			targetNamesOut.targetOutputImplib = target.GetFullPath(
+				configName,
+				cmStateEnums::ImportLibraryArtifact);
 		}
 		else
 		{
@@ -470,15 +480,15 @@ public:
 				targetNamesOut.targetNameReal;
 		}
 
-		if (target.GetType() == cmState::EXECUTABLE ||
-			target.GetType() == cmState::STATIC_LIBRARY ||
-			target.GetType() == cmState::SHARED_LIBRARY ||
-			target.GetType() == cmState::MODULE_LIBRARY)
+		if (target.GetType() == cmStateEnums::EXECUTABLE ||
+			target.GetType() == cmStateEnums::STATIC_LIBRARY ||
+			target.GetType() == cmStateEnums::SHARED_LIBRARY ||
+			target.GetType() == cmStateEnums::MODULE_LIBRARY)
 		{
 			targetNamesOut.targetOutputPDBDir = target.GetPDBDirectory(configName);
 			targetNamesOut.targetOutputPDBDir += "/";
 		}
-		if (target.GetType() <= cmState::OBJECT_LIBRARY)
+		if (target.GetType() <= cmStateEnums::OBJECT_LIBRARY)
 		{
 			targetNamesOut.targetOutputCompilePDBDir = target.GetCompilePDBPath(configName);
 			if (targetNamesOut.targetOutputCompilePDBDir.empty())
@@ -517,7 +527,7 @@ public:
 		// If the above failed, then lets try this:
 		switch (target.GetType()) 
 		{
-			case cmState::STATIC_LIBRARY: 
+			case cmStateEnums::STATIC_LIBRARY:
 			{
 				// We have archive link commands set. First, delete the existing archive.
 				{
@@ -543,9 +553,9 @@ public:
 				}
 				return;
 			}
-			case cmState::SHARED_LIBRARY:
-			case cmState::MODULE_LIBRARY:
-			case cmState::EXECUTABLE:
+			case cmStateEnums::SHARED_LIBRARY:
+			case cmStateEnums::MODULE_LIBRARY:
+			case cmStateEnums::EXECUTABLE:
 				break;
 			default:
 				assert(0 && "Unexpected target type");
@@ -623,9 +633,8 @@ public:
 		for (std::vector<std::string>::const_iterator libDir = libDirs.begin();
 			libDir != libDirs.end(); ++libDir)
 		{
-			std::string libpath = lg->ConvertToOutputForExisting(*libDir,
-				cmLocalGenerator::START_OUTPUT,
-				cmLocalGenerator::SHELL);
+			std::string libpath = lg->ConvertToOutputForExisting(
+				*libDir, cmOutputConverter::SHELL);
 			cmSystemTools::ConvertToOutputSlashes(libpath);
 
 			// Add the linker lib path twice, once raw, then once with
@@ -657,10 +666,14 @@ public:
 			return false;
 		}
 
-		cmLocalGenerator::RuleVariables vars;
-		vars.RuleLauncher = "RULE_LAUNCH_LINK";
-		vars.CMTarget = &target;
+		cmRulePlaceholderExpander::RuleVariables vars;
+		vars.CMTargetName = target.GetName().c_str();
+		vars.CMTargetType =
+			cmState::GetTargetTypeName(target.GetType());
 		vars.Language = linkLanguage.c_str();
+		cmGlobalFastbuildGenerator* gg = static_cast<cmGlobalFastbuildGenerator*>(lg->GetGlobalGenerator());
+		const std::string manifests = gg->GetManifestsAsFastbuildPath(target, configName);
+		vars.Manifests = manifests.c_str();
 
 		std::string responseFlag;
 		vars.Objects = FASTBUILD_DOLLAR_TAG "FB_INPUT_1_PLACEHOLDER" FASTBUILD_DOLLAR_TAG;
@@ -693,25 +706,26 @@ public:
 		vars.Flags = FASTBUILD_DOLLAR_TAG "TargetFlags" FASTBUILD_DOLLAR_TAG;
 		vars.LinkFlags = FASTBUILD_DOLLAR_TAG "LinkFlags" FASTBUILD_DOLLAR_TAG " " FASTBUILD_DOLLAR_TAG "LinkPath" FASTBUILD_DOLLAR_TAG;
 
-		// compute MANIFESTS
-		std::vector<cmSourceFile const*> manifest_srcs;
-		target.GetManifests(manifest_srcs, configName);
-		std::vector<std::string> manifests;
-		for (std::vector<cmSourceFile const*>::iterator mi = manifest_srcs.begin();
-			mi != manifest_srcs.end(); ++mi) {
-			manifests.push_back(lg->Convert((*mi)->GetFullPath(), cmOutputConverter::HOME_OUTPUT, cmOutputConverter::SHELL));
-		}
-		std::string manifestsStr = cmJoin(manifests, " ");
-		vars.Manifests = manifestsStr.c_str();
-
 		// Rule for linking library/executable.
+		std::string launcher;
+		const char* val =
+			lg->GetRuleLauncher(&target, "RULE_LAUNCH_LINK");
+		if (val && *val) {
+			launcher = val;
+			launcher += " ";
+		}
+
+		std::unique_ptr<cmRulePlaceholderExpander> rulePlaceholderExpander(
+			lg->CreateRulePlaceholderExpander());
+		rulePlaceholderExpander->SetTargetImpLib(FASTBUILD_DOLLAR_TAG "TargetOutputImplib" FASTBUILD_DOLLAR_TAG);
+
 		std::vector<std::string> linkCmds;
 		ComputeLinkCmds(linkCmds, lg, target, configName);
 		for (std::vector<std::string>::iterator i = linkCmds.begin();
-			i != linkCmds.end();
-			++i)
-		{
-			lg->ExpandRuleVariables(*i, vars);
+			i != linkCmds.end(); ++i) {
+			*i = launcher + *i;
+			rulePlaceholderExpander->ExpandRuleVariables(
+				lg, *i, vars);
 		}
 		
 		command = BuildCommandLine(linkCmds);
@@ -739,30 +753,22 @@ public:
 		const std::string & language,
 		const std::string & configName)
 	{
-		cmLocalGenerator::RuleVariables compileObjectVars;
-		compileObjectVars.CMTarget = &target;
+		cmRulePlaceholderExpander::RuleVariables compileObjectVars;
+		compileObjectVars.CMTargetName = target.GetName().c_str();
+		compileObjectVars.CMTargetType =
+			cmState::GetTargetTypeName(target.GetType());
 		compileObjectVars.Language = language.c_str();
 		compileObjectVars.Source = FASTBUILD_DOLLAR_TAG "FB_INPUT_1_PLACEHOLDER" FASTBUILD_DOLLAR_TAG;
 		compileObjectVars.Object = FASTBUILD_DOLLAR_TAG "FB_INPUT_2_PLACEHOLDER" FASTBUILD_DOLLAR_TAG;
 		compileObjectVars.ObjectDir = FASTBUILD_DOLLAR_TAG "TargetOutCompilePDBDir" FASTBUILD_DOLLAR_TAG;
 		compileObjectVars.ObjectFileDir = "";
 		compileObjectVars.Flags = "";
+		compileObjectVars.Includes = "";
+		cmGlobalFastbuildGenerator* gg = static_cast<cmGlobalFastbuildGenerator*>(lg->GetGlobalGenerator());
+		const std::string manifests = gg->GetManifestsAsFastbuildPath(target, configName);
+        compileObjectVars.Manifests = manifests.c_str();
 		compileObjectVars.Defines = "";
-
-		// Compute INCLUDES
-		std::vector<std::string> includes;
-		lg->GetIncludeDirectories(includes, &target,
-			language, configName);
-		// Add include directory flags.
-		std::string includeFlags = lg->GetIncludeFlags(
-			includes, &target, language,
-			language == "RC" ? true : false, // full include paths for RC
-			                                 // needed by cmcldeps
-			false, configName);
-		//if (lg->GetGlobalGenerator()->IsGCCOnWindows())
-		//    std::replace(includeFlags.begin(), includeFlags.end(), '\\', '/');
-		compileObjectVars.Includes = includeFlags.c_str();
-
+		compileObjectVars.Includes = "";
 		compileObjectVars.TargetCompilePDB = FASTBUILD_DOLLAR_TAG "TargetOutCompilePDBDir" FASTBUILD_DOLLAR_TAG FASTBUILD_DOLLAR_TAG "TargetNamePDB" FASTBUILD_DOLLAR_TAG;
 
 		// Rule for compiling object file.
@@ -773,11 +779,17 @@ public:
 		std::vector<std::string> compileCmds;
 		cmSystemTools::ExpandListArgument(compileCmd, compileCmds);
 
+		std::unique_ptr<cmRulePlaceholderExpander> rulePlaceholderExpander(
+			lg->CreateRulePlaceholderExpander());
+
+		rulePlaceholderExpander->SetTargetImpLib(FASTBUILD_DOLLAR_TAG "TargetOutputImplib" FASTBUILD_DOLLAR_TAG);
+
 		for (std::vector<std::string>::iterator i = compileCmds.begin();
-			i != compileCmds.end(); ++i)
-		{
-			std::string & compileCmdStr = *i;
-			lg->ExpandRuleVariables(compileCmdStr, compileObjectVars);
+			i != compileCmds.end(); ++i) {
+			std::string& compileCmdStr = *i;
+			rulePlaceholderExpander->ExpandRuleVariables(
+				lg, compileCmdStr,
+				compileObjectVars);
 		}
 
 		command = BuildCommandLine(compileCmds);
@@ -787,9 +799,10 @@ public:
 		cmGeneratorTarget &target,
 		const std::string& lang)
 	{
-		cmLocalGenerator::RuleVariables vars;
-		vars.RuleLauncher = "RULE_LAUNCH_COMPILE";
-		vars.CMTarget = &target;
+		cmRulePlaceholderExpander::RuleVariables vars;
+		vars.CMTargetName = target.GetName().c_str();
+		vars.CMTargetType =
+			cmState::GetTargetTypeName(target.GetType());
 		vars.Language = lang.c_str();
 		vars.Source = "$in";
 		vars.Object = "$out";
@@ -808,11 +821,16 @@ public:
 		std::vector<std::string> compileCmds;
 		cmSystemTools::ExpandListArgument(compileCmd, compileCmds);
 
+		std::unique_ptr<cmRulePlaceholderExpander> rulePlaceholderExpander(
+			lg->CreateRulePlaceholderExpander());
+
+		rulePlaceholderExpander->SetTargetImpLib(FASTBUILD_DOLLAR_TAG "TargetOutputImplib" FASTBUILD_DOLLAR_TAG);
+
 		for (std::vector<std::string>::iterator i = compileCmds.begin();
-			i != compileCmds.end(); ++i)
-		{
-			std::string & compileCmdStr = *i;
-			lg->ExpandRuleVariables(compileCmdStr, vars);
+			i != compileCmds.end(); ++i) {
+			std::string& compileCmdStr = *i;
+			rulePlaceholderExpander->ExpandRuleVariables(
+				lg, compileCmdStr, vars);
 		}
 
 		std::string cmdLine =
@@ -848,8 +866,8 @@ public:
 		// Object libraries do not have linker stages
 		// nor utilities
 		bool hasObjectGroups =
-			target.GetType() != cmState::UTILITY &&
-			target.GetType() != cmState::GLOBAL_TARGET;
+			target.GetType() != cmStateEnums::UTILITY &&
+			target.GetType() != cmStateEnums::GLOBAL_TARGET;
 		if (!hasObjectGroups)
 		{
 			return;
@@ -897,8 +915,9 @@ public:
 		const std::string& language,
 		const std::string& configName)
 	{
-		lg->AddLanguageFlags(compileFlags, 
-			language, 
+		lg->AddLanguageFlags(compileFlags,
+			&target,
+			language,
 			configName);
 
 		lg->AddArchitectureFlags(compileFlags,
@@ -914,6 +933,31 @@ public:
 
 		lg->AddVisibilityPresetFlags(compileFlags, &target,
 			language);
+		
+		std::vector<std::string> includes;
+
+		cmGeneratorExpressionInterpreter genexInterpreter(
+			lg, &target, configName, target.GetName(), language);
+		// Add include directories for this source file
+		// (took example on cmExtraSublimeTextGenerator::ComputeIncludess)
+		// Fixes the SourceFileIncludeDirProperty test
+		const std::string INCLUDE_DIRECTORIES("INCLUDE_DIRECTORIES");
+		if (const char* cincludes = source->GetProperty(INCLUDE_DIRECTORIES)) {
+			lg->AppendIncludeDirectories(
+			includes, genexInterpreter.Evaluate(cincludes, INCLUDE_DIRECTORIES),
+			*source);
+		}
+
+		lg->GetIncludeDirectories(includes, &target, language, configName);
+
+		// Add include directory flags.
+		std::string includeFlags = lg->GetIncludeFlags(
+			includes, &target, language,
+			language == "RC" ? true : false, // full include paths for RC
+			// needed by cmcldeps
+			false, configName);
+
+		lg->AppendFlags(compileFlags, includeFlags);
 
 		// Append old-style preprocessor definition flags.
 		lg->AppendFlags(compileFlags,
@@ -937,7 +981,7 @@ public:
 		std::vector<std::string>& dependencies,
 		std::vector<std::string>& linkDependencies)
 	{
-		if (target.GetType() == cmState::GLOBAL_TARGET)
+		if (target.GetType() == cmStateEnums::GLOBAL_TARGET)
 		{
 			// Global targets only depend on other utilities, which may not appear in
 			// the TargetDepends set (e.g. "all").
@@ -952,7 +996,7 @@ public:
 				i != targetDeps.end(); ++i)
 			{
 				const cmTargetDepend& depTarget = *i;
-				if (depTarget->GetType() == cmState::INTERFACE_LIBRARY)
+				if (depTarget->GetType() == cmStateEnums::INTERFACE_LIBRARY)
 				{
 					continue;
 				}
@@ -979,8 +1023,8 @@ public:
 		std::vector<std::string>& dependencies)
 	{
 		// Static libraries never depend on other targets for linking.
-		if (target.GetType() == cmState::STATIC_LIBRARY ||
-			target.GetType() == cmState::OBJECT_LIBRARY)
+		if (target.GetType() == cmStateEnums::STATIC_LIBRARY ||
+			target.GetType() == cmStateEnums::OBJECT_LIBRARY)
 		{
 			return;
 		}
@@ -1007,7 +1051,9 @@ public:
 		target.GetManifests(manifest_srcs, configName);
 		for (std::vector<cmSourceFile const*>::iterator mi = manifest_srcs.begin();
 			mi != manifest_srcs.end(); ++mi) {
-			dependencies.push_back(lg->Convert((*mi)->GetFullPath(), cmOutputConverter::HOME_OUTPUT, cmOutputConverter::SHELL));
+			dependencies.push_back(
+				static_cast<cmGlobalFastbuildGenerator*>(target.GetGlobalGenerator())
+					->ConvertToFastbuildPath((*mi)->GetFullPath()));
 		}
 	}
 
@@ -1019,8 +1065,8 @@ public:
 		)
 	{
 		// Static libraries never depend on other targets for linking.
-		if (target.GetType() == cmState::STATIC_LIBRARY ||
-			target.GetType() == cmState::OBJECT_LIBRARY)
+		if (target.GetType() == cmStateEnums::STATIC_LIBRARY ||
+			target.GetType() == cmStateEnums::OBJECT_LIBRARY)
 		{
 			return;
 		}
@@ -1039,7 +1085,7 @@ public:
 			if (li->IsPath) log << " (Path)";
 			if (li->Target) log << " (Target " << li->Target->GetName() << " " << cmState::GetTargetTypeName(li->Target->GetType()) << ")";
 			log << "\n";
-			if (li->Target && li->Target->GetType() == cmState::INTERFACE_LIBRARY) {
+			if (li->Target && li->Target->GetType() == cmStateEnums::INTERFACE_LIBRARY) {
 				continue;
 			}
 			if (li->IsPath || li->Target) {
@@ -1421,7 +1467,7 @@ public:
 	{
 		bool operator()(const cmGeneratorTarget* target) const
 		{
-			if (target->GetType() == cmState::GLOBAL_TARGET)
+			if (target->GetType() == cmStateEnums::GLOBAL_TARGET)
 			{
 				// We only want to process global targets that live in the home
 				// (i.e. top-level) directory.  CMake creates copies of these targets
@@ -1429,7 +1475,8 @@ public:
 				cmMakefile *mf = target->Target->GetMakefile();
 				/// @TODO: not sure if this works, add logs to check compared values
 				/// -> yes it works (checked by the enabling message below)
-				if (strcmp(mf->GetCurrentSourceDirectory(), mf->GetCMakeInstance()->GetHomeDirectory()) != 0)
+				if (strcmp(mf->GetCurrentSourceDirectory(),
+							mf->GetCMakeInstance()->GetHomeDirectory().c_str()) != 0)
 				{
 					//std::ostringstream s;
 					//s << "Ignoring global target " << target->GetName() << " as it is not from the top-level directory: " << mf->GetCurrentSourceDirectory() << " != " << mf->GetCMakeInstance()->GetHomeDirectory() << std::endl;
@@ -1859,7 +1906,7 @@ public:
 		{
 			TargetGenerationContext& targetContext = iter->second;
 
-			if (targetContext.target->GetType() == cmState::INTERFACE_LIBRARY)
+			if (targetContext.target->GetType() == cmStateEnums::INTERFACE_LIBRARY)
 			{
 				continue;
 			}
@@ -2150,6 +2197,13 @@ public:
 		{
 			scriptDirectory += "/";
 		}
+
+		// during script file generate, should expand
+		// CMAKE_CFG_INTDIR variable
+		workingDirectory = target.LocalGenerator->GetGlobalGenerator()->ExpandCFGIntDir(
+			workingDirectory, configName);
+		scriptDirectory = target.LocalGenerator->GetGlobalGenerator()->ExpandCFGIntDir(
+			scriptDirectory, configName);
 
 		std::string scriptFileName(scriptDirectory + targetName + shellExt);
 
@@ -2699,40 +2753,40 @@ public:
 		std::string linkCommand = "Library";
 		switch (target.GetType())
 		{
-			case cmState::INTERFACE_LIBRARY:
+			case cmStateEnums::INTERFACE_LIBRARY:
 				// We don't write out interface libraries.
 				//context.fc.WriteComment(std::string("Target definition: ") + target.GetName() + " (" + cmState::GetTargetTypeName(target.GetType()) + ") IGNORED");
 				return;
-			case cmState::EXECUTABLE:
+			case cmStateEnums::EXECUTABLE:
 			{
 				linkCommand = "Executable";
 				break;
 			}
-			case cmState::SHARED_LIBRARY:
+			case cmStateEnums::SHARED_LIBRARY:
 			{
 				linkCommand = "DLL";
 				break;
 			}
-			case cmState::STATIC_LIBRARY:
-			case cmState::MODULE_LIBRARY:
-			case cmState::OBJECT_LIBRARY:
+			case cmStateEnums::STATIC_LIBRARY:
+			case cmStateEnums::MODULE_LIBRARY:
+			case cmStateEnums::OBJECT_LIBRARY:
 			{
 				// No changes required
 				break;
 			}
-			case cmState::UTILITY:
+			case cmStateEnums::UTILITY:
 			{
 				// No link command used 
 				linkCommand = "Utility";
 				break;
 			}
-			case cmState::GLOBAL_TARGET:
+			case cmStateEnums::GLOBAL_TARGET:
 			{
 				// No link command used 
 				linkCommand = "Global";
 				break;
 			}
-			case cmState::UNKNOWN_LIBRARY:
+			case cmStateEnums::UNKNOWN_LIBRARY:
 			{
 				// Ignoring this target generation...
 				//context.fc.WriteComment(std::string("Target definition: ") + target.GetName() + " (" + cmState::GetTargetTypeName(target.GetType()) + ") IGNORED");
@@ -2745,13 +2799,13 @@ public:
 		// Object libraries do not have linker stages
 		// nor utilities
 		bool hasLinkerStage =
-			target.GetType() != cmState::OBJECT_LIBRARY &&
-			target.GetType() != cmState::UTILITY &&
-			target.GetType() != cmState::GLOBAL_TARGET;
+			target.GetType() != cmStateEnums::OBJECT_LIBRARY &&
+			target.GetType() != cmStateEnums::UTILITY &&
+			target.GetType() != cmStateEnums::GLOBAL_TARGET;
 
 		bool hasOutput =
-			target.GetType() != cmState::UTILITY &&
-			target.GetType() != cmState::GLOBAL_TARGET;
+			target.GetType() != cmStateEnums::UTILITY &&
+			target.GetType() != cmStateEnums::GLOBAL_TARGET;
 
 		context.fc.WriteComment(std::string("Target definition: ")+targetName+" (" + linkCommand + ")");
 		context.fc.WritePushScope();
@@ -2830,7 +2884,7 @@ public:
 				// Compile directory always needs to exist
 				EnsureDirectoryExists(targetNames.targetOutputCompilePDBDir, context);
 
-				if (target.GetType() != cmState::OBJECT_LIBRARY)
+				if (target.GetType() != cmStateEnums::OBJECT_LIBRARY)
 				{
 					// on Windows the output dir is already needed at compile time
 					// ensure the directory exists (OutDir test)
@@ -2863,7 +2917,7 @@ public:
 		std::string exportAllObjsFile;
 		std::map<std::string, std::vector<std::string> > exportAllConfigObjectFiles;
 
-		if (target.GetType() == cmState::SHARED_LIBRARY &&
+		if (target.GetType() == cmStateEnums::SHARED_LIBRARY &&
 			target.Target->GetMakefile()->IsOn("CMAKE_SUPPORT_WINDOWS_EXPORT_ALL_SYMBOLS") &&
 			target.GetPropertyAsBool("WINDOWS_EXPORT_ALL_SYMBOLS"))
 		{
@@ -3237,15 +3291,21 @@ public:
 					std::string frameworkPath;
 					std::string dummyLinkPath;
 
-					lg->GetTargetFlags(
+					cmLocalGenerator* root =
+						target.GlobalGenerator->GetLocalGenerators()[0];
+					std::unique_ptr<cmLinkLineComputer> linkLineComputer(
+						target.GlobalGenerator->CreateLinkLineComputer(
+							root, root->GetStateSnapshot().GetDirectory()));
+
+					target.LocalGenerator->GetTargetFlags(
+						linkLineComputer.get(),
+						configName,
 						linkLibs,
 						targetFlags,
 						linkFlags,
 						frameworkPath,
 						dummyLinkPath,
-						&target,
-						false,
-						configName);
+						&target);
 					if (!dummyLinkPath.empty())
 					{
 						context.fc.WriteComment("Link Path: " + dummyLinkPath);
@@ -3275,10 +3335,13 @@ public:
 						}
 						else
 						{
-							const cmSourceFile* defFile = target.GetModuleDefinitionFile(configName);
-							if (defFile)
+							// TODO: clean the handling of def file and especially use
+							// mdi->WindowsExportAllSymbols insteaf of addExportAll ?
+							const cmGeneratorTarget::ModuleDefinitionInfo* mdi =
+								target.GetModuleDefinitionInfo(configName);
+							if (mdi)
 							{
-								defFilePath = defFile->GetFullPath();
+								defFilePath = mdi->DefFile;
 							}
 						}
 						if (defFileFlag && !defFilePath.empty())
@@ -3562,7 +3625,7 @@ public:
 			const cmGeneratorTarget* constTarget = (*targetIter);
 			//context.fc.WriteComment(std::string("Processing Target: ") + constTarget->GetName() + " (" + cmState::GetTargetTypeName(constTarget->GetType()) + ")");
 
-			if (constTarget->GetType() == cmState::GLOBAL_TARGET)
+			if (constTarget->GetType() == cmStateEnums::GLOBAL_TARGET)
 			{
 				if (!outputGlobals)
 					continue;
@@ -3575,7 +3638,7 @@ public:
 			FBTRACE("  Target ");
 			FBTRACE(constTarget->GetName().c_str());
 			FBTRACE("\n");
-			if(constTarget->GetType() == cmState::INTERFACE_LIBRARY)
+			if(constTarget->GetType() == cmStateEnums::INTERFACE_LIBRARY)
 			{
 				FBTRACE("    Skipping INTERFACE_LIBRARY target\n");
 				continue;
@@ -3596,16 +3659,16 @@ public:
 
 			switch (target->GetType())
 			{
-				case cmState::EXECUTABLE:
-				case cmState::SHARED_LIBRARY:
-				case cmState::STATIC_LIBRARY:
-				case cmState::MODULE_LIBRARY:
-				case cmState::OBJECT_LIBRARY:
+				case cmStateEnums::EXECUTABLE:
+				case cmStateEnums::SHARED_LIBRARY:
+				case cmStateEnums::STATIC_LIBRARY:
+				case cmStateEnums::MODULE_LIBRARY:
+				case cmStateEnums::OBJECT_LIBRARY:
 					FBTRACE("    WriteTargetDefinition\n");
 					WriteTargetDefinition(context, lg, *target);
 					break;
-				case cmState::UTILITY:
-				case cmState::GLOBAL_TARGET:
+				case cmStateEnums::UTILITY:
+				case cmStateEnums::GLOBAL_TARGET:
 					FBTRACE("    WriteTargetUtilityDefinition\n");
 					WriteTargetUtilityDefinition(context, lg, *target);
 					break;
@@ -3621,7 +3684,7 @@ public:
 		{
 			return true;
 		}
-		if (target->GetType() == cmState::GLOBAL_TARGET)
+		if (target->GetType() == cmStateEnums::GLOBAL_TARGET)
 		{
 			// check if INSTALL or PACKAGE target is part of default build
 			// by inspect CMAKE_VS_INCLUDE_<Target>_TO_DEFAULT_BUILD properties
@@ -3632,7 +3695,7 @@ public:
 				std::string definitionName = "CMAKE_VS_INCLUDE_" + target->GetName() + "_TO_DEFAULT_BUILD";
 				const char* propertyValue = target->Target->GetMakefile()->GetDefinition(definitionName);
 				cmGeneratorExpression ge;
-				cmsys::auto_ptr<cmCompiledGeneratorExpression> cge = ge.Parse(propertyValue);
+				std::unique_ptr<cmCompiledGeneratorExpression> cge = ge.Parse(propertyValue);
 				if (cmSystemTools::IsOn(cge->Evaluate(target->GetLocalGenerator(), configName)))
 				{
 					return true;
@@ -3664,7 +3727,7 @@ public:
 			++targetIter)
 		{
 			const cmGeneratorTarget* constTarget = (*targetIter);
-			if(constTarget->GetType() == cmState::INTERFACE_LIBRARY)
+			if(constTarget->GetType() == cmStateEnums::INTERFACE_LIBRARY)
 			{
 				continue;
 			}
@@ -3683,7 +3746,7 @@ public:
 			cmLocalFastbuildGenerator* lg = findResult->second.lg;
 			const std::string & targetName = target->GetName();
 
-			if (target->GetType() == cmState::GLOBAL_TARGET)
+			if (target->GetType() == cmStateEnums::GLOBAL_TARGET)
 			{
 				if (!outputGlobals)
 					continue;
@@ -3997,7 +4060,7 @@ public:
                 std::vector<cmGeneratorTarget*> tgts = this->GetGeneratorTargets();
                 for (std::vector<cmGeneratorTarget*>::iterator l = tgts.begin();
                     l != tgts.end(); ++l) {
-                    if ((*l)->GetType() == cmState::GLOBAL_TARGET) {
+                    if ((*l)->GetType() == cmStateEnums::GLOBAL_TARGET) {
                         continue;
                     }
                     if ((*l)->GetName() != CMAKE_CHECK_BUILD_SYSTEM_TARGET) {
@@ -4054,7 +4117,7 @@ public:
 			++targetIter)
 		{
 			const cmGeneratorTarget* constTarget = (*targetIter);
-			if (constTarget->GetType() == cmState::INTERFACE_LIBRARY)
+			if (constTarget->GetType() == cmStateEnums::INTERFACE_LIBRARY)
 			{
 				continue;
 			}
@@ -4134,8 +4197,13 @@ cmGlobalGeneratorFactory* cmGlobalFastbuildGenerator::NewFactory()
 
 //----------------------------------------------------------------------------
 cmGlobalFastbuildGenerator::cmGlobalFastbuildGenerator(cmake* cm)
-: cmGlobalGenerator(cm)
+: cmGlobalCommonGenerator(cm)
 {
+	// we can have Debug/Release/... configs generated at once
+	cm->GetState()->SetIsGeneratorMultiConfig(true);
+#ifdef _WIN32
+	cm->GetState()->SetWindowsShell(true);
+#endif
 	this->FindMakeProgramFile = "CMakeFastbuildFindMake.cmake";
 	this->DefaultPlatformName = "Win32";
 }
@@ -4338,6 +4406,20 @@ const char* cmGlobalFastbuildGenerator::GetCMakeCFGIntDir() const
 	return FASTBUILD_DOLLAR_TAG "ConfigName" FASTBUILD_DOLLAR_TAG;
 }
 
+std::string cmGlobalFastbuildGenerator::ExpandCFGIntDir(
+  const std::string& str, const std::string& config) const
+{
+  std::string replace = GetCMakeCFGIntDir();
+
+  std::string tmp = str;
+  for (std::string::size_type i = tmp.find(replace); i != std::string::npos;
+       i = tmp.find(replace, i)) {
+    tmp.replace(i, replace.size(), config);
+    i += config.size();
+  }
+  return tmp;
+}
+
 //----------------------------------------------------------------------------
 void cmGlobalFastbuildGenerator::GetTargetSets(TargetDependSet& projectTargets,
 					TargetDependSet& originalTargets,
@@ -4357,3 +4439,27 @@ const std::map<std::string,std::string> & cmGlobalFastbuildGenerator::GetVSConfi
 }
 
 //----------------------------------------------------------------------------
+
+std::string cmGlobalFastbuildGenerator::ConvertToFastbuildPath(
+  const std::string& path) 
+{
+  return LocalGenerators[0]->ConvertToRelativePath(
+    ((cmLocalCommonGenerator*)LocalGenerators[0])->GetWorkingDirectory(),
+    path);
+}
+
+std::string cmGlobalFastbuildGenerator::GetManifestsAsFastbuildPath(
+	cmGeneratorTarget& target,
+	const std::string& configName)
+{
+  std::vector<cmSourceFile const*> manifest_srcs;
+  target.GetManifests(manifest_srcs, configName);
+
+  std::vector<std::string> manifests;
+  for (std::vector<cmSourceFile const*>::iterator mi = manifest_srcs.begin();
+       mi != manifest_srcs.end(); ++mi) {
+    manifests.push_back(ConvertToFastbuildPath((*mi)->GetFullPath()));
+  }
+
+  return cmJoin(manifests, " ");
+}

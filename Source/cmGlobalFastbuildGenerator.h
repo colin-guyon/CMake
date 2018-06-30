@@ -12,15 +12,16 @@
 #ifndef cmGlobalFastbuildGenerator_h
 #define cmGlobalFastbuildGenerator_h
 
-#include "cmGlobalGenerator.h"
+#include "cmGlobalCommonGenerator.h"
 
 class cmGlobalGeneratorFactory;
+struct cmDocumentationEntry;
 
 /** \class cmGlobalFastbuildGenerator
  * \brief Class for global fastbuild generator.
  */
 class cmGlobalFastbuildGenerator 
-	: public cmGlobalGenerator
+	: public cmGlobalCommonGenerator
 {
 public:
 	cmGlobalFastbuildGenerator(cmake* cm);
@@ -28,11 +29,11 @@ public:
 
 	static cmGlobalGeneratorFactory* NewFactory();
 
-	virtual void EnableLanguage(
+	void EnableLanguage(
 		std::vector<std::string>const &  lang,
-		cmMakefile *mf, bool optional);
-	virtual void Generate();
-	virtual void GenerateBuildCommand(
+		cmMakefile *mf, bool optional) override;
+	void Generate() override;
+	void GenerateBuildCommand(
 		std::vector<std::string>& makeCommand,
 		const std::string& makeProgram,
 		const std::string& projectName,
@@ -40,22 +41,26 @@ public:
 		const std::string& targetName,
 		const std::string& config,
 		bool fast, bool verbose,
-		std::vector<std::string> const& makeOptions);
+		std::vector<std::string> const& makeOptions) override;
 
 	///! create the correct local generator
-	virtual cmLocalGenerator *CreateLocalGenerator(cmMakefile* mf);
-	virtual std::string GetName() const;
+	cmLocalGenerator *CreateLocalGenerator(cmMakefile* mf) override;
+	std::string GetName() const override;
 
-	virtual bool IsMultiConfig() { return true; }
+	bool IsMultiConfig() const override { return true; }
 
-	virtual void AppendDirectoryForConfig(
+	void AppendDirectoryForConfig(
 		const std::string& prefix,
 		const std::string& config,
 		const std::string& suffix,
-		std::string& dir);
+		std::string& dir) override;
 
-	virtual void ComputeTargetObjectDirectory(cmGeneratorTarget*) const;
-	virtual const char* GetCMakeCFGIntDir() const;
+	void ComputeTargetObjectDirectory(cmGeneratorTarget*) const override;
+	const char* GetCMakeCFGIntDir() const override;
+
+	std::string ExpandCFGIntDir(
+		const std::string& str,
+		const std::string& config) const override;
 
 	virtual void GetTargetSets(TargetDependSet& projectTargets,
 							   TargetDependSet& originalTargets,
@@ -81,6 +86,29 @@ public:
     * supports toolsets.
     */
     static bool SupportsToolset() { return false; }
+
+	/**
+	* Utilized by the generator factory to determine if this generator
+	* supports platforms.
+	*/
+	static bool SupportsPlatform() { return false; }
+
+	std::string ConvertToFastbuildPath(const std::string& path);
+
+	template <typename T>
+	std::vector<std::string> ConvertToFastbuildPath(const T& container)
+	{
+		std::vector<std::string> ret;
+		for (typename T::const_iterator it = container.begin();
+			it != container.end(); ++it) {
+		ret.push_back(ConvertToFastbuildPath(*it));
+		}
+		return ret;
+	}
+
+	std::string GetManifestsAsFastbuildPath(
+		cmGeneratorTarget& target,
+		const std::string& configName);
 
 private:
 	class Detail;
