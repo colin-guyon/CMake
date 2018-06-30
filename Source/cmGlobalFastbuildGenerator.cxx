@@ -1977,6 +1977,20 @@ public:
 			// Write out the compiler that has been configured
 			context.fc.WriteCommand("Compiler", Quote(compilerDef.name));
 			context.fc.WritePushScope();
+			if (compilerDef.name == "Compiler-RC" ||
+				compilerDef.name == "Compiler-ASM_MASM")
+			{
+				// FASTBuild tries to determine the compiler family from its
+				// executable name and checks against a known list, but for
+				// some compilers the family must manually be set to "custom"
+				// (otherwise fbuild fails since v0.95, telling the compiler
+				// is unknown).
+				// TODO: Handle other custom compilers, and directly detect
+				//       more well-known compilers in FASTBuild.
+				// "Compiler-RC" was added to be able to build CMake using Fastbuild.
+				// "Compiler-ASM_MASM" was added to make the VSMASM test pass.
+				context.fc.WriteVariable("CompilerFamily", Quote("custom"));
+			}
 			context.fc.WriteVariable("CompilerRoot", Quote(compilerPath));
 			context.fc.WriteVariable("Executable", Quote(compilerFile));
 			context.fc.WriteArray("ExtraFiles", Wrap(extraFiles));
