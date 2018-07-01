@@ -3448,8 +3448,11 @@ public:
 						std::vector<std::string> extraDependencies;
 						Detection::DetectTargetObjectDependencies( context.self, target, configName, extraDependencies );
 						//Detection::DetectTargetLinkDependencies(target, configName, extraDependencies);
-						std::ostringstream log;
-						Detection::DetectTargetLinkItems(target, configName, extraDependencies, log);
+
+						// Commented because now already in LinkLibs
+						//std::ostringstream log;
+						//Detection::DetectTargetLinkItems(target, configName, //extraDependencies, log);
+
 						//context.fc.WriteCommentMultiLines(log.str().c_str());
 
 						std::for_each(extraDependencies.begin(), extraDependencies.end(), Detection::UnescapeFastbuildVariables);
