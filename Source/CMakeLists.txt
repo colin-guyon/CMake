@@ -668,7 +668,7 @@ if (WIN32)
       cmGlobalVisualStudio15Generator.h
       cmGlobalVisualStudio15Generator.cxx
       cmGlobalVisualStudioGenerator.cxx
-      cmGlobalGenerator.h
+      cmGlobalVisualStudioGenerator.h
       cmIDEFlagTable.h
       cmIDEOptions.cxx
       cmIDEOptions.h
