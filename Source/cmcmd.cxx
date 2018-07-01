@@ -1717,14 +1717,19 @@ bool cmVSLink::Parse(std::vector<std::string>::const_iterator argBeg,
     return false;
   }
 
-  this->ManifestFile = intDir + "/embed.manifest";
-  this->LinkerManifestFile = intDir + "/intermediate.manifest";
+  // When manifest files are created, let's use unique names to avoid
+  // conflicts (in case similar commands are run at the same time for
+  // other target(s) in the same folder, like it happens when building
+  // with the Fastbuild generator)
+  const std::string suffix = "-" + cmSystemTools::GetFilenameName(this->TargetFile);
+  this->ManifestFile = intDir + "/embed" + suffix + ".manifest";
+  this->LinkerManifestFile = intDir + "/intermediate" + suffix + ".manifest";
 
   if (this->Incremental) {
     // We will compile a resource containing the manifest and
     // pass it to the link command.
-    this->ManifestFileRC = intDir + "/manifest.rc";
-    this->ManifestFileRes = intDir + "/manifest.res";
+    this->ManifestFileRC = intDir + "/manifest" + suffix + ".rc";
+    this->ManifestFileRes = intDir + "/manifest" + suffix + ".res";
   } else if (this->UserManifests.empty()) {
     // Prior to support for user-specified manifests CMake placed the
     // linker-generated manifest next to the binary (as if it were not to be
