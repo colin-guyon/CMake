@@ -3376,6 +3376,8 @@ public:
 							if (mdi)
 							{
 								defFilePath = mdi->DefFile;
+								Detection::UnescapeFastbuildVariables(defFilePath);
+								Detection::ResolveFastbuildVariables(defFilePath, configName);
 							}
 						}
 						if (defFileFlag && !defFilePath.empty())
