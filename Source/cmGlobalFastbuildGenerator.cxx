@@ -1708,13 +1708,6 @@ public:
 		return result;
 	}
 
-	static std::string EncodeLiteral(const std::string &lit)
-	{
-		std::string result = lit;
-		cmSystemTools::ReplaceString(result, "$", "^$");
-		return result;
-	}
-
 	static void EnsureDirectoryExists(const std::string& path,
 		GenerationContext& context)
 	{
