@@ -584,13 +584,23 @@ public:
 
 		if (source)
 		{
-			lg->AppendDefines(defines,
-				source->GetProperty("COMPILE_DEFINITIONS"));
+			cmGeneratorExpressionInterpreter genexInterpreter(
+				lg, &target, configName, target.GetName(), language);
+			
+			const std::string COMPILE_DEFINITIONS("COMPILE_DEFINITIONS");
+			if (const char* compile_defs = source->GetProperty(COMPILE_DEFINITIONS)) {
+				lg->AppendDefines(
+					defines,
+					genexInterpreter.Evaluate(compile_defs, COMPILE_DEFINITIONS));
+			}
 
 			std::string defPropName = "COMPILE_DEFINITIONS_";
 			defPropName += cmSystemTools::UpperCase(configName);
-			lg->AppendDefines(defines,
-				source->GetProperty(defPropName));
+			if (const char* config_compile_defs = source->GetProperty(defPropName)) {
+				lg->AppendDefines(
+					defines,
+					genexInterpreter.Evaluate(config_compile_defs, COMPILE_DEFINITIONS));
+			}
 		}
 
 		// Add a definition for the configuration name.
@@ -971,7 +981,19 @@ public:
 
 		if (source)
 		{
-			lg->AppendFlags(compileFlags, source->GetProperty("COMPILE_FLAGS"));
+			const std::string COMPILE_FLAGS("COMPILE_FLAGS");
+			if (const char* cflags = source->GetProperty(COMPILE_FLAGS)) {
+				lg->AppendFlags(
+					compileFlags,
+					genexInterpreter.Evaluate(cflags, COMPILE_FLAGS));
+			}
+
+			const std::string COMPILE_OPTIONS("COMPILE_OPTIONS");
+			if (const char* coptions = source->GetProperty(COMPILE_OPTIONS)) {
+				lg->AppendCompileOptions(
+					compileFlags,
+					genexInterpreter.Evaluate(coptions, COMPILE_OPTIONS));
+			}
 		}
 	}
 
