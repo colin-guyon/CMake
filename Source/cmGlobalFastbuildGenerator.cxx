@@ -1519,7 +1519,7 @@ public:
 			if (version.compare(0, 3, "19.") != std::string::npos)
 			{
 				// Using vs2015
-				std::string vs2013_extraFiles[12] = {
+				std::string vs2015_extraFiles[12] = {
 					prefixBinCL+"c1.dll",
 					prefixBinCL+"c1xx.dll",
 					prefixBinCL+"c2.dll",
@@ -1534,7 +1534,7 @@ public:
 					prefixBinCRT+"Microsoft.VC140.CRT\\vcruntime140.dll",
 					prefixBinCRT+"Microsoft.VC140.CRT\\vccorlib140.dll"
 				};
-				extraFiles.insert(extraFiles.end(), &vs2013_extraFiles[0], &vs2013_extraFiles[12]);
+				extraFiles.insert(extraFiles.end(), &vs2015_extraFiles[0], &vs2015_extraFiles[12]);
 			}
 			else if (version.compare(0, 3, "18.") != std::string::npos)
 			{
