@@ -53,40 +53,37 @@
 
 	Current list of unit tests failing:
 
-	91% tests passed, 32 tests failed out of 371
-	Total Test time (real) = 1479.86 sec
+	94% tests passed, 27 tests failed out of 464
+	Total Test time (real) = 928.48 sec
 
-The following tests FAILED:
-	 59 - Preprocess (Failed)
-	 60 - ExportImport (Failed)
-	 68 - StagingPrefix (Failed)
-	 70 - ConfigSources (Failed)
-	 79 - Module.GenerateExportHeader (Failed)
-	101 - SubProject-Stage2 (Failed)
-	113 - BuildDepends (Failed)
-	114 - SimpleInstall (Failed)
-	115 - SimpleInstall-Stage2 (Failed)
-	127 - complex (Failed)
-	128 - complexOneConfig (Failed)
-	131 - ExternalProject (Failed)
-	132 - ExternalProjectLocal (Failed)
-	133 - ExternalProjectUpdateSetup (Failed)
-	134 - ExternalProjectUpdate (Failed)
-	151 - Plugin (Failed)
-	157 - PrecompiledHeader (Failed)
-	184 - CTestConfig.Script.Debug (Failed)
-	185 - CTestConfig.Dashboard.Debug (Failed)
-	186 - CTestConfig.Script.MinSizeRel (Failed)
-	187 - CTestConfig.Dashboard.MinSizeRel (Failed)
-	188 - CTestConfig.Script.Release (Failed)
-	189 - CTestConfig.Dashboard.Release (Failed)
-	190 - CTestConfig.Script.RelWithDebInfo (Failed)
-	191 - CTestConfig.Dashboard.RelWithDebInfo (Failed)
-	197 - CMakeCommands.target_compile_options (Failed)
-	238 - CMakeOnly.CheckStructHasMember (Failed)
-	275 - RunCMake.Configure (Failed)
-	331 - RunCMake.File_Generate (Failed)
-	371 - CMake.CheckSourceTree (Failed)
+	The following tests FAILED:
+		62 - ExportImport (Failed)
+		83 - Module.ExternalData (Failed)
+		105 - SubProject-Stage2 (Failed)
+		106 - Framework (Failed)
+		112 - CustomCommand (Failed)
+		113 - CustomCommandByproducts (Failed)
+		117 - BuildDepends (Failed)
+		118 - SimpleInstall (Failed)
+		119 - SimpleInstall-Stage2 (Failed)
+		131 - complex (Failed)
+		141 - ExternalProjectUpdate (Failed)
+		158 - Plugin (Failed)
+		163 - PDBDirectoryAndName (Failed)
+		165 - ModuleDefinition (Failed)
+		292 - RunCMake.Configure (Failed)
+		299 - RunCMake.GenerateExportHeader (Failed)
+		310 - RunCMake.ObjectLibrary (Failed)
+		329 - RunCMake.add_subdirectory (Failed)
+		354 - RunCMake.get_property (Failed)
+		392 - RunCMake.ExternalProject (Failed)
+		393 - RunCMake.FetchContent (Failed)
+		398 - RunCMake.CrosscompilingEmulator (Failed)
+		405 - RunCMake.AutoExportDll (Failed)
+		417 - Qt4Autogen.MocDepends (Failed)
+		433 - Qt4Autogen.RerunMocBasic (Failed)
+		434 - Qt4Autogen.RerunRccDepends (Failed)
+		447 - CMake.ModuleNotices (Failed)
 ============================================================================*/
 #include "cmGlobalFastbuildGenerator.h"
 
