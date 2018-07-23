@@ -4332,7 +4332,7 @@ void cmGlobalFastbuildGenerator::GenerateBuildCommand(
 	const std::string& projectDir,
 	const std::string& targetName,
 	const std::string& config,
-	bool /*fast*/, bool /*verbose*/,
+	bool /*fast*/, int jobs, bool /*verbose*/,
 	std::vector<std::string> const& /*makeOptions*/)
 {
 	// A build command for fastbuild looks like this:
@@ -4388,6 +4388,12 @@ void cmGlobalFastbuildGenerator::GenerateBuildCommand(
 	makeCommand.push_back("-config");
 	makeCommand.push_back(projectName + ".bff");
 	*/
+
+	if ((jobs != cmake::NO_BUILD_PARALLEL_LEVEL) &&
+		(jobs != cmake::DEFAULT_BUILD_PARALLEL_LEVEL)) {
+		makeCommand.push_back("-j");
+		makeCommand.push_back(std::to_string(jobs));
+	}
 
 	makeCommand.push_back("-showcmds");
 	makeCommand.push_back("-ide");

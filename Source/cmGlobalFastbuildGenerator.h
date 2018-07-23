@@ -31,7 +31,7 @@ public:
 		const std::string& projectDir,
 		const std::string& targetName,
 		const std::string& config,
-		bool fast, bool verbose,
+		bool fast, int jobs, bool verbose,
 		std::vector<std::string> const& makeOptions) override;
 
 	///! create the correct local generator
