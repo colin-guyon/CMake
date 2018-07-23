@@ -739,6 +739,8 @@ set(SRCS ${SRCS}
   cmGlobalFastbuildGenerator.cxx
   cmLocalFastbuildGenerator.cxx
   cmLocalFastbuildGenerator.h
+  cmFastbuildLinkLineComputer.h
+  cmFastbuildLinkLineComputer.cxx
   )
 
 # Temporary variable for tools targets

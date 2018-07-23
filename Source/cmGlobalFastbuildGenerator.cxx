@@ -94,6 +94,7 @@
 #include "cmGeneratorTarget.h"
 #include "cmGlobalGeneratorFactory.h"
 #include "cmLinkLineComputer.h"
+#include "cmFastbuildLinkLineComputer.h"
 #include "cmLocalCommonGenerator.h"
 #include "cmLocalFastbuildGenerator.h"
 #include "cmMakefile.h"
@@ -3424,11 +3425,9 @@ public:
 						Detection::DetectTargetObjectDependencies( context.self, target, configName, extraDependencies );
 						//Detection::DetectTargetLinkDependencies(target, configName, extraDependencies);
 
-						// Commented because now already in LinkLibs
-						//std::ostringstream log;
-						//Detection::DetectTargetLinkItems(target, configName, //extraDependencies, log);
-
-						//context.fc.WriteCommentMultiLines(log.str().c_str());
+						std::ostringstream log;
+						Detection::DetectTargetLinkItems(target, configName, extraDependencies, log);
+						context.fc.WriteCommentMultiLines(log.str().c_str());
 
 						std::for_each(extraDependencies.begin(), extraDependencies.end(), Detection::UnescapeFastbuildVariables);
 
@@ -4206,6 +4205,12 @@ cmGlobalFastbuildGenerator::~cmGlobalFastbuildGenerator()
 std::string cmGlobalFastbuildGenerator::GetName() const 
 {
 	return fastbuildGeneratorName; 
+}
+
+cmLinkLineComputer* cmGlobalFastbuildGenerator::CreateLinkLineComputer(
+  cmOutputConverter* outputConverter, cmStateDirectory const& stateDir) const
+{
+  return new cmFastbuildLinkLineComputer(outputConverter, stateDir);
 }
 
 //----------------------------------------------------------------------------

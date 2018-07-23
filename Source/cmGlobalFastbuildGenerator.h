@@ -38,6 +38,10 @@ public:
 	cmLocalGenerator *CreateLocalGenerator(cmMakefile* mf) override;
 	std::string GetName() const override;
 
+	cmLinkLineComputer* CreateLinkLineComputer(
+		cmOutputConverter* outputConverter,
+		cmStateDirectory const& stateDir) const override;
+
 	bool IsMultiConfig() const override { return true; }
 
 	void AppendDirectoryForConfig(

@@ -43,7 +43,7 @@ public:
                                         std::string const& config);
 
 protected:
-  std::string ComputeLinkLibs(cmComputeLinkInformation& cli);
+  virtual std::string ComputeLinkLibs(cmComputeLinkInformation& cli);
   std::string ComputeRPath(cmComputeLinkInformation& cli);
 
   std::string ConvertToOutputFormat(std::string const& input);
