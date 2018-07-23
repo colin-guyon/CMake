@@ -72,6 +72,7 @@ cmake_init_file=""
 cmake_bootstrap_system_libs=""
 cmake_bootstrap_qt_gui=""
 cmake_bootstrap_qt_qmake=""
+cmake_sphinx_info=""
 cmake_sphinx_man=""
 cmake_sphinx_html=""
 cmake_sphinx_qthelp=""
@@ -332,6 +333,7 @@ CMAKE_CXX_SOURCES="\
   cmGlobalCommonGenerator \
   cmGlobalGenerator \
   cmGlobalUnixMakefileGenerator3 \
+  cmGlobVerificationManager \
   cmHexFileConverter \
   cmIfCommand \
   cmIncludeCommand \
@@ -399,6 +401,7 @@ CMAKE_CXX_SOURCES="\
   cmState \
   cmStateDirectory \
   cmStateSnapshot \
+  cmStringReplaceHelper \
   cmStringCommand \
   cmSubdirCommand \
   cmSystemTools \
@@ -576,6 +579,7 @@ Configuration:
   --no-qt-gui             do not build the Qt-based GUI (default)
   --qt-qmake=<qmake>      use <qmake> as the qmake executable to find Qt
 
+  --sphinx-info           build Info manual with Sphinx
   --sphinx-man            build man pages with Sphinx
   --sphinx-html           build html help with Sphinx
   --sphinx-qthelp         build qch help with Sphinx
@@ -814,6 +818,7 @@ while test $# != 0; do
   --qt-gui) cmake_bootstrap_qt_gui="1" ;;
   --no-qt-gui) cmake_bootstrap_qt_gui="0" ;;
   --qt-qmake=*) cmake_bootstrap_qt_qmake=`cmake_arg "$1"` ;;
+  --sphinx-info) cmake_sphinx_info="1" ;;
   --sphinx-man) cmake_sphinx_man="1" ;;
   --sphinx-html) cmake_sphinx_html="1" ;;
   --sphinx-qthelp) cmake_sphinx_qthelp="1" ;;
@@ -823,6 +828,11 @@ while test $# != 0; do
   --version) cmake_version_display ; exit 2 ;;
   --verbose) cmake_verbose=TRUE ;;
   --enable-ccache) cmake_ccache_enabled=TRUE ;;
+  CC=*) CC=`cmake_arg "$1"` ;;
+  CXX=*) CXX=`cmake_arg "$1"` ;;
+  CFLAGS=*) CFLAGS=`cmake_arg "$1"` ;;
+  CXXFLAGS=*) CXXFLAGS=`cmake_arg "$1"` ;;
+  LDFLAGS=*) LDFLAGS=`cmake_arg "$1"` ;;
   --) shift; break ;;
   *) die "Unknown option: $1" ;;
   esac
@@ -1118,8 +1128,10 @@ done
 rm -f "${TMPFILE}.cxx"
 
 if [ -z "${cmake_cxx_compiler}" ]; then
-cmake_error 7 "Cannot find a C++ compiler supporting C++11 on this system.
+cmake_error 7 "Cannot find a C++ compiler that supports both C++11 and the specified C++ flags.
 Please specify one using environment variable CXX.
+The C++ flags are \"$cmake_cxx_flags\".
+They can be changed using the environment variable CXXFLAGS.
 See cmake_bootstrap.log for compilers attempted."
 fi
 echo "C++ compiler on this system is: ${cmake_cxx_compiler} ${cmake_cxx_flags}"
@@ -1239,6 +1251,12 @@ if cmake_try_run "${cmake_cxx_compiler}" \
   echo "${cmake_cxx_compiler} has <ext/stdio_filebuf.h>"
 else
   echo "${cmake_cxx_compiler} does not have <ext/stdio_filebuf.h>"
+fi
+
+if [ -n "${cmake_ccache_enabled}" ]; then
+  echo "Building CMake with ccache"
+  cmake_c_compiler="ccache ${cmake_c_compiler}"
+  cmake_cxx_compiler="ccache ${cmake_cxx_compiler}"
 fi
 
 # Just to be safe, let us store compiler and flags to the header file
@@ -1474,6 +1492,11 @@ if [ "x${cmake_bootstrap_qt_qmake}" != "x" ]; then
 set (QT_QMAKE_EXECUTABLE "'"${cmake_bootstrap_qt_qmake}"'" CACHE FILEPATH "Location of Qt qmake" FORCE)
 ' >> "${cmake_bootstrap_dir}/InitialCacheFlags.cmake"
 fi
+if [ "x${cmake_sphinx_info}" != "x" ]; then
+  echo '
+set (SPHINX_INFO "'"${cmake_sphinx_info}"'" CACHE BOOL "Build Info manual with Sphinx" FORCE)
+' >> "${cmake_bootstrap_dir}/InitialCacheFlags.cmake"
+fi
 if [ "x${cmake_sphinx_man}" != "x" ]; then
   echo '
 set (SPHINX_MAN "'"${cmake_sphinx_man}"'" CACHE BOOL "Build man pages with Sphinx" FORCE)
@@ -1527,14 +1550,13 @@ cd "${cmake_binary_dir}"
 # build with same compiler and make
 CC="${cmake_c_compiler}"
 CXX="${cmake_cxx_compiler}"
-if [ -n "${cmake_ccache_enabled}" ]; then
-  CC="ccache ${CC}"
-  CXX="ccache ${CXX}"
-fi
 MAKE="${cmake_make_processor}"
 export CC
 export CXX
 export MAKE
+export CFLAGS
+export CXXFLAGS
+export LDFLAGS
 
 # Run bootstrap CMake to configure real CMake
 cmake_options="-DCMAKE_BOOTSTRAP=1"

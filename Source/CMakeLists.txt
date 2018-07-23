@@ -131,6 +131,8 @@ set(SRCS
   LexerParser/cmListFileLexer.c
   LexerParser/cmListFileLexer.in.l
 
+  cmAffinity.cxx
+  cmAffinity.h
   cmArchiveWrite.cxx
   cmBase32.cxx
   cmCacheManager.cxx
@@ -244,6 +246,8 @@ set(SRCS
   cmGlobalGeneratorFactory.h
   cmGlobalUnixMakefileGenerator3.cxx
   cmGlobalUnixMakefileGenerator3.h
+  cmGlobVerificationManager.cxx
+  cmGlobVerificationManager.h
   cmGraphAdjacencyList.h
   cmGraphVizWriter.cxx
   cmGraphVizWriter.h
@@ -371,6 +375,8 @@ set(SRCS
   cmCommand.h
   cmCommands.cxx
   cmCommands.h
+  cmAddCompileDefinitionsCommand.cxx
+  cmAddCompileDefinitionsCommand.h
   cmAddCompileOptionsCommand.cxx
   cmAddCompileOptionsCommand.h
   cmAddCustomCommandCommand.cxx
@@ -553,6 +559,7 @@ set(SRCS
   cmSiteNameCommand.h
   cmSourceGroupCommand.cxx
   cmSourceGroupCommand.h
+  cmStringReplaceHelper.cxx
   cmStringCommand.cxx
   cmStringCommand.h
   cmSubdirCommand.cxx
@@ -887,6 +894,7 @@ set(CPACK_SRCS
   CPack/cmCPackGenerator.cxx
   CPack/cmCPackLog.cxx
   CPack/cmCPackNSISGenerator.cxx
+  CPack/cmCPackNuGetGenerator.cxx
   CPack/cmCPackSTGZGenerator.cxx
   CPack/cmCPackTGZGenerator.cxx
   CPack/cmCPackTXZGenerator.cxx

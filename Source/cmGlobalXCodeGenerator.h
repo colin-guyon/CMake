@@ -71,7 +71,8 @@ public:
                             const std::string& projectName,
                             const std::string& projectDir,
                             const std::string& targetName,
-                            const std::string& config, bool fast, bool verbose,
+                            const std::string& config, bool fast, int jobs,
+                            bool verbose,
                             std::vector<std::string> const& makeOptions =
                               std::vector<std::string>()) override;
 
@@ -181,9 +182,11 @@ private:
                           std::vector<cmLocalGenerator*>& generators);
   void OutputXCodeProject(cmLocalGenerator* root,
                           std::vector<cmLocalGenerator*>& generators);
+  bool IsGeneratingScheme(cmLocalGenerator* root) const;
   // Write shared scheme files for all the native targets
   void OutputXCodeSharedSchemes(const std::string& xcProjDir);
-  void OutputXCodeWorkspaceSettings(const std::string& xcProjDir);
+  void OutputXCodeWorkspaceSettings(const std::string& xcProjDir,
+                                    cmLocalGenerator* root);
   void WriteXCodePBXProj(std::ostream& fout, cmLocalGenerator* root,
                          std::vector<cmLocalGenerator*>& generators);
   cmXCodeObject* CreateXCodeFileReferenceFromPath(const std::string& fullpath,

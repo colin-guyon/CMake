@@ -1,7 +1,7 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
    file Copyright.txt or https://cmake.org/licensing for details.  */
-#include "cmQtAutoGen.h"
 #include "cmQtAutoGeneratorMocUic.h"
+#include "cmQtAutoGen.h"
 
 #include <algorithm>
 #include <array>
@@ -18,7 +18,7 @@
 #include "cmake.h"
 
 #if defined(__APPLE__)
-#include <unistd.h>
+#  include <unistd.h>
 #endif
 
 // -- Class methods
@@ -434,7 +434,7 @@ bool cmQtAutoGeneratorMocUic::JobParseT::ParseMocSource(WorkerT& wrk,
     JobHandleT jobHandle(new JobMocT(std::move(jobPre.SourceFile), FileName,
                                      std::move(jobPre.IncludeString)));
     if (jobPre.self) {
-      // Read depdendencies from this source
+      // Read dependencies from this source
       static_cast<JobMocT&>(*jobHandle).FindDependencies(wrk, meta.Content);
     }
     if (!wrk.Gen().ParallelJobPushMoc(jobHandle)) {
@@ -452,7 +452,7 @@ bool cmQtAutoGeneratorMocUic::JobParseT::ParseMocHeader(WorkerT& wrk,
   if (!macroName.empty()) {
     JobHandleT jobHandle(
       new JobMocT(std::string(FileName), std::string(), std::string()));
-    // Read depdendencies from this source
+    // Read dependencies from this source
     static_cast<JobMocT&>(*jobHandle).FindDependencies(wrk, meta.Content);
     success = wrk.Gen().ParallelJobPushMoc(jobHandle);
   }
@@ -1330,8 +1330,9 @@ bool cmQtAutoGeneratorMocUic::Init(cmMakefile* makefile)
       std::string error;
       // Insert default filter for Q_PLUGIN_METADATA
       if (Base().QtVersionMajor != 4) {
-        pushFilter("Q_PLUGIN_METADATA", "[\n][ \t]*Q_PLUGIN_METADATA[ \t]*\\("
-                                        "[^\\)]*FILE[ \t]*\"([^\"]+)\"",
+        pushFilter("Q_PLUGIN_METADATA",
+                   "[\n][ \t]*Q_PLUGIN_METADATA[ \t]*\\("
+                   "[^\\)]*FILE[ \t]*\"([^\"]+)\"",
                    error);
       }
       // Insert user defined dependency filters
@@ -1381,7 +1382,7 @@ bool cmQtAutoGeneratorMocUic::Init(cmMakefile* makefile)
       // Compare list sizes
       if (sources.size() != options.size()) {
         std::ostringstream ost;
-        ost << "files/options lists sizes missmatch (" << sources.size() << "/"
+        ost << "files/options lists sizes mismatch (" << sources.size() << "/"
             << options.size() << ")";
         Log().ErrorFile(GeneratorT::UIC, InfoFile(), ost.str());
         return false;
@@ -1884,7 +1885,7 @@ bool cmQtAutoGeneratorMocUic::ParallelJobPushMoc(JobHandleT& jobHandle)
               error += Quoted(mocJob.IncluderFile);
               error += " and\n  ";
               error += Quoted(otherJob.IncluderFile);
-              error += "\ncontain the the same moc include string ";
+              error += "\ncontain the same moc include string ";
               error += Quoted(mocJob.IncludeString);
               error += "\nbut the moc file would be generated from different "
                        "source files\n  ";
@@ -1933,7 +1934,7 @@ bool cmQtAutoGeneratorMocUic::ParallelJobPushUic(JobHandleT& jobHandle)
           error += Quoted(uicJob.IncluderFile);
           error += " and\n  ";
           error += Quoted(otherJob.IncluderFile);
-          error += "\ncontain the the same uic include string ";
+          error += "\ncontain the same uic include string ";
           error += Quoted(uicJob.IncludeString);
           error += "\nbut the uic file would be generated from different "
                    "source files\n  ";
