@@ -3388,6 +3388,8 @@ public:
 
 					std::string language = target.GetLinkerLanguage(configName);
 					std::string linkerType = lg->GetMakefile()->GetSafeDefinition("CMAKE_" + language + "_COMPILER_ID");
+					// FASTBuild needs a lowercase value for LinkerType, such as 'msvc'
+					std::transform(linkerType.begin(), linkerType.end(), linkerType.begin(), ::tolower);
 
 					context.fc.WriteVariable("Linker", Quote(executable));
 					
@@ -3396,7 +3398,7 @@ public:
 					std::string libExecutable = "$Linker$";
 					// we must use the librarian (lib.exe) as link.exe won't accept /lib in a response file.
 					// Fastbuild chooses to write a response file if the arguments are too long:
-					if (linkerType == "MSVC" && linkCommand == "Library")
+					if (linkerType == "msvc" && linkCommand == "Library")
 					{
 						std::string flagsLower = flags;
 						std::transform(flagsLower.begin(), flagsLower.end(), flagsLower.begin(), ::tolower);
